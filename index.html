@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Rental Property Waypoints & Search Agent</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Google+Sans+Text" />
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/genai": "https://esm.sh/@google/genai@1.30.0",
+          "@modelcontextprotocol/sdk/": "https://esm.sh/@modelcontextprotocol/sdk@1.22.0/dist/esm/",
+          "zod": "https://esm.sh/zod@3.25.76",
+          "highlight.js": "https://esm.sh/highlight.js@11.11.1",
+          "lit": "https://esm.sh/lit@3.3.1",
+          "lit/": "https://esm.sh/lit@3.3.1/",
+          "marked": "https://esm.sh/marked@15.0.12",
+          "marked-highlight": "https://esm.sh/marked-highlight@2.2.3",
+          "google3/": "https://esm.sh/google3@^1.0.0/",
+          "typed.js": "https://esm.sh/typed.js@2.1.0"
+        }
+      }
+    </script>
+    <script
+      src="https://maps.googleapis.com/maps/api/js?libraries=places,geometry,marker&key=AIzaSyBdf3qEHerho4yhseDl3vf-06ZHUcub-rI&v=weekly&loading=async"
+      async
+      defer
+    ></script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

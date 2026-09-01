@@ -1,0 +1,9 @@
+{
+  "name": "Property Waypoints & Rental Search Agent",
+  "description": "Rental property search agent with 10-mile radius waypoint discovery, amenity percentage match ratings, monday.com sub-item board sync, and travel distance calculation.",
+  "requestFramePermissions": [],
+  "prompt": "",
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
