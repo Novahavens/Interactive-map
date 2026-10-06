@@ -339,6 +339,14 @@ https://nova-havens-map.vercel.app/?claimId={claim item id}
 - [ ] Optional hardening: server-only Supabase access (see [Security](#-security--access)).
 
 ---
+## 📌Features for phase 2
+- [ ] **Search agent embed.
+- [ ] **A Slide out drawer that shows all active claims , greys out if options sent.
+- [ ] **Availability.
+- [ ] **Phase 2** (placeholders already in the property panel): *Call / Text via Quo* and a one-line summary of the option for the adjuster. Wire up quo 
+- [ ]**Button to generate email to relocation specialist with all relevant information.
+- - [ ]**Last used date on property card.
+
 
 ## 🧪 Legacy prototype
 
@@ -348,8 +356,5 @@ The files currently on `main` — `playground.ts`, `search_agent.ts`, `property_
 
 <div align="center">
 
-Built for the Nova Havens placement team · owned by **Fazal Abed**
+Built for the Nova Havens Tech Team · owned by **Fazal Abed**
 
-<sub>Questions or changes? Open an issue or a pull request in this repo.</sub>
-
-</div>
