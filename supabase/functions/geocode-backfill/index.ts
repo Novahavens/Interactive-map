@@ -261,14 +261,18 @@ Deno.serve(async (req) => {
 
   const geo = parsed.length ? await censusBatch(parsed) : new Map<string, Geo>();
   const retry = parsed.filter((x) => (geo.get(x.id) ?? NO_MATCH).matchType !== "Exact" && (geo.get(x.id) ?? NO_MATCH).matchType !== "Non_Exact");
+  // Rows the guard skips have not had their fallback yet, so they are neither
+  // decided nor recorded here: they stay in geocode_candidates for the next tick.
+  const skipped = new Set<string>();
   await pool(retry, 4, async (x) => {
-    if (Date.now() - started > WALL_CLOCK_MS - 25_000) return;
+    if (Date.now() - started > WALL_CLOCK_MS - 25_000) { skipped.add(x.id); return; }
     const g = await censusOneline(x.p);
     if (g.matchType !== "No_Match") geo.set(x.id, g);
   });
 
   const toWrite: { id: string; p: Parsed; g: Geo; how: string }[] = [];
   for (const x of parsed) {
+    if (skipped.has(x.id)) continue;
     const g = geo.get(x.id) ?? NO_MATCH;
     const verdict = accept(x.p, g);
     if (verdict.ok) toWrite.push({ ...x, g, how: `${g.via}/${g.matchType}${verdict.note ? ` · ${verdict.note}` : ""}` });
@@ -319,7 +323,7 @@ Deno.serve(async (req) => {
     accepted: count("accepted"),
     written,
     monday_errors: mondayErrors,
-    deferred: dry ? 0 : toWrite.length - written - mondayErrors,
+    deferred: skipped.size + (dry ? 0 : toWrite.length - written - mondayErrors),
     done: candidates.length === 0,
     elapsed_ms: Date.now() - started,
     sample: dry ? results.slice(0, 80) : results.filter((r) => r.outcome !== "written").slice(0, 25),
