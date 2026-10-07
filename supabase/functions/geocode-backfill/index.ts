@@ -306,7 +306,7 @@ Deno.serve(async (req) => {
     const record = results.filter((r) => r.outcome !== "monday_error");
     if (record.length) {
       const { error: logError } = await sb.from("geocode_attempts").upsert(
-        record.map((r) => ({ monday_item_id: r.id, outcome: r.outcome, input: r.input, matched_address: r.matched ?? null, lat: r.lat ?? null, lng: r.lng ?? null, detail: r.detail ?? null })),
+        record.map((r) => ({ monday_item_id: r.id, attempted_at: new Date().toISOString(), outcome: r.outcome, input: r.input, matched_address: r.matched ?? null, lat: r.lat ?? null, lng: r.lng ?? null, detail: r.detail ?? null })),
         { onConflict: "monday_item_id" },
       );
       if (logError) return Response.json({ error: `attempt log failed: ${logError.message}` }, { status: 500 });
