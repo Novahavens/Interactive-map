@@ -505,6 +505,21 @@ export class PropertyDatabase {
     ]);
     return [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   }
+
+  public async getActiveClaims(): Promise<Property[]> {
+    return this.properties.filter(p => p.status && p.status.toLowerCase() === 'active');
+  }
+
+  public async database_coverage(): Promise<{ total_properties: number; mapped_properties: number; coverage_percent: number }> {
+    const total = this.properties.length;
+    const mapped = this.properties.filter(p => p.lat !== undefined && p.lng !== undefined && p.lat !== 0 && p.lng !== 0).length;
+    const coverage_percent = total > 0 ? Math.round((mapped / total) * 100) : 0;
+    return {
+      total_properties: total,
+      mapped_properties: mapped,
+      coverage_percent
+    };
+  }
 }
 
 export const propertyDB = new PropertyDatabase();

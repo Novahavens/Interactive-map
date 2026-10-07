@@ -9,6 +9,8 @@ import {customElement, query, state} from 'lit/decorators.js';
 
 import {MapParams} from './mcp_maps_server';
 import { propertyDB, Property, formatCurrency, geocodeAddress } from './property_db';
+import './claims_drawer';
+import './coverage_badge';
 import './property_modal';
 import './property_manager';
 import './travel_calculator';
@@ -976,6 +978,21 @@ export class Playground extends LitElement {
             </div>
           ` : ''}
         </div>
+
+        <coverage-badge></coverage-badge>
+        <claims-drawer
+          @property-selected=${(e: CustomEvent) => {
+            const prop = e.detail.property;
+            this.selectedPropertyForModal = prop;
+            this.modalActiveTab = 'overview';
+            this.isPlaceModalOpen = true;
+            if (this.googleMap) {
+              this.googleMap.panTo({ lat: prop.lat, lng: prop.lng });
+              this.googleMap.setZoom(16);
+            }
+            this.requestUpdate();
+          }}
+        ></claims-drawer>
 
         ${this.initMap} ${this.map}
       </div>
