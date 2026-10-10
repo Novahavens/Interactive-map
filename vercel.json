@@ -1,4 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "test ! -f next.config.ts"
+  "ignoreCommand": "test ! -f vite.config.ts",
+  "outputDirectory": "dist"
 }
