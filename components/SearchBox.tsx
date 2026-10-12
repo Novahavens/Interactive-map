@@ -13,6 +13,8 @@ interface Props {
   className?: string;
   /** Small chip shown at the right edge of the input, e.g. "from claim". */
   badge?: string;
+  /** Text shown in the box when set from outside (e.g. a claim's loss address). Does not trigger suggestions. */
+  value?: string;
   /** Height 40px + larger type — the empty-state hero search. Defaults to the 40px rail style. */
   size?: "rail" | "hero";
 }
@@ -35,9 +37,12 @@ export default function SearchBox({
   onClear,
   className,
   badge,
+  value,
   size = "rail",
 }: Props) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(value ?? "");
+  // Text that was set programmatically (claim address, picked place); suggestions are only fetched for typed text.
+  const external = useRef<string | null>(value ?? null);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Suggestion[]>([]);
   const [active, setActive] = useState(-1);
@@ -54,6 +59,13 @@ export default function SearchBox({
   }
 
   useEffect(() => {
+    if (value === undefined) return;
+    external.current = value;
+    setQ(value);
+  }, [value]);
+
+  useEffect(() => {
+    if (q === external.current) return;
     if (!q.trim()) {
       setItems([]);
       return;
@@ -109,6 +121,7 @@ export default function SearchBox({
       const loc = place.location;
       if (loc) {
         onPick({ lat: loc.lat(), lng: loc.lng(), address: place.formattedAddress ?? s.main });
+        external.current = place.formattedAddress ?? s.main;
         setQ(place.formattedAddress ?? s.main);
       }
     } finally {

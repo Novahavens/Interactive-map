@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Loader2,
@@ -12,12 +12,14 @@ import {
   PawPrint,
   Images,
   DollarSign,
+  Inbox,
 } from "lucide-react";
 import MapCanvas from "./MapCanvas";
 import PropertyPanel from "./PropertyPanel";
 import SearchBox from "./SearchBox";
+import ActiveClaimsDrawer from "./ActiveClaimsDrawer";
 import { useTheme } from "@/lib/useTheme";
-import type { ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse } from "@/lib/types";
+import type { ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse } from "@/lib/types";
 import { classifyGroup } from "@/lib/types";
 import { cn, money, num, dateShort } from "@/lib/utils";
 
@@ -40,8 +42,15 @@ const GROUP_DOT: Record<ReturnType<typeof classifyGroup>, string> = {
   unknown: "#8f8f8f",
 };
 
-export default function MapApp({ claimId, apiKey, mapId }: Props) {
+export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props) {
   const { theme, toggle } = useTheme();
+
+  // The claim being worked: from ?claimId on load, then from the Active Claims drawer (F2).
+  const [claimId, setClaimId] = useState<string | null>(initialClaimId);
+  const claimIdRef = useRef(claimId);
+  claimIdRef.current = claimId;
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activeCount, setActiveCount] = useState<number | null>(null);
 
   const [claim, setClaim] = useState<ClaimResponse | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
@@ -74,6 +83,7 @@ export default function MapApp({ claimId, apiKey, mapId }: Props) {
       const json = (await res.json()) as ClaimResponse | ApiError;
       if (!res.ok) throw new Error((json as ApiError).error || `HTTP ${res.status}`);
       const c = json as ClaimResponse;
+      if (claimIdRef.current !== claimId) return; // switched claims while this was in flight
       setClaim(c);
       setAttachedPins(c.attachedPins);
       if (c.loss) {
@@ -82,11 +92,41 @@ export default function MapApp({ claimId, apiKey, mapId }: Props) {
         setClaimError("This claim has no damaged-residence address yet. Add it on the claim, or search an address below.");
       }
     } catch (e) {
+      if (claimIdRef.current !== claimId) return;
       setClaimError(e instanceof Error ? e.message : "Could not read the claim");
     } finally {
-      setClaimLoading(false);
+      if (claimIdRef.current === claimId) setClaimLoading(false);
     }
   }, [claimId]);
+
+  // Switching claims: drop everything scoped to the old one before the new claim loads,
+  // so nothing (selection, attached set, an in-flight add) can land on the wrong claim.
+  const selectClaim = useCallback((c: ActiveClaim) => {
+    setDrawerOpen(false);
+    if (c.id === claimIdRef.current) return;
+    claimIdRef.current = c.id;
+    setClaimId(c.id);
+    setClaim(null);
+    setClaimError(null);
+    setAttachedPins([]);
+    setSelectedId(null);
+    setCenter(c.lat != null && c.lng != null ? { lat: c.lat, lng: c.lng, address: c.lossAddress ?? "", source: "claim" } : null);
+    const url = new URL(window.location.href);
+    url.searchParams.set("claimId", c.id);
+    window.history.replaceState(null, "", url);
+  }, []);
+
+  // Cmd/Ctrl+K toggles the drawer.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setDrawerOpen((o) => !o);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     void loadClaim();
@@ -186,6 +226,7 @@ export default function MapApp({ claimId, apiKey, mapId }: Props) {
           apiKey={apiKey}
           placeholder="Loss address"
           badge={center?.source === "claim" ? "from claim" : undefined}
+          value={center?.source === "claim" ? center.address : undefined}
           onPick={(loc) => {
             setSelectedId(null);
             setCenter({ ...loc, source: "search" });
@@ -339,13 +380,28 @@ export default function MapApp({ claimId, apiKey, mapId }: Props) {
     <div className="flex h-dvh flex-col overflow-hidden bg-bg">
       {/* ---------- Header ---------- */}
       <header className="z-20 flex h-12 shrink-0 items-center gap-3 border-b border-line bg-surface px-4">
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Active claims"
+          title="Active claims (Ctrl/⌘ K)"
+          className="-ml-1.5 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-line bg-surface px-2 text-[13px] font-medium"
+        >
+          <Inbox className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Claims</span>
+          {activeCount != null && (
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-ink px-1.5 font-mono text-[11px] text-bg">
+              {activeCount}
+            </span>
+          )}
+        </button>
         <div className="flex min-w-0 items-center gap-2 text-sm">
-          <span className="whitespace-nowrap font-semibold tracking-[-0.01em]">Nova Havens</span>
-          <span className="text-line2">/</span>
-          <span className="whitespace-nowrap text-muted">Claims</span>
+          <span className="hidden whitespace-nowrap font-semibold sm:inline tracking-[-0.01em]">Nova Havens</span>
+          <span className="hidden text-line2 sm:inline">/</span>
+          <span className="hidden whitespace-nowrap text-muted sm:inline">Claims</span>
           {claim && (
             <>
-              <span className="text-line2">/</span>
+              <span className="hidden text-line2 sm:inline">/</span>
               <span className="truncate font-medium">{claim.name}</span>
               <span className="hidden shrink-0 rounded px-1.5 py-px font-mono text-[11px] text-muted sm:inline" style={{ border: "1px solid var(--line)" }}>
                 {claim.id}
@@ -398,6 +454,14 @@ export default function MapApp({ claimId, apiKey, mapId }: Props) {
         </div>
       </header>
 
+      <ActiveClaimsDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        selectedId={claimId}
+        onSelect={selectClaim}
+        onCount={setActiveCount}
+      />
+
       {/* ---------- Workspace ---------- */}
       <div className="relative flex min-h-0 flex-1">
         {/* ---------- Left rail (docked, lg+) ---------- */}
@@ -439,7 +503,7 @@ export default function MapApp({ claimId, apiKey, mapId }: Props) {
                       ? claimLoading
                         ? "Loading the claim…"
                         : claimError ?? "Type the damaged-residence address."
-                      : "Type the damaged-residence address. Opened from a claim, it is filled in for you."}
+                      : "Pick a claim from Claims (Ctrl/⌘ K) to start from its loss address, or type one."}
                   </p>
                 </div>
                 <SearchBox
@@ -505,7 +569,8 @@ export default function MapApp({ claimId, apiKey, mapId }: Props) {
               <div className="absolute inset-0" style={{ background: "var(--scrim)" }} onClick={() => setSelectedId(null)} />
               <div className="absolute inset-x-3 bottom-3 top-3 flex overflow-hidden rounded-xl border border-line shadow-[0_12px_40px_rgba(0,0,0,0.25)] sm:inset-x-auto sm:right-3 sm:w-[400px]">
                 <PropertyPanel
-                  key={selectedId}
+                  key={`${claim?.id ?? "none"}:${selectedId}`}
+                  claimName={claim?.name ?? null}
                   propertyId={selectedId}
                   distanceMiles={selectedPin?.distance_miles ?? null}
                   needs={claim?.needs ?? null}
@@ -523,7 +588,8 @@ export default function MapApp({ claimId, apiKey, mapId }: Props) {
         {selectedId && (
           <div className="hidden w-[400px] shrink-0 border-l border-line lg:flex">
             <PropertyPanel
-              key={selectedId}
+              key={`${claim?.id ?? "none"}:${selectedId}`}
+              claimName={claim?.name ?? null}
               propertyId={selectedId}
               distanceMiles={selectedPin?.distance_miles ?? null}
               needs={claim?.needs ?? null}
