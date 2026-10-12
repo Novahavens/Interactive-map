@@ -42,7 +42,7 @@ Verification: `sha1sum` of each recovered file matches the `uid` Vercel reports 
 6. `npm install && npm run build && npm run typecheck`. Commit as "Bring live Next.js app into the repo; retire prototype".
 7. Push → preview deployment. Open it: map renders, search works, claim URL works (read-only check; no adds).
 
-## Phase 2 — Local safety (F1)
+## Phase 2 — Local safety (F1) ✅
 
 - `lib/monday.ts`: add `export const DRY_RUN = process.env.MONDAY_DRY_RUN === "1"`; in the mutation helper, if `DRY_RUN`, `console.info("[monday dry-run]", query, variables)` and return a synthetic result.
 - `app/api/claim/add/route.ts`: nothing to change if it goes through the helper; otherwise branch there. Return `{ subitemId: "dry_<timestamp>", dryRun: true }`.

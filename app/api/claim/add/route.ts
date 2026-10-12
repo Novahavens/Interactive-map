@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readClaim, createSubitem, MondayError } from "@/lib/monday";
+import { readClaim, createSubitem, MondayError, DRY_RUN } from "@/lib/monday";
 import { supabase } from "@/lib/supabase";
 import { classifyGroup, type AddToClaimRequest, type AddToClaimResponse, type ApiError } from "@/lib/types";
 
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
 
     const subitemId = await createSubitem(claimId, name, propertyId, distanceMiles);
 
-    return NextResponse.json<AddToClaimResponse>({ ok: true, subitemId, alreadyAttached: false }, { status: 201 });
+    return NextResponse.json<AddToClaimResponse>({ ok: true, subitemId, alreadyAttached: false, ...(DRY_RUN && { dryRun: true }) }, { status: 201 });
   } catch (e) {
     const code = e instanceof MondayError ? "monday_error" : "server_error";
     const message = e instanceof Error ? e.message : "Add to claim failed";

@@ -26,6 +26,9 @@ export const COLS = {
 export const SUBITEM_START_STATUS = "Ready to Submit"; // William, 26 Aug
 
 const MONDAY_API = "https://api.monday.com/v2";
+
+/** Local safety: with MONDAY_DRY_RUN=1, reads still hit Monday but no mutation is ever sent. */
+export const DRY_RUN = process.env.MONDAY_DRY_RUN === "1";
 const API_VERSION = "2024-10";
 
 export class MondayError extends Error {
@@ -56,6 +59,11 @@ export async function monday<T>(
   variables: Record<string, unknown> = {},
   opts: { retry?: boolean } = {},
 ): Promise<T> {
+  if (DRY_RUN && /^\s*mutation\b/.test(query)) {
+    // Backstop for any mutation that skips its own dry-run branch: refuse rather than write.
+    console.info("[monday dry-run] blocked", query, variables);
+    throw new MondayError("Dry run: mutation not sent to Monday");
+  }
   const retry = opts.retry ?? /^\s*query\b/.test(query);
   try {
     return await mondayOnce<T>(query, variables);
@@ -221,6 +229,10 @@ export async function createSubitem(
     cols[COLS.distanceToLoss] = String(distanceMiles);
   }
   const columnValues = JSON.stringify(cols);
+  if (DRY_RUN) {
+    console.info("[monday dry-run] create_subitem", { parent: claimId, name, cols });
+    return `dry_${Date.now()}`;
+  }
   const mutation = `
     mutation ($parent: ID!, $name: String!, $cols: JSON!) {
       create_subitem(parent_item_id: $parent, item_name: $name, column_values: $cols) {

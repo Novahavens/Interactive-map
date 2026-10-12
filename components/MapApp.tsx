@@ -17,7 +17,7 @@ import MapCanvas from "./MapCanvas";
 import PropertyPanel from "./PropertyPanel";
 import SearchBox from "./SearchBox";
 import { useTheme } from "@/lib/useTheme";
-import type { ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin } from "@/lib/types";
+import type { ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse } from "@/lib/types";
 import { classifyGroup } from "@/lib/types";
 import { cn, money, num, dateShort } from "@/lib/utils";
 
@@ -91,6 +91,15 @@ export default function MapApp({ claimId, apiKey, mapId }: Props) {
   useEffect(() => {
     void loadClaim();
   }, [loadClaim]);
+
+  // Dry-run chip: tells whoever is testing that Add to claim will not write to Monday.
+  const [dryRun, setDryRun] = useState(false);
+  useEffect(() => {
+    fetch("/api/health", { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<HealthResponse>) : null))
+      .then((h) => setDryRun(!!h?.dryRun))
+      .catch(() => undefined);
+  }, []);
 
   // ---- 2. pins inside the radius ----
   useEffect(() => {
@@ -347,6 +356,15 @@ export default function MapApp({ claimId, apiKey, mapId }: Props) {
         </div>
 
         <div className="ml-auto flex items-center gap-2 text-[13px]">
+          {dryRun && (
+            <span
+              title="MONDAY_DRY_RUN=1: Add to claim logs the change instead of writing to Monday."
+              className="inline-flex h-8 items-center rounded-md px-2.5 font-medium"
+              style={{ color: "var(--amber-ink)", background: "var(--amber-bg)", border: "1px solid var(--amber-line)" }}
+            >
+              Dry run
+            </span>
+          )}
           {coverage && (
             <span
               title="Properties with no coordinates in the database cannot appear on any map until they are geocoded."

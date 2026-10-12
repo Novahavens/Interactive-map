@@ -130,6 +130,12 @@ export interface AddToClaimResponse {
   ok: true;
   subitemId: string;
   alreadyAttached: boolean;
+  dryRun?: boolean;
+}
+
+export interface HealthResponse {
+  ok: true;
+  dryRun: boolean;
 }
 
 export interface ApiError {
