@@ -18,9 +18,7 @@
 ---
 
 > [!IMPORTANT]
-> **Repository status — October 2026.** The live app at [nova-havens-map.vercel.app](https://nova-havens-map.vercel.app) is a **Next.js** app that was deployed from a laptop with the Vercel CLI on 29 Sep 2026. **Its source code has not been committed to this repo yet.** What is on `main` today is the earlier *AI Studio prototype* (Vite + Lit, sample data only), which is retired — see [Legacy prototype](#-legacy-prototype).
->
-> **Next step:** push the Next.js project folder to the root of this repo (see [Bringing the source in](#bringing-the-source-in)). Until then, `vercel.json` skips Git builds so pushes to `main` can't produce broken deployments, and production keeps serving the 29 Sep build.
+> **Source is in this repo as of 12 Oct 2026; deploys from `main`.** The Next.js app at the repo root is byte-for-byte the production deployment `dpl_6beu23Uhss23wPB2hEJVWqAkG74r` (29 Sep 2026). The earlier AI Studio prototype now lives in `legacy/` — see [Legacy prototype](#-legacy-prototype).
 
 ---
 
@@ -350,7 +348,7 @@ https://nova-havens-map.vercel.app/?claimId={claim item id}
 
 ## 🧪 Legacy prototype
 
-The files currently on `main` — `playground.ts`, `search_agent.ts`, `property_db.ts`, `property_manager.ts`, `property_modal.ts`, `travel_calculator.ts`, `monday_sync_service.ts`, `mcp_maps_server.ts`, `validator.ts`, `json_schema.ts`, `style_spec.ts`, `example_style.ts`, `taxonomy.ts`, `index.html`, `index.tsx`, `index.css`, `metadata.json` and `vite.config.ts` — are the **1 Sep 2026 AI Studio prototype** (Vite + Lit). It explored the idea with **sample data only**: the "search agent" generates fictional listings, data lives in each browser's `localStorage`, Monday sync is simulated, and its Maps key only works inside AI Studio. Don't deploy it; it will be removed when the Next.js source lands. Ideas worth porting later: the travel-time calculator and the internal-notes editor.
+The files in [`legacy/`](legacy/) are the **1 Sep 2026 AI Studio prototype** (Vite + Lit). It explored the idea with **sample data only**: the "search agent" generates fictional listings, data lives in each browser's `localStorage`, Monday sync is simulated, and its Maps key only works inside AI Studio. Don't deploy it; it is kept for reference only. Ideas worth porting later: the travel-time calculator and the internal-notes editor.
 
 ---
 
