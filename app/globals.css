@@ -1,0 +1,291 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/*  Tokens — v3.1 design canvas. Monochrome surfaces, 1px hairlines,   */
+/*  Geist. Colour appears only where it carries meaning.               */
+/*  Light and dark are the same components with a variable swap.      */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-muted: #f5f5f5;
+  --line: #eaeaea;
+  --line2: #d4d4d4;
+  --ink: #171717;
+  --muted: #666666;
+  --scrim: rgba(250, 250, 250, 0.72);
+
+  --amber-bg: #fff7e6;
+  --amber-ink: #8a5a00;
+  --amber-line: #f5d78e;
+  --ok-bg: #e8f9ef;
+  --ok-ink: #0a6b3a;
+  --ok-line: #a7e8c1;
+  --bad-bg: #fde8e8;
+  --bad-ink: #b00020;
+  --bad-line: #f5b5b5;
+
+  /* semantic — identical in both themes */
+  --loss: #f5a623;
+  --database: #17c964;
+  --preferred: #7928ca;
+  --dnu: #ee0000;
+  --focus: #0070f3;
+  --focus-hover: #0761d1;
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --surface-muted: #141414;
+  --line: #262626;
+  --line2: #333333;
+  --ink: #ededed;
+  --muted: #a1a1a1;
+  --scrim: rgba(0, 0, 0, 0.55);
+
+  --amber-bg: #2a1f06;
+  --amber-ink: #f5a623;
+  --amber-line: #4a3608;
+  --ok-bg: #062a19;
+  --ok-ink: #17c964;
+  --ok-line: #0b4a2e;
+  --bad-bg: #2a0606;
+  --bad-ink: #ff6166;
+  --bad-line: #4a0b0b;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+
+  --color-amber-bg: var(--amber-bg);
+  --color-amber-ink: var(--amber-ink);
+  --color-amber-line: var(--amber-line);
+  --color-ok-bg: var(--ok-bg);
+  --color-ok-ink: var(--ok-ink);
+  --color-ok-line: var(--ok-line);
+  --color-bad-bg: var(--bad-bg);
+  --color-bad-ink: var(--bad-ink);
+  --color-bad-line: var(--bad-line);
+
+  --color-loss: var(--loss);
+  --color-database: var(--database);
+  --color-preferred: var(--preferred);
+  --color-dnu: var(--dnu);
+  --color-focus: var(--focus);
+
+  /* Back-compat aliases for the pre-critique token names still referenced
+     in a couple of components — same values, new names. Safe to drop once
+     every component is fully ported. */
+  --color-ink-muted: var(--muted);
+  --color-brand: var(--focus);
+  --color-pin-loss: var(--loss);
+  --color-pin-database: var(--database);
+  --color-pin-preferred: var(--preferred);
+  --color-pin-dnu: var(--dnu);
+  --color-pin-attached: var(--ink);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font-family: inherit;
+}
+
+input::placeholder {
+  color: #8f8f8f;
+}
+
+a {
+  color: var(--focus);
+}
+a:hover {
+  color: var(--focus-hover);
+}
+
+button:focus-visible,
+input:focus-visible,
+a:focus-visible,
+[role="option"]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Strip Google's default focus ring on the map container without killing keyboard focus elsewhere. */
+.gm-style:focus {
+  outline: none;
+}
+
+/* Advanced markers: kill Google's default hover outline on the wrapper. */
+.gm-style [role="button"]:focus {
+  outline: none;
+}
+
+/* ---------- Map pins (HTML content of AdvancedMarkerElement) ---------- */
+
+.nh-pin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transform-origin: 50% 100%;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.nh-pin__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line2);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.nh-pin__caret {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--line2);
+}
+.nh-pin__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+.nh-pin--attached .nh-pin__chip {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.nh-pin--attached .nh-pin__caret {
+  border-top-color: var(--ink);
+}
+.nh-pin--selected {
+  transform: scale(1.06);
+}
+.nh-pin--selected .nh-pin__chip {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 2px var(--focus), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.nh-pin--selected .nh-pin__caret {
+  border-top-color: var(--focus);
+}
+.nh-pin--dnu .nh-pin__chip {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.nh-pin--dimmed {
+  opacity: 0.18;
+}
+.nh-pin--muted .nh-pin__chip {
+  color: var(--muted);
+}
+
+.nh-cluster {
+  display: inline-flex;
+  height: 30px;
+  min-width: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line2);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 0 0 3px var(--surface), 0 0 0 4px var(--line2), 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.nh-loss {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+.nh-loss__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--loss);
+  color: #1a1a1a;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.nh-loss__caret {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 7px solid var(--loss);
+}
+
+/* ---------- Small shared primitives ---------- */
+
+.nh-eyebrow {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.nh-skeleton {
+  border-radius: 6px;
+  background: var(--surface-muted);
+  animation: nh-pulse 1.4s ease-in-out infinite;
+}
+@keyframes nh-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Thin scrollbars in rails and panels */
+.nh-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line2) transparent;
+}

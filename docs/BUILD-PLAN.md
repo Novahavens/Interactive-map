@@ -6,7 +6,7 @@ Companion to `docs/PRD-claims-drawer-and-specialist-summary.md`. Phases are sequ
 
 Goal: every file of production deployment `dpl_6beu23Uhss23wPB2hEJVWqAkG74r` (team `team_YEcPHHbzFoa1DSSKBbNDiyEk`) committed at the repo root, byte-exact.
 
-Status (12 Oct): **10 of 22 files recovered** via the Vercel MCP tools; the rest exceed that tool's response budget, and the four API route files sit one level deeper than its directory listing reaches.
+Status (12 Oct): **✅ done — all 24 source files recovered via REST, every blob hash verified.**
 
 | File | Status |
 |---|---|
