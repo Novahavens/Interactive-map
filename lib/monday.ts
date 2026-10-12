@@ -18,6 +18,8 @@ export const COLS = {
   adults: "numeric_mkqd84rr",
   children: "numeric_mkqd8f42",
   claimStatus: "color_mkrvebt", // "Current Status"
+  specialist: "board_relation_mks1djce", // "Relocation Specialist" (contacts board, external people)
+  specialistEmail: "lookup_mm47e8rz", // mirror of the specialist's email; may hold several, e.g. "a@x.com - b@x.com"
   // subitem board
   propertyRelation: "board_relation_mm441",
   subitemStatus: "status",
@@ -297,6 +299,43 @@ export async function listActiveClaims(includeTest: boolean): Promise<ActiveClai
       };
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+// ---------- Relocation specialist + summary log (F4) ----------
+
+/** The claim's relocation specialist. External people, so they're contacted by email, not @mention. */
+export async function readSpecialist(claimId: string): Promise<{ name: string | null; emailText: string | null }> {
+  const data = await monday<{
+    items: Array<{ column_values: Array<{ id: string; display_value?: string | null }> }>;
+  }>(
+    `query ($ids: [ID!]) {
+      items(ids: $ids) {
+        column_values(ids: ${JSON.stringify([COLS.specialist, COLS.specialistEmail])}) {
+          id
+          ... on BoardRelationValue { display_value }
+          ... on MirrorValue { display_value }
+        }
+      }
+    }`,
+    { ids: [claimId] },
+  );
+  const cols = data.items?.[0]?.column_values ?? [];
+  const val = (id: string) => cols.find((c) => c.id === id)?.display_value?.trim() || null;
+  return { name: val(COLS.specialist), emailText: val(COLS.specialistEmail) };
+}
+
+/** Posts an update on the claim item (the record that a summary went out). */
+export async function createUpdate(itemId: string, body: string): Promise<string> {
+  if (DRY_RUN) {
+    console.info("[monday dry-run] create_update", { itemId, body });
+    return `dry_${Date.now()}`;
+  }
+  const data = await monday<{ create_update: { id: string } | null }>(
+    `mutation ($item: ID!, $body: String!) { create_update(item_id: $item, body: $body) { id } }`,
+    { item: itemId, body },
+  );
+  if (!data.create_update?.id) throw new MondayError("create_update returned no id");
+  return data.create_update.id;
 }
 
 // ---------- Add to claim ----------
