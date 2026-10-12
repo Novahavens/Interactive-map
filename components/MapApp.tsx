@@ -251,7 +251,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
                 aria-checked={radius === r}
                 onClick={() => setRadius(r)}
                 className={cn(
-                  "h-7 min-w-11 rounded-[5px] px-2 text-[13px] font-medium",
+                  "h-7 whitespace-nowrap rounded-[5px] px-1.5 text-[12px] font-medium",
                   radius === r ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.12)]" : "text-muted",
                 )}
               >

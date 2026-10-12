@@ -2,73 +2,129 @@
 
 # 🗺️ Nova Havens · Property Map
 
-**Find temporary housing near a family's damaged home — in seconds, straight from the Monday property database.**
+**Find temporary housing near a family's damaged home, shortlist it on the claim, and send it to the relocation specialist — in one screen.**
 
 [![Live app](https://img.shields.io/badge/live-nova--havens--map.vercel.app-000000?logo=vercel&logoColor=white)](https://nova-havens-map.vercel.app)
 [![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org)
 [![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)](https://react.dev)
+[![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-Radix%20%2B%20cmdk-000000?logo=shadcnui&logoColor=white)](https://ui.shadcn.com)
 [![Supabase](https://img.shields.io/badge/Supabase-PostGIS-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/dashboard/project/nmandvqfuwvqxeabptjd)
 [![monday.com](https://img.shields.io/badge/monday.com-system%20of%20record-FF3D57?logo=mondaydotcom&logoColor=white)](https://novahavens-company.monday.com/boards/18415735059)
 [![Google Maps](https://img.shields.io/badge/Google%20Maps-JS%20%2B%20Places%20(New)-4285F4?logo=googlemaps&logoColor=white)](https://developers.google.com/maps/documentation/javascript)
 
-[**Open the map**](https://nova-havens-map.vercel.app) · [Using it](#-using-the-map) · [How it works](#-how-it-works) · [Run it locally](#-run-it-locally) · [Deploy](#-deploying) · [Troubleshooting](#-troubleshooting)
+[**Open the map**](https://nova-havens-map.vercel.app) · [What's new](#-whats-new--october-2026) · [Using it](#-using-the-map) · [How it works](#-how-it-works) · [Run it locally](#-run-it-locally) · [Deploy](#-deploying) · [Troubleshooting](#-troubleshooting)
+
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/hero-dark.jpg">
+  <img alt="The property map: active claim in the header, loss-centred radius with priced pins, results list on the left and the property panel with fit checks and move-in total on the right" src="docs/screenshots/hero-light.jpg" width="100%">
+</picture>
+
+<sub>All screenshots use fictional demo claims and properties.</sub>
 
 </div>
 
 ---
 
 > [!IMPORTANT]
-> **Source is in this repo as of 12 Oct 2026; deploys from `main`.** The Next.js app at the repo root is byte-for-byte the production deployment `dpl_6beu23Uhss23wPB2hEJVWqAkG74r` (29 Sep 2026). The earlier AI Studio prototype now lives in `legacy/` — see [Legacy prototype](#-legacy-prototype).
+> **The source is in this repo and `main` deploys to production.** The Next.js app at the root was recovered byte-for-byte from the 29 Sep 2026 CLI deployment (every file checked against Vercel's hashes), and everything since has shipped through pull requests. The retired AI Studio prototype lives in [`legacy/`](legacy/).
 
 ---
 
 ## ✨ What it does
 
-Nova Havens places families displaced by insurance claims into temporary housing. When a claim comes in, a searcher needs to know **which of our ~15,700 properties are close to the damaged home, available, and a fit for the family** — and then send the best options back on the claim.
-
-The Property Map does exactly that:
+Nova Havens places families displaced by insurance claims into temporary housing. When a claim comes in, a searcher needs to know **which of our ~15,700 properties are close to the damaged home, available, and a fit for the family** — then put the best ones on the claim and get them to the insurer's relocation specialist.
 
 | | |
 |---|---|
-| 📍 **Loss-centred search** | Opens on the claim's *Damaged Residence Address* and shows every mapped property within 5–30 miles. |
-| 🧮 **Fit at a glance** | Rent, beds/baths, pets, photos and a single **move-in total** (first month + every deposit and one-off fee) per property. |
-| 👪 **Knows the family** | Reads the claim's needs — adults, children, bedrooms, bathrooms, pets, FRV and move-in date. |
-| ➕ **One-tap shortlist** | **Add to claim** puts a property on the claim as a Monday sub-item, with **Distance to Loss (mi)** filled in. |
-| 🗂️ **Honest coverage** | Says how many properties can't be shown because they have no coordinates — nothing is silently hidden. |
-| 🌗 **Light & dark** | Follows the system theme, with a toggle. |
+| 🗂️ **Active claims, one keystroke away** | **Ctrl/⌘ K** opens every claim waiting on housing options, with search, needs preview and how many options each already has. |
+| 📍 **Loss-centred search** | Picking a claim centres the map on its *Damaged Residence Address* and shows every mapped property within 5–30 miles. |
+| 🧮 **Fit at a glance** | Rent, beds/baths, pets, photos, fit against the family's needs, and a single **move-in total** (first month + every deposit and one-off fee). |
+| ➕ **One-tap shortlist** | **Add to claim** creates the Monday sub-item on the claim you're working, with **Distance to Loss (mi)** filled in. The panel always says which claim you're adding to. |
+| ✉️ **Send summary** | Builds a clean summary of every option on the claim, copies it, opens an email to the relocation specialist, and logs it on the Monday claim. |
+| 🧪 **Safe local testing** | `MONDAY_DRY_RUN=1` stops every Monday write and shows a **Dry run** chip. |
+| 🗺️ **Honest coverage** | Says how many properties can't be shown because they have no coordinates — nothing is silently hidden. |
+| 🌗 **Light, dark, phone, desktop** | Follows the system theme (with a toggle) and works from 360 px up. |
+
+---
+
+## 🆕 What's new — October 2026
+
+| | Change | PR |
+|---|---|---|
+| 📦 | **Live source recovered into the repo.** All 24 files of production deployment `dpl_6beu23Uhss23wPB2hEJVWqAkG74r` pulled from Vercel and verified against their blob hashes; prototype moved to `legacy/`; Vercel preset switched from Vite to Next.js. | [#5](https://github.com/Novahavens/Interactive-map/pull/5), [#6](https://github.com/Novahavens/Interactive-map/pull/6) |
+| 🧪 | **Monday dry-run guard** (`MONDAY_DRY_RUN=1`), `GET /api/health`, and a *Dry run* chip in the header. | [#5](https://github.com/Novahavens/Interactive-map/pull/5) |
+| 🗂️ | **Active Claims drawer** (shadcn Sheet + cmdk), **Ctrl/⌘ K**, claim switching without leaving the map, and **"Adding to: {claim}"** on the property panel. | [#6](https://github.com/Novahavens/Interactive-map/pull/6) |
+| ✉️ | **Send summary** to the relocation specialist: preview, copy, email, and a log on the Monday claim. | [#7](https://github.com/Novahavens/Interactive-map/pull/7) |
+| 🎨 | **shadcn/ui** added and themed through the existing design tokens, so new components match light and dark mode. | [#6](https://github.com/Novahavens/Interactive-map/pull/6) |
 
 ---
 
 ## 🧭 Using the map
 
-**From a claim (normal way).** Open the claim in Monday and open the map from it. The map receives the claim's item ID (`?claimId=…`), so the loss address and the family's needs are filled in for you.
+### 1 · Pick a claim
 
-**On its own.** Go to **[nova-havens-map.vercel.app](https://nova-havens-map.vercel.app)** and type the loss address in the search box. Everything works except **Add to claim**, because there's no claim to attach to.
+Press **Ctrl/⌘ K** (or the **Claims** button, top left). The drawer lists every claim waiting on housing options — newest first — with the loss address, what the family needs and how many options are already attached. Type to filter by name or address; **Show test claims** adds the testing group.
 
-Then:
+<p align="center">
+  <img alt="Active claims drawer with search, test-claim toggle, refresh and option counts" src="docs/screenshots/claims-drawer.jpg" width="100%">
+</p>
+
+Picking a claim fills the search box with its loss address, recentres the map, loads the options already on it (black pins) and puts `?claimId=…` in the URL, so a refresh or a shared link opens the same claim. Opening the map from Monday with `?claimId=` does the same thing.
+
+> [!NOTE]
+> **"Active" means the claim is in the *New Housing Request* or *New Option Needed* group** on the Claim Process Board. That's set by `MONDAY_ACTIVE_CLAIM_GROUPS`, so the definition can change without a code change.
+
+### 2 · Find the right home
 
 1. **Pick a radius** — 5, 10 (default), 15, 20 or 30 mi.
-2. **Narrow down** with the chips: *Pets allowed*, *Has photos*, *Rent listed*.
-3. **Scan the list** on the left (sorted by distance) or the pins on the map. Numbered circles are clusters — zoom in to split them.
+2. **Narrow down** with *Pets allowed*, *Has photos*, *Rent listed*.
+3. **Scan the list** (sorted by distance) or the pins. Numbered circles are clusters — zoom in to split them.
 4. **Tap a property** to open its panel:
+   - **Fit against this claim** — family size, pets, FRV and move-in date, each ticked, flagged or marked unknown.
    - **Cost to place** — monthly rent, every deposit and fee, and the **move-in total** (recurring pet rent is shown but excluded).
-   - **Property** — beds, baths, pets, sq ft, type, furnished, fenced yard, next availability.
-   - **Contacts** — owner (tap to call) and landlord / property manager with approval status.
-   - **Notes & links** — property notes, the listing, the photo folder, and *Open in Monday*.
-5. **Tap Add to claim.** The property is added to the claim's sub-items in Monday, with the distance to the loss, and turns black (*On this claim*) on the map.
+   - **Property, contacts, notes & links** — beds, baths, sq ft, type, availability, owner and landlord, listing, photo folder, *Open in Monday*.
 
-**Pin legend**
-
-| Colour | Meaning |
+| Pin | Meaning |
 |---|---|
-| 🟠 Loss | The damaged-residence address |
-| 🟢 Data Base | Property in the main *Data Base* group |
-| 🟣 Preferred | Property from a *Preferred Landlord* |
-| 🔴 Do not use | In the *DO NOT USE* group — shown for context, can't be added to a claim |
-| ⚫ On this claim | Already attached to the claim you opened |
+| 🟠 **Loss** | The damaged-residence address |
+| 🟢 **Data Base** | Property in the main *Data Base* group |
+| 🟣 **Preferred** | Property from a *Preferred Landlord* |
+| 🔴 **Do not use** | In *DO NOT USE* — shown for context, can't be added |
+| ⚫ **On this claim** | Already attached to the selected claim |
+
+### 3 · Add it to the claim
+
+**Add to claim** (bottom of the panel) creates one sub-item on the selected claim with status *Ready to Submit*, linked to the property and with *Distance to Loss (mi)* filled in. The pin turns black. One at a time is deliberate — it's the quality gate.
+
+### 4 · Send the summary
+
+When the claim has at least one option, **Send summary (N options)** appears under *The family needs*.
+
+<p align="center">
+  <img alt="Send summary sheet: recipient and subject, email preview with every option and its move-in total, Copy and Email buttons" src="docs/screenshots/send-summary.jpg" width="100%">
+</p>
+
+- The preview shows exactly what the specialist will get: the loss address, the family's needs, then one block per option (nearest first) with rent, every fee, **move-in total**, distance, availability, listing and photo links. **Owner contacts are left out.**
+- **Email {specialist}** copies the formatted summary, opens your email app addressed to the specialist with the subject filled in, and logs the summary as an update on the Monday claim. Paste and send.
+- **Copy** just copies it, with nothing logged.
 
 > [!TIP]
-> A property only shows up if its **Full Address** column in the Monday PROPERTY DATABASE has a location. The footnote at the bottom of the list shows how many don't — fixing the address in Monday is what makes them appear.
+> Relocation specialists are external (CRS, ALE Solutions, Homelink…), so a Monday @mention can't reach them. The address comes from the claim's *Specialist Email* column — if it's blank, the sheet says so and you can still copy the summary.
+
+### On a phone
+
+<p align="center">
+  <img alt="Phone: map with radius and pins" src="docs/screenshots/mobile-map.jpg" width="31%">
+  &nbsp;
+  <img alt="Phone: search and results sheet with Send summary" src="docs/screenshots/mobile-results.jpg" width="31%">
+  &nbsp;
+  <img alt="Phone, dark mode: active claims drawer" src="docs/screenshots/mobile-claims-dark.jpg" width="31%">
+</p>
+
+> [!TIP]
+> A property only shows up if its **Full Address** in the Monday PROPERTY DATABASE has a location. The footnote under the list shows how many don't — fixing the address in Monday is what makes them appear.
 
 ---
 
@@ -83,49 +139,54 @@ flowchart TB
   end
 
   subgraph supa["Supabase · Interactive Map database"]
-    EF["Edge functions<br/>monday-webhook · monday-backfill"]
+    EF["Edge functions<br/>monday-webhook · monday-backfill · geocode sweep"]
     T[("properties<br/>PostGIS mirror")]
     RPC["SQL functions<br/>properties_within_radius · property_detail · …"]
   end
 
   subgraph vercel["Vercel · nova-havens-map (Next.js)"]
-    UI["Map UI<br/>MapApp · MapCanvas · PropertyPanel"]
-    API["API routes<br/>/api/properties · /api/claim"]
+    UI["Map UI<br/>MapApp · MapCanvas · PropertyPanel<br/>ActiveClaimsDrawer · SummarySheet"]
+    API["API routes<br/>/api/properties · /api/claim · /api/claims/active"]
   end
 
   G["Google Maps JS<br/>+ Places API (New)"]
+  MAIL["Searcher's mailbox<br/>→ relocation specialist"]
 
   PB -- "item changes" --> EF --> T
   T --> RPC --> API
-  CB -- "loss address + needs" --> API
-  API -- "add property as sub-item" --> SB
+  CB -- "active claims, loss address, needs, specialist" --> API
+  API -- "add sub-item" --> SB
+  API -- "log summary (update)" --> CB
   UI <--> API
   UI <--> G
+  UI -- "copy + mailto" --> MAIL
 ```
 
-- **Monday is the source of truth.** Nobody edits property data in this app.
-- **Supabase is a read-optimised mirror** of the PROPERTY DATABASE board, so "everything within 10 miles" is one PostGIS query instead of paging 15,000 Monday items in the browser.
-- **The Next.js server is the only thing holding secrets.** The browser talks to `/api/*`; those routes talk to Supabase and Monday.
+- **Monday is the source of truth.** Nobody edits property or claim data in this app — it reads them, adds sub-items and posts updates.
+- **Supabase is a read-optimised mirror** of the PROPERTY DATABASE, so "everything within 10 miles" is one PostGIS query instead of paging 15,000 Monday items.
+- **Only the Next.js server holds secrets.** The browser talks to `/api/*`; those routes talk to Supabase and Monday.
 
 <details>
-<summary><b>A searcher's flow, step by step</b></summary>
+<summary><b>A searcher's flow, end to end</b></summary>
 
 ```mermaid
 sequenceDiagram
   actor S as Searcher
-  participant M as monday claim
   participant A as Property map
+  participant M as monday.com
   participant DB as Supabase
-  S->>M: Open the claim
-  M->>A: Opens /?claimId={claim item id}
-  A->>M: Read loss address + family needs
+  actor R as Relocation specialist
+  S->>A: Ctrl/⌘ K → pick a claim
+  A->>M: Active claims · loss address · needs
   A->>DB: properties_within_radius(lat, lng, 10 mi)
-  DB-->>A: Pins + coverage counts
-  S->>A: Tap a pin
-  A->>DB: property_detail(id)
-  DB-->>A: Rent, fees, owner, photos, notes
-  S->>A: Tap Add to claim
+  DB-->>A: Pins + coverage
+  S->>A: Tap a pin → check fit and move-in total
+  S->>A: Add to claim
   A->>M: Create sub-item (PROPERTY Street, Distance to Loss)
+  S->>A: Send summary
+  A-->>S: Summary copied + email opened
+  A->>M: Log summary as an update on the claim
+  S->>R: Paste and send from own mailbox
 ```
 
 </details>
@@ -135,48 +196,57 @@ sequenceDiagram
 | Layer | What we use |
 |---|---|
 | App | **Next.js 15** (App Router) · **React 19** · **TypeScript 5.9** |
-| Styling | **Tailwind CSS 4** · `lucide-react` icons · Geist font |
-| Map | `@googlemaps/js-api-loader` · Advanced Markers · `@googlemaps/markerclusterer` · Places API (New) autocomplete |
+| UI | **Tailwind CSS 4** · **shadcn/ui** (Radix Dialog/Sheet, **cmdk** Command) · `lucide-react` · Geist |
+| Map | `@googlemaps/js-api-loader` · Advanced Markers · `@googlemaps/markerclusterer` · Places API (New) |
 | Data | `@supabase/supabase-js` (server-only) → Supabase Postgres + PostGIS |
 | Integrations | monday.com GraphQL API (server-only) |
-| Hosting | Vercel (team **Nova Havens**, project **nova-havens-map**), Node 22 |
+| Hosting | Vercel (team **Nova Havens**, project **nova-havens-map**, preset **Next.js**), Node 22 |
 
 ### Project structure
 
 ```text
 .
 ├── app/
-│   ├── layout.tsx              # fonts, theme bootstrap (no light/dark flash), metadata
-│   ├── page.tsx                # the single page; reads ?claimId= and the Maps env vars
-│   ├── globals.css
+│   ├── layout.tsx · page.tsx · globals.css     # shell, ?claimId=, design tokens (+ shadcn mapping)
 │   └── api/
-│       ├── properties/route.ts         # GET  pins + coverage inside a radius
-│       ├── properties/[id]/route.ts    # GET  full record for the side panel
-│       ├── claim/[claimId]/route.ts    # GET  claim: loss address, needs, attached options
-│       └── claim/add/route.ts          # attach a property to the claim (Monday sub-item)
+│       ├── health/route.ts                     # GET  { ok, dryRun }
+│       ├── properties/route.ts                 # GET  pins + coverage inside a radius
+│       ├── properties/[id]/route.ts            # GET  full record for the side panel
+│       ├── claims/active/route.ts              # GET  claims waiting on options (drawer)
+│       ├── claim/[claimId]/route.ts            # GET  loss address, needs, attached options
+│       ├── claim/[claimId]/summary/route.ts    # GET  summary preview · POST log it on the claim
+│       └── claim/add/route.ts                  # POST attach a property (Monday sub-item)
 ├── components/
-│   ├── MapApp.tsx              # page shell: header, filters, list, state
-│   ├── MapCanvas.tsx           # Google map, markers, clustering, radius circle
-│   ├── PropertyPanel.tsx       # property detail drawer + "add to claim"
-│   └── SearchBox.tsx           # Places (New) address autocomplete
+│   ├── MapApp.tsx                # page shell: header, claim state, filters, list
+│   ├── MapCanvas.tsx             # Google map, markers, clustering, radius circle
+│   ├── PropertyPanel.tsx         # property detail + "Adding to" + Add to claim
+│   ├── SearchBox.tsx             # Places (New) autocomplete
+│   ├── ActiveClaimsDrawer.tsx    # Ctrl/⌘ K drawer (shadcn Sheet + cmdk)
+│   ├── SummarySheet.tsx          # Send summary preview / copy / email
+│   └── ui/                       # shadcn/ui: sheet, dialog, command, button
 ├── lib/
-│   ├── supabase.ts             # server-only Supabase client
-│   ├── monday.ts               # server-only Monday GraphQL client + column mapping
-│   ├── google.ts               # Maps JS loader (configured once)
-│   ├── types.ts · utils.ts · useTheme.ts
-├── next.config.ts              # CSP frame-ancestors for monday.com embedding
-├── .env.example
-└── package.json
+│   ├── monday.ts                 # server-only Monday client, columns, dry-run guard
+│   ├── summary.ts                # pure buildSummary() + parseEmails()
+│   ├── supabase.ts · google.ts · types.ts · utils.ts · useTheme.ts
+├── supabase/                     # geocode backfill function + migrations
+├── docs/                         # PRD, build plan, screenshots
+├── legacy/                       # retired AI Studio prototype (reference only)
+├── components.json               # shadcn/ui config
+└── vercel.json · next.config.ts · .env.example
 ```
 
 ### API routes
 
 | Route | Returns | Backed by |
 |---|---|---|
-| `GET /api/properties?lat=&lng=&miles=` | `{ pins, coverage }` — pins to draw inside the radius, plus mappable/unmapped counts | `properties_within_radius`, `radius_coverage` |
-| `GET /api/properties/[id]` | Full property record for the panel | `property_detail` |
-| `GET /api/claim/[claimId]` | `{ id, name, loss {address, lat, lng}, needs {adults, children, bedrooms, bathrooms, pets, frv, moveIn}, attached, attachedPins }` | Monday API + `properties_by_ids` |
-| `/api/claim/add` | Creates the claim sub-item linked to the property, with *Distance to Loss (mi)* | Monday API + `property_distance_miles` |
+| `GET /api/health` | `{ ok, dryRun }` | env |
+| `GET /api/properties?lat=&lng=&miles=` | `{ pins, coverage }` | `properties_within_radius`, `radius_coverage` |
+| `GET /api/properties/[id]` | Full property record | `property_detail` |
+| `GET /api/claims/active?q=&includeTest=&fresh=` | `{ claims, count }` — cached 60 s per instance | Monday `items_page` / `next_items_page` per group |
+| `GET /api/claim/[claimId]` | Loss address, needs, attached options + pins | Monday + `properties_by_ids` |
+| `GET /api/claim/[claimId]/summary` | `{ subject, text, html, optionCount, recipient }` | Monday + `property_detail` + `property_distance_miles` |
+| `POST /api/claim/[claimId]/summary` | Logs the summary as a Monday update (body rebuilt server-side) | Monday `create_update` |
+| `POST /api/claim/add` | Creates the linked sub-item with *Distance to Loss* | Monday + `property_distance_miles` |
 
 ---
 
@@ -186,129 +256,103 @@ sequenceDiagram
 
 | Board | ID | Role |
 |---|---|---|
-| [PROPERTY DATABASE](https://novahavens-company.monday.com/boards/18415735059) | `18415735059` | Every property: address/location, type, beds/baths, sq ft, rent and fees, pet/fenced/furnished, owner, photos, notes, rental history. Groups: *Data Base*, *Preferred Landlord*, *DO NOT USE*. |
-| [Claim Process Board](https://novahavens-company.monday.com/boards/9030696652) | `9030696652` | One item per claim/family: damaged-residence address, family size, pets, bedrooms, FRV, dates, status. |
-| Subitems of Claim Process Board | `9205253360` | The housing options sent on a claim — linked to the property via *PROPERTY Street*, with *Distance to Loss (mi)*. |
+| [PROPERTY DATABASE](https://novahavens-company.monday.com/boards/18415735059) | `18415735059` | Every property: location, type, beds/baths, rent and fees, pets, owner, photos, notes. Groups: *Data Base*, *Preferred Landlord*, *DO NOT USE*. |
+| [Claim Process Board](https://novahavens-company.monday.com/boards/9030696652) | `9030696652` | One item per claim. Used here: *Damaged Residence Address*, family needs, *Current Status*, *Relocation Specialist* + *Specialist Email*, and the groups *New Housing Request* / *New Option Needed* (active) and the testing group. |
+| Subitems of Claim Process Board | `9205253360` | The options on a claim — linked via *PROPERTY Street*, with *Distance to Loss (mi)*. |
 | Landlord board | `9616452671` | Owner/landlord contacts and approval status (resolved into the Supabase mirror). |
 
 ### Supabase — *Interactive Map database* (`nmandvqfuwvqxeabptjd`)
 
 | Object | What it is |
 |---|---|
-| `properties` (table) | Mirror of the property board, keyed by `monday_item_id`. Has a generated PostGIS `geom`, a generated `move_in_total`, landlord fields, and `geocode_status` (`ok` · `missing` · `failed`). RLS is on with no policies, so it is only reachable through the functions below. |
-| `properties_within_radius(lat, lng, miles)` | Pin layer — only what's needed to draw and colour a pin. Includes *DO NOT USE* rows with `addable = false`. |
-| `radius_coverage(...)`, `database_coverage()` | Counts behind the coverage badge and the "no coordinates" footnote. |
-| `property_detail(id)`, `properties_by_ids(ids[])` | Full record for the panel; pins for options already on a claim. |
-| `property_distance_miles(id, lat, lng)` | Same geodesic formula as the map, used for *Distance to Loss*. |
-| Edge functions `monday-webhook`, `monday-backfill` | Keep the mirror in sync: the webhook applies item changes as they happen; backfill does full reloads. |
-| `resync_tick` / `resync_step` / `resync_result`, tables `resync_log`, `sync_config` | The paged resync job and its log/config. |
+| `properties` (table) | Mirror of the property board, keyed by `monday_item_id`, with generated PostGIS `geom` and `move_in_total`. RLS on, no policies — reachable only through the functions below. |
+| `properties_within_radius`, `radius_coverage`, `database_coverage` | Pin layer and coverage counts. |
+| `property_detail`, `properties_by_ids`, `property_distance_miles` | Panel record, attached pins, *Distance to Loss*. |
+| Edge functions + hourly geocode sweep | Keep the mirror in sync with Monday and fill in coordinates. |
 
 ---
 
 ## 💻 Run it locally
 
-**You need:** Node.js **22**, npm, and the values for the environment variables below.
+**You need:** Node.js **22**, npm, and the environment variables below.
 
 ```bash
 git clone https://github.com/Novahavens/Interactive-map.git
 cd Interactive-map
 npm install
-cp .env.example .env.local   # then fill in the values
+cp .env.example .env.local   # fill in the values; MONDAY_DRY_RUN=1 is already set
 npm run dev                  # http://localhost:3000
 ```
 
-- Open **http://localhost:3000** to search by address.
-- Open `http://localhost:3000/?claimId={claim item id}` to test the claim flow.
-
 > [!CAUTION]
-> Locally, **Add to claim** writes to the **real** Monday boards (there is no sandbox). Use a claim in the *Claims AI @ Novahavens.com ONLY FOR TESTING* group.
+> Keep **`MONDAY_DRY_RUN=1`** locally. With it on, *Add to claim* and *Send summary* log what they would send instead of writing to the real Monday boards, and a **Dry run** chip shows in the header. Reads still hit Monday.
 
 | Script | Does |
 |---|---|
 | `npm run dev` | Dev server with hot reload |
 | `npm run build` | Production build (also type-checks) |
 | `npm run start` | Serve the production build |
-| `npm run lint` | `next lint` — ESLint isn't installed or configured yet |
 | `npm run typecheck` | `tsc --noEmit` |
 
 ### Environment variables
 
-| Variable | Where it's used | Notes |
+| Variable | Where | Notes |
 |---|---|---|
-| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Browser | Maps JS + Places (New). **Public by design — must be HTTP-referrer restricted.** |
-| `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` | Browser | Needed for Advanced Markers. `DEMO_MAP_ID` works for testing only. |
-| `SUPABASE_URL` | Server | `https://nmandvqfuwvqxeabptjd.supabase.co` |
-| `SUPABASE_KEY` | Server | Supabase publishable key (the SQL functions are granted to it). |
-| `MONDAY_API_TOKEN` | Server | monday personal API token. Sub-items are created **as the token's owner**. |
-| `MONDAY_PROPERTY_BOARD_ID` | Server | `18415735059` |
-| `MONDAY_CLAIM_BOARD_ID` | Server | `9030696652` |
-| `MONDAY_CLAIM_SUBITEM_BOARD_ID` | Server | `9205253360` |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Browser | Maps JS + Places (New). **Public by design — must be referrer-restricted.** |
+| `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` | Browser | For Advanced Markers. `DEMO_MAP_ID` works for testing only. |
+| `SUPABASE_URL` · `SUPABASE_KEY` | Server | Project URL and publishable key. |
+| `MONDAY_API_TOKEN` | Server | Sub-items and updates are created **as the token's owner**. |
+| `MONDAY_PROPERTY_BOARD_ID` · `MONDAY_CLAIM_BOARD_ID` · `MONDAY_CLAIM_SUBITEM_BOARD_ID` | Server | `18415735059` · `9030696652` · `9205253360` |
+| `MONDAY_DRY_RUN` | Server | `1` = never write to Monday. **Local only — never set in Production.** |
+| `MONDAY_ACTIVE_CLAIM_GROUPS` | Server | Optional. Groups that count as active. Default `topics,group_mkvngrgz`. |
+| `MONDAY_TEST_CLAIM_GROUP` | Server | Optional. The testing group for *Show test claims*. Default `group_mm1jnpwf`. |
 
-All of these are already set on Vercel for Production and Preview. Never commit `.env.local` — it's git-ignored.
+Production and Preview already have everything they need on Vercel. Never commit `.env.local`.
 
 ---
 
 ## 🚀 Deploying
 
-Hosting is **Vercel** → team *Nova Havens* → project **[nova-havens-map](https://vercel.com/nova-havens/nova-havens-map)**, connected to this repo.
+Hosting is **Vercel** → team *Nova Havens* → project **[nova-havens-map](https://vercel.com/nova-havens/nova-havens-map)** (framework preset **Next.js**), connected to this repo.
 
 | You do | Vercel does |
 |---|---|
-| Open a pull request | Builds a **preview** URL (needs a Vercel login to view) |
+| Push a branch / open a PR | Builds a **preview** (Vercel login required to view) |
 | Merge to `main` | Builds and promotes to **production** — [nova-havens-map.vercel.app](https://nova-havens-map.vercel.app) |
-| Change an environment variable | **Nothing until the next deploy.** `NEXT_PUBLIC_*` values are baked in at build time — hit *Redeploy*. |
-| Need to undo | *Deployments → ⋯ → Instant Rollback* on the last good deployment |
+| Change an environment variable | Nothing until the next deploy — `NEXT_PUBLIC_*` values are baked in at build time. *Redeploy*. |
+| Need to undo | *Deployments → ⋯ → Instant Rollback* |
 
-**Access.** Vercel *Standard Protection* is on: preview URLs require a Vercel login, the production domain is open to anyone with the link. That's deliberate so the whole team can use it without accounts — see [Security](#-security--access).
-
-**`vercel.json`.** Its `ignoreCommand` skips Git builds while the repo has no `next.config.ts` (i.e. until the Next.js source is in). Once `next.config.ts` exists at the root, builds run normally — no change needed.
-
-### Bringing the source in
-
-From the computer where `vercel --prod` was run, in the Next.js project folder (the one with `app/`, `components/`, `next.config.ts`):
-
-```bash
-git init                       # skip if it's already a git repo
-git remote add origin https://github.com/Novahavens/Interactive-map.git
-git checkout -b nextjs-source
-git add -A                     # .env.local, .vercel and node_modules are git-ignored
-git commit -m "Next.js property map as deployed 29 Sep 2026"
-git push -u origin nextjs-source
-```
-
-Then open a PR from `nextjs-source`. It replaces the prototype files, adds a `package-lock.json` (there isn't one yet), and the first merge to `main` becomes a normal Git-driven production deploy.
+> [!WARNING]
+> Previews use the real `MONDAY_API_TOKEN`, so *Add to claim* and *Send summary* on a preview write to real claims. Test on a claim in the testing group, or add `MONDAY_DRY_RUN=1` to the **Preview** environment only.
 
 ### Google Maps setup
 
-In the Google Cloud project that owns the key:
-
-1. Enable **[Maps JavaScript API](https://console.cloud.google.com/apis/library/maps-backend.googleapis.com)** and **[Places API (New)](https://console.cloud.google.com/apis/library/places.googleapis.com)** — not the legacy *Places API*, which new projects can't enable.
-2. On the key ([Credentials](https://console.cloud.google.com/apis/credentials)):
-   - **Application restrictions → Websites:** `https://nova-havens-map.vercel.app/*`, `https://nova-havens-map-nova-havens.vercel.app/*`, `https://nova-havens-map-git-main-nova-havens.vercel.app/*`, `http://localhost:3000/*`
-   - **API restrictions:** only Maps JavaScript API and Places API (New).
-3. Make sure **billing** is linked, or the map shows *"For development purposes only"*.
-4. *(Recommended)* Create a real **Map ID** in *Map Management* and set `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID`.
+1. Enable **[Maps JavaScript API](https://console.cloud.google.com/apis/library/maps-backend.googleapis.com)** and **[Places API (New)](https://console.cloud.google.com/apis/library/places.googleapis.com)**.
+2. On the key: **Website restrictions** `https://nova-havens-map.vercel.app/*`, `https://nova-havens-map-nova-havens.vercel.app/*`, `https://nova-havens-map-git-main-nova-havens.vercel.app/*`, `http://localhost:3000/*`; **API restrictions** to those two APIs only.
+3. Link **billing**, or the map shows *"For development purposes only"*.
+4. *(Recommended)* create a real **Map ID** and set `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID`.
 
 ### Embedding in Monday
 
-The app sends `Content-Security-Policy: frame-ancestors 'self' https://*.monday.com`, so it can be shown inside Monday. Any embed or link just needs this URL pattern:
+The app sends `Content-Security-Policy: frame-ancestors 'self' https://*.monday.com`, so it can live inside Monday:
 
 ```text
 https://nova-havens-map.vercel.app/?claimId={claim item id}
 ```
 
-`claim_id` and `itemId` are accepted as aliases. A non-numeric or missing ID opens the map in search-only mode.
+`claim_id` and `itemId` work as aliases. Without an ID the map opens with the claims drawer one keystroke away.
 
 ---
 
 ## 🔐 Security & access
 
-| Thing | Exposure | Why it's OK / what protects it |
+| Thing | Exposure | What protects it |
 |---|---|---|
-| Production URL | Anyone with the link | Team decision for zero-friction use. `robots: noindex` keeps it out of search engines. It does show owner contact details and lets visitors add options to claims — share the link internally only. |
-| Google Maps key | Visible in the page | Normal for Maps JS. **Protected only by the website restriction** above — keep it in place. |
-| `MONDAY_API_TOKEN` | Server only (Vercel *Sensitive*) | Acts as its owner with write access. Rotate in Monday → Developers if it leaks, then update Vercel and redeploy. |
-| `SUPABASE_KEY` | Server only | The table is RLS-locked; the map's SQL functions are `SECURITY DEFINER` and callable with the publishable key. **Hardening option:** revoke `EXECUTE` from `anon` on those functions and use a server-only service-role key. |
+| Production URL | Anyone with the link | `noindex`; share internally only — it shows owner contacts and can add options to claims. |
+| Google Maps key | In the page | Website restriction above — keep it in place. |
+| `MONDAY_API_TOKEN` | Server only (Vercel *Sensitive*) | Rotate in Monday → Developers if it leaks, update Vercel, redeploy. |
+| `SUPABASE_KEY` | Server only | Table is RLS-locked; functions are `SECURITY DEFINER`. Hardening option: service-role key + revoke `anon`. |
+| Summary email | Searcher's own mailbox | Built server-side from Monday + Supabase; owner contacts excluded; preview rendered in a sandboxed frame. |
 
 ---
 
@@ -316,39 +360,40 @@ https://nova-havens-map.vercel.app/?claimId={claim item id}
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Grey map / "Oops! Something went wrong" | Key missing, or this domain isn't in the key's website list (`RefererNotAllowedMapError` in the console) | Add the domain under the key's *Website restrictions*; check `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` and redeploy |
-| "For development purposes only" watermark | No billing on the Google Cloud project | Link a billing account |
-| Address search shows no suggestions | Places API (New) not enabled or not allowed on the key | Enable it and tick it under *API restrictions* |
-| A property isn't on the map | It has no coordinates (*Full Address* empty/unresolved in Monday) | Fix the address in Monday; the mirror picks it up |
-| **Add to claim** is greyed out | Map opened without `?claimId=`, or the property is in *DO NOT USE* | Open the map from the claim |
-| Adding to a claim fails | `MONDAY_API_TOKEN` expired or was regenerated | Update it in Vercel → *Redeploy* |
-| Changed an env var, nothing happened | Env vars apply to **new** deployments only | *Redeploy* |
-| Vercel build: "No Next.js version detected" | The repo root doesn't contain the Next.js app (the prototype is there) | See [Bringing the source in](#bringing-the-source-in) |
+| Grey map / "Oops! Something went wrong" | Key missing or domain not allowed (`RefererNotAllowedMapError`) | Add the domain to the key's website list; check the env var; redeploy |
+| Address search shows nothing | Places API (New) not enabled/allowed | Enable it and allow it on the key |
+| A property isn't on the map | No coordinates (*Full Address* empty in Monday) | Fix the address in Monday |
+| Claims drawer is empty | No claims in the active groups, or the groups changed | Check the board; adjust `MONDAY_ACTIVE_CLAIM_GROUPS` |
+| **Add to claim** is greyed out | No claim selected, or the property is *DO NOT USE* | Ctrl/⌘ K → pick a claim |
+| **Send summary** is greyed out | The claim has no options yet | Add at least one |
+| "No specialist email on the claim" | *Relocation Specialist* not linked on the claim | Link the specialist in Monday, or copy and send manually |
+| Nothing appears in Monday after adding | `MONDAY_DRY_RUN=1` is on (look for the chip) | Expected locally; unset it only where real writes are intended |
+| Adding/logging fails | `MONDAY_API_TOKEN` expired | Update it in Vercel → *Redeploy* |
 
 ---
 
-## 📌 Known issues & next steps
+## 📌 Roadmap
 
-- [ ] **Commit the Next.js source** to this repo ([how](#bringing-the-source-in)) and add a lockfile.
-- [ ] **Coverage badge is wrong** — it shows "1% of database mappable" because it mixes the in-radius count with the table-wide unmapped count. Switch the header to `database_coverage()` (≈46% of properties have coordinates as of Oct 2026).
-- [ ] **About half the properties have no coordinates** and can't appear on any map — clean up *Full Address* in Monday.
-- [ ] Replace `DEMO_MAP_ID` with a real Map ID.
-- [ ] **Phase 2** (placeholders already in the property panel): *Call / Text via Quo* and a one-line summary of the option for the adjuster.
-- [ ] Optional hardening: server-only Supabase access (see [Security](#-security--access)).
+**Shipped**
+- [x] Live source in the repo, Vercel on Next.js, prototype retired ([#5](https://github.com/Novahavens/Interactive-map/pull/5), [#6](https://github.com/Novahavens/Interactive-map/pull/6))
+- [x] Monday dry-run guard ([#5](https://github.com/Novahavens/Interactive-map/pull/5))
+- [x] Active claims drawer + claim-scoped Add to claim ([#6](https://github.com/Novahavens/Interactive-map/pull/6))
+- [x] Summary to the relocation specialist ([#7](https://github.com/Novahavens/Interactive-map/pull/7))
+
+**Next**
+- [ ] **Coordinates for the rest of the database** — about half the properties can't appear on any map; some also have no street address, so they show only as a city in summaries.
+- [ ] **Coverage badge** — the header mixes in-radius and table-wide counts; switch it to `database_coverage()`.
+- [ ] **Grey out claims that already have options sent** in the drawer.
+- [ ] **Call / Text via Quo** and a one-line option summary (placeholders already in the property panel).
+- [ ] **Availability** and **last-used date** on the property card.
+- [ ] **Search agent** embed.
+- [ ] Real Google **Map ID**; optional server-only Supabase access.
 
 ---
-## 📌Features for phase 2
-- [ ] **Search agent embed.
-- [ ] **A Slide out drawer that shows all active claims , greys out if options sent.
-- [ ] **Availability.
-- [ ] **Phase 2** (placeholders already in the property panel): *Call / Text via Quo* and a one-line summary of the option for the adjuster. Wire up quo 
-- [ ]**Button to generate email to relocation specialist with all relevant information.
-- - [ ]**Last used date on property card.
-
 
 ## 🧪 Legacy prototype
 
-The files in [`legacy/`](legacy/) are the **1 Sep 2026 AI Studio prototype** (Vite + Lit). It explored the idea with **sample data only**: the "search agent" generates fictional listings, data lives in each browser's `localStorage`, Monday sync is simulated, and its Maps key only works inside AI Studio. Don't deploy it; it is kept for reference only. Ideas worth porting later: the travel-time calculator and the internal-notes editor.
+[`legacy/`](legacy/) holds the **1 Sep 2026 AI Studio prototype** (Vite + Lit, sample data only). It's excluded from builds and kept for reference — the travel-time calculator and internal-notes editor are ideas worth porting.
 
 ---
 
@@ -356,3 +401,4 @@ The files in [`legacy/`](legacy/) are the **1 Sep 2026 AI Studio prototype** (Vi
 
 Built for the Nova Havens Tech Team · owned by **Fazal Abed**
 
+</div>
