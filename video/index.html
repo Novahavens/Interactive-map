@@ -879,6 +879,7 @@
           tl.set(el, { opacity: 0, visibility: "hidden" }, g.end);
         });
 
+        window.__timelines = window.__timelines || {}; // the runtime pre-creates this; the guard only matters if the file is opened outside it
         window.__timelines["main"] = tl;
       })();
     </script>
