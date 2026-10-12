@@ -23,8 +23,12 @@ export interface Summary {
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+// Zero means "not priced" in the property mirror, so it is left out rather than shown as $0.
 const usd = (n: number | null | undefined) =>
-  n == null || !Number.isFinite(Number(n)) ? null : `$${Math.round(Number(n)).toLocaleString("en-US")}`;
+  n == null || !Number.isFinite(Number(n)) || Number(n) === 0 ? null : `$${Math.round(Number(n)).toLocaleString("en-US")}`;
+
+/** Free-text fields use "N/D" (not determined) for blanks. */
+const txt = (s: string | null | undefined) => (s && !/^\s*n\/?d\s*$/i.test(s) ? s.trim() : null);
 
 const n1 = (n: number | null | undefined) => (n == null ? null : Number.isInteger(n) ? String(n) : n.toFixed(1));
 
@@ -51,7 +55,7 @@ function address(d: PropertyDetail): string {
   const cityLine = [d.city, [d.state, d.zipcode].filter(Boolean).join(" ")].filter(Boolean).join(", ");
   if (!d.address) return d.name || cityLine || "Property";
   // Some records already carry the city in the street field; don't repeat it.
-  return d.city && !d.address.includes(d.city) ? `${d.address}, ${cityLine}` : d.address;
+  return d.city && !d.address.toLowerCase().includes(d.city.toLowerCase()) ? `${d.address}, ${cityLine}` : d.address;
 }
 
 /** [label, value] rows for one option; rows with no value are dropped. */
@@ -71,9 +75,9 @@ function optionRows(o: SummaryOption): Array<[string, string]> {
   ];
   const rows: Array<[string, string | null]> = [
     ["Beds / baths", d.bedrooms != null || d.bathrooms != null ? `${n1(d.bedrooms) ?? "—"} bd / ${n1(d.bathrooms) ?? "—"} ba` : null],
-    ["Type", d.property_type],
-    ["Furnished", d.furnished],
-    ["Pets", d.pet_status],
+    ["Type", txt(d.property_type)],
+    ["Furnished", txt(d.furnished)],
+    ["Pets", txt(d.pet_status)],
     ["Monthly rent", usd(d.monthly_rate)],
     ...fees.map(([k, v]) => [k, usd(v)] as [string, string | null]),
     ["Move-in total", usd(d.move_in_total)],
