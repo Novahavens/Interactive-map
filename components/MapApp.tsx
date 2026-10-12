@@ -13,11 +13,13 @@ import {
   Images,
   DollarSign,
   Inbox,
+  Send,
 } from "lucide-react";
 import MapCanvas from "./MapCanvas";
 import PropertyPanel from "./PropertyPanel";
 import SearchBox from "./SearchBox";
 import ActiveClaimsDrawer from "./ActiveClaimsDrawer";
+import SummarySheet from "./SummarySheet";
 import { useTheme } from "@/lib/useTheme";
 import type { ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse } from "@/lib/types";
 import { classifyGroup } from "@/lib/types";
@@ -51,6 +53,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   claimIdRef.current = claimId;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeCount, setActiveCount] = useState<number | null>(null);
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   const [claim, setClaim] = useState<ClaimResponse | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
@@ -310,6 +313,19 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
               </li>
             )}
           </ul>
+          <button
+            type="button"
+            disabled={attachedPins.length === 0}
+            onClick={() => setSummaryOpen(true)}
+            title={attachedPins.length === 0 ? "Add at least one option to the claim first" : "Preview and email the options to the relocation specialist"}
+            className={cn(
+              "mt-0.5 inline-flex h-9 items-center justify-center gap-2 rounded-lg text-[13px] font-medium",
+              attachedPins.length === 0 ? "cursor-not-allowed border border-dashed border-line2 text-muted" : "bg-ink text-bg hover:brightness-110",
+            )}
+          >
+            <Send className="h-3.5 w-3.5" />
+            Send summary{attachedPins.length > 0 ? ` (${attachedPins.length} option${attachedPins.length === 1 ? "" : "s"})` : ""}
+          </button>
         </div>
       )}
 
@@ -461,6 +477,8 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         onSelect={selectClaim}
         onCount={setActiveCount}
       />
+
+      {claim && <SummarySheet claimId={claim.id} open={summaryOpen} onOpenChange={setSummaryOpen} />}
 
       {/* ---------- Workspace ---------- */}
       <div className="relative flex min-h-0 flex-1">

@@ -79,7 +79,12 @@ Parallel-safe once Phase 1 is in:
 - Typecheck; manual run with dry-run on: pick claim A, add property → payload has A's id; pick claim B mid-flight → attached set refetched for B, no cross-write.
 - 360px width: no horizontal scroll; drawer covers the list, not the header.
 
-## Phase 4 — Specialist summary (F4)
+## Phase 4 — Specialist summary (F4) ✅
+
+Shipped with these decisions (Fazal, 12 Oct):
+- Specialists are external (claim column *Relocation Specialist* links a contacts board; *Specialist Email* mirrors their address), so a Monday @mention can't reach them. Delivery is the **searcher's own email**: the sheet copies the formatted summary, opens a `mailto:` to the specialist with the subject filled, and logs the summary as a Monday update on the claim (honours `MONDAY_DRY_RUN`).
+- Owner/landlord contacts are omitted. "Open in Monday" links are omitted from the email (specialists can't open Monday).
+- Button lives in the claim block of the rail ("Send summary (N options)"); the per-option Phase 2 placeholders in the property panel are untouched.
 
 1. `lib/summary.ts`: `buildSummary(claim, options[]) → { text, html }` (pure; unit-testable).
 2. `app/api/claim/[claimId]/summary/route.ts`: loads claim (Monday) + attached option ids → `properties_by_ids` + `property_detail` (Supabase) → `buildSummary`. If `send`: `create_update(item_id: claimId, body: html)`; if a People column identifies the specialist, prefix an `@mention`. Honour `DRY_RUN`.

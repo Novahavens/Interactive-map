@@ -141,6 +141,20 @@ export interface ActiveClaimsResponse {
   count: number;
 }
 
+export interface SummaryResponse {
+  subject: string;
+  text: string;
+  html: string;
+  optionCount: number;
+  recipient: { name: string | null; emails: string[] };
+}
+
+export interface SummaryLogResponse {
+  ok: true;
+  updateId: string;
+  dryRun?: boolean;
+}
+
 export interface AddToClaimRequest {
   claimId: string;
   propertyId: string;
