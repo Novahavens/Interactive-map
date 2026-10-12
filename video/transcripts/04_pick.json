@@ -1,0 +1,134 @@
+[
+  {
+    "text": "Press",
+    "start": 0.07,
+    "end": 0.48,
+    "id": "w0"
+  },
+  {
+    "text": "Command",
+    "start": 0.48,
+    "end": 0.98,
+    "id": "w1"
+  },
+  {
+    "text": "K,",
+    "start": 1.08,
+    "end": 1.46,
+    "id": "w2"
+  },
+  {
+    "text": "every",
+    "start": 1.48,
+    "end": 1.71,
+    "id": "w3"
+  },
+  {
+    "text": "claim",
+    "start": 1.85,
+    "end": 2.02,
+    "id": "w4"
+  },
+  {
+    "text": "waiting",
+    "start": 2.02,
+    "end": 2.42,
+    "id": "w5"
+  },
+  {
+    "text": "on",
+    "start": 2.42,
+    "end": 2.53,
+    "id": "w6"
+  },
+  {
+    "text": "housing,",
+    "start": 2.58,
+    "end": 3.26,
+    "id": "w7"
+  },
+  {
+    "text": "one",
+    "start": 3.26,
+    "end": 3.42,
+    "id": "w8"
+  },
+  {
+    "text": "keystroke",
+    "start": 3.42,
+    "end": 3.9,
+    "id": "w9"
+  },
+  {
+    "text": "away.",
+    "start": 3.92,
+    "end": 4.78,
+    "id": "w10"
+  },
+  {
+    "text": "Pick",
+    "start": 4.84,
+    "end": 4.95,
+    "id": "w11"
+  },
+  {
+    "text": "one,",
+    "start": 5,
+    "end": 5.28,
+    "id": "w12"
+  },
+  {
+    "text": "and",
+    "start": 5.28,
+    "end": 5.44,
+    "id": "w13"
+  },
+  {
+    "text": "the",
+    "start": 5.44,
+    "end": 5.62,
+    "id": "w14"
+  },
+  {
+    "text": "map",
+    "start": 5.62,
+    "end": 5.78,
+    "id": "w15"
+  },
+  {
+    "text": "jumps",
+    "start": 5.78,
+    "end": 5.79,
+    "id": "w16"
+  },
+  {
+    "text": "straight",
+    "start": 6.26,
+    "end": 6.49,
+    "id": "w17"
+  },
+  {
+    "text": "to",
+    "start": 6.49,
+    "end": 6.63,
+    "id": "w18"
+  },
+  {
+    "text": "the",
+    "start": 6.63,
+    "end": 6.8,
+    "id": "w19"
+  },
+  {
+    "text": "family's",
+    "start": 6.8,
+    "end": 7.25,
+    "id": "w20"
+  },
+  {
+    "text": "home.",
+    "start": 7.25,
+    "end": 7.7,
+    "id": "w21"
+  }
+]

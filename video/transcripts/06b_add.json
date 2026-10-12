@@ -1,0 +1,74 @@
+[
+  {
+    "text": "add",
+    "start": 0.04,
+    "end": 0.22,
+    "id": "w0"
+  },
+  {
+    "text": "it",
+    "start": 0.22,
+    "end": 0.34,
+    "id": "w1"
+  },
+  {
+    "text": "to",
+    "start": 0.35,
+    "end": 0.45,
+    "id": "w2"
+  },
+  {
+    "text": "the",
+    "start": 0.5,
+    "end": 0.72,
+    "id": "w3"
+  },
+  {
+    "text": "claim,",
+    "start": 0.72,
+    "end": 1.21,
+    "id": "w4"
+  },
+  {
+    "text": "and",
+    "start": 1.21,
+    "end": 1.32,
+    "id": "w5"
+  },
+  {
+    "text": "it's",
+    "start": 1.38,
+    "end": 1.52,
+    "id": "w6"
+  },
+  {
+    "text": "on",
+    "start": 1.52,
+    "end": 1.61,
+    "id": "w7"
+  },
+  {
+    "text": "Monday,",
+    "start": 1.61,
+    "end": 1.98,
+    "id": "w8"
+  },
+  {
+    "text": "distance",
+    "start": 2.05,
+    "end": 2.4,
+    "id": "w9"
+  },
+  {
+    "text": "and",
+    "start": 2.46,
+    "end": 2.59,
+    "id": "w10"
+  },
+  {
+    "text": "all.",
+    "start": 2.59,
+    "end": 2.88,
+    "id": "w11"
+  }
+]

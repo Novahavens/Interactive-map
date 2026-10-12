@@ -1,0 +1,104 @@
+[
+  {
+    "text": "Tap",
+    "start": 0.06,
+    "end": 0.19,
+    "id": "w0"
+  },
+  {
+    "text": "one",
+    "start": 0.29,
+    "end": 0.48,
+    "id": "w1"
+  },
+  {
+    "text": "to",
+    "start": 0.48,
+    "end": 0.62,
+    "id": "w2"
+  },
+  {
+    "text": "see",
+    "start": 0.64,
+    "end": 0.88,
+    "id": "w3"
+  },
+  {
+    "text": "if",
+    "start": 0.88,
+    "end": 1.04,
+    "id": "w4"
+  },
+  {
+    "text": "it",
+    "start": 1.04,
+    "end": 1.2,
+    "id": "w5"
+  },
+  {
+    "text": "fits",
+    "start": 1.2,
+    "end": 1.52,
+    "id": "w6"
+  },
+  {
+    "text": "the",
+    "start": 1.52,
+    "end": 1.76,
+    "id": "w7"
+  },
+  {
+    "text": "family",
+    "start": 1.76,
+    "end": 1.92,
+    "id": "w8"
+  },
+  {
+    "text": "and",
+    "start": 2.33,
+    "end": 2.44,
+    "id": "w9"
+  },
+  {
+    "text": "exactly",
+    "start": 2.44,
+    "end": 3,
+    "id": "w10"
+  },
+  {
+    "text": "what",
+    "start": 3,
+    "end": 3.16,
+    "id": "w11"
+  },
+  {
+    "text": "it",
+    "start": 3.16,
+    "end": 3.17,
+    "id": "w12"
+  },
+  {
+    "text": "costs",
+    "start": 3.24,
+    "end": 3.5,
+    "id": "w13"
+  },
+  {
+    "text": "to",
+    "start": 3.59,
+    "end": 3.69,
+    "id": "w14"
+  },
+  {
+    "text": "move",
+    "start": 3.71,
+    "end": 3.92,
+    "id": "w15"
+  },
+  {
+    "text": "in.",
+    "start": 3.96,
+    "end": 4.2,
+    "id": "w16"
+  }
+]

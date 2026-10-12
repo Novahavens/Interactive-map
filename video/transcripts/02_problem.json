@@ -1,0 +1,80 @@
+[
+  {
+    "text": "15,000",
+    "start": 0.11,
+    "end": 1.04,
+    "id": "w0"
+  },
+  {
+    "text": "properties,",
+    "start": 1.04,
+    "end": 1.76,
+    "id": "w1"
+  },
+  {
+    "text": "one",
+    "start": 1.83,
+    "end": 2.05,
+    "id": "w2"
+  },
+  {
+    "text": "Monday",
+    "start": 2.05,
+    "end": 2.62,
+    "id": "w3"
+  },
+  {
+    "text": "board,",
+    "start": 2.62,
+    "end": 3.21,
+    "id": "w4"
+  },
+  {
+    "text": "finding",
+    "start": 3.22,
+    "end": 3.56,
+    "id": "w5"
+  },
+  {
+    "text": "the",
+    "start": 3.56,
+    "end": 3.7,
+    "id": "w6"
+  },
+  {
+    "text": "right",
+    "start": 3.7,
+    "end": 3.93,
+    "id": "w7"
+  },
+  {
+    "text": "one",
+    "start": 3.93,
+    "end": 4.08,
+    "id": "w8"
+  },
+  {
+    "text": "used",
+    "start": 4.08,
+    "end": 4.31,
+    "id": "w9"
+  },
+  {
+    "text": "to",
+    "start": 4.31,
+    "end": 4.42,
+    "id": "w10"
+  },
+  {
+    "text": "take",
+    "start": 4.45,
+    "end": 4.65,
+    "id": "w11"
+  },
+  {
+    "text": "hours.",
+    "start": 4.71,
+    "end": 5.24,
+    "id": "w12"
+  }
+]
