@@ -1,0 +1,38 @@
+[
+  {
+    "text": "Meet",
+    "start": 0.04,
+    "end": 0.21,
+    "id": "w0"
+  },
+  {
+    "text": "the",
+    "start": 0.34,
+    "end": 0.47,
+    "id": "w1"
+  },
+  {
+    "text": "Nova",
+    "start": 0.47,
+    "end": 0.71,
+    "id": "w2"
+  },
+  {
+    "text": "Haven's",
+    "start": 0.78,
+    "end": 1.13,
+    "id": "w3"
+  },
+  {
+    "text": "property",
+    "start": 1.24,
+    "end": 1.74,
+    "id": "w4"
+  },
+  {
+    "text": "map.",
+    "start": 1.75,
+    "end": 1.98,
+    "id": "w5"
+  }
+]

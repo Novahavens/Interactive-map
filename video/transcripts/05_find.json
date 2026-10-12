@@ -1,0 +1,92 @@
+[
+  {
+    "text": "Every",
+    "start": 0.03,
+    "end": 0.27,
+    "id": "w0"
+  },
+  {
+    "text": "property",
+    "start": 0.39,
+    "end": 0.94,
+    "id": "w1"
+  },
+  {
+    "text": "nearby,",
+    "start": 0.94,
+    "end": 1.51,
+    "id": "w2"
+  },
+  {
+    "text": "priced",
+    "start": 1.51,
+    "end": 1.94,
+    "id": "w3"
+  },
+  {
+    "text": "right",
+    "start": 1.94,
+    "end": 2.29,
+    "id": "w4"
+  },
+  {
+    "text": "on",
+    "start": 2.29,
+    "end": 2.41,
+    "id": "w5"
+  },
+  {
+    "text": "the",
+    "start": 2.41,
+    "end": 2.6,
+    "id": "w6"
+  },
+  {
+    "text": "map,",
+    "start": 2.92,
+    "end": 3,
+    "id": "w7"
+  },
+  {
+    "text": "filter",
+    "start": 3,
+    "end": 3.26,
+    "id": "w8"
+  },
+  {
+    "text": "for",
+    "start": 3.26,
+    "end": 3.4,
+    "id": "w9"
+  },
+  {
+    "text": "pets,",
+    "start": 3.46,
+    "end": 3.87,
+    "id": "w10"
+  },
+  {
+    "text": "photos,",
+    "start": 4.01,
+    "end": 4.51,
+    "id": "w11"
+  },
+  {
+    "text": "or",
+    "start": 4.57,
+    "end": 4.64,
+    "id": "w12"
+  },
+  {
+    "text": "listed",
+    "start": 4.64,
+    "end": 4.99,
+    "id": "w13"
+  },
+  {
+    "text": "rent.",
+    "start": 5,
+    "end": 5.44,
+    "id": "w14"
+  }
+]

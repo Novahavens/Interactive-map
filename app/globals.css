@@ -154,6 +154,14 @@ a:focus-visible,
   outline-offset: 2px;
 }
 
+/* cmdk search input: show focus on its row (an underline) instead of an outline that overlaps the row's borders. */
+[data-slot="command-input"]:focus-visible {
+  outline: none;
+}
+[data-slot="command-input-wrapper"]:focus-within {
+  box-shadow: inset 0 -2px 0 var(--focus);
+}
+
 /* Strip Google's default focus ring on the map container without killing keyboard focus elsewhere. */
 .gm-style:focus {
   outline: none;

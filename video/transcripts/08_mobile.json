@@ -1,0 +1,32 @@
+[
+  {
+    "text": "Works",
+    "start": 0.04,
+    "end": 0.28,
+    "id": "w0"
+  },
+  {
+    "text": "on",
+    "start": 0.32,
+    "end": 0.46,
+    "id": "w1"
+  },
+  {
+    "text": "your",
+    "start": 0.46,
+    "end": 0.72,
+    "id": "w2"
+  },
+  {
+    "text": "phone",
+    "start": 0.72,
+    "end": 1.05,
+    "id": "w3"
+  },
+  {
+    "text": "too.",
+    "start": 1.05,
+    "end": 1.3,
+    "id": "w4"
+  }
+]

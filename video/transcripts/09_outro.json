@@ -1,0 +1,56 @@
+[
+  {
+    "text": "Pick,",
+    "start": 0.04,
+    "end": 0.57,
+    "id": "w0"
+  },
+  {
+    "text": "Find,",
+    "start": 0.57,
+    "end": 1.14,
+    "id": "w1"
+  },
+  {
+    "text": "Add,",
+    "start": 1.14,
+    "end": 1.62,
+    "id": "w2"
+  },
+  {
+    "text": "Send,",
+    "start": 1.62,
+    "end": 2.16,
+    "id": "w3"
+  },
+  {
+    "text": "the",
+    "start": 2.16,
+    "end": 2.3,
+    "id": "w4"
+  },
+  {
+    "text": "Nova",
+    "start": 2.36,
+    "end": 2.59,
+    "id": "w5"
+  },
+  {
+    "text": "Havens",
+    "start": 2.59,
+    "end": 2.96,
+    "id": "w6"
+  },
+  {
+    "text": "property",
+    "start": 2.96,
+    "end": 3.44,
+    "id": "w7"
+  },
+  {
+    "text": "map.",
+    "start": 3.44,
+    "end": 3.69,
+    "id": "w8"
+  }
+]

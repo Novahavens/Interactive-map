@@ -1,0 +1,671 @@
+[
+ {
+  "id": "02_problem",
+  "at": 6.3,
+  "words": [
+   {
+    "text": "Fifteen",
+    "start": 6.41,
+    "end": 6.875
+   },
+   {
+    "text": "thousand",
+    "start": 6.875,
+    "end": 7.34
+   },
+   {
+    "text": "properties.",
+    "start": 7.34,
+    "end": 8.06
+   },
+   {
+    "text": "One",
+    "start": 8.13,
+    "end": 8.35
+   },
+   {
+    "text": "Monday",
+    "start": 8.35,
+    "end": 8.92
+   },
+   {
+    "text": "board.",
+    "start": 8.92,
+    "end": 9.51
+   },
+   {
+    "text": "Finding",
+    "start": 9.52,
+    "end": 9.86
+   },
+   {
+    "text": "the",
+    "start": 9.86,
+    "end": 10.0
+   },
+   {
+    "text": "right",
+    "start": 10.0,
+    "end": 10.23
+   },
+   {
+    "text": "one",
+    "start": 10.23,
+    "end": 10.38
+   },
+   {
+    "text": "used",
+    "start": 10.38,
+    "end": 10.61
+   },
+   {
+    "text": "to",
+    "start": 10.61,
+    "end": 10.72
+   },
+   {
+    "text": "take",
+    "start": 10.75,
+    "end": 10.95
+   },
+   {
+    "text": "hours.",
+    "start": 11.01,
+    "end": 11.54
+   }
+  ]
+ },
+ {
+  "id": "03_title",
+  "at": 12.6,
+  "words": [
+   {
+    "text": "Meet",
+    "start": 12.64,
+    "end": 12.81
+   },
+   {
+    "text": "the",
+    "start": 12.94,
+    "end": 13.07
+   },
+   {
+    "text": "Nova",
+    "start": 13.07,
+    "end": 13.31
+   },
+   {
+    "text": "Havens",
+    "start": 13.38,
+    "end": 13.73
+   },
+   {
+    "text": "Property",
+    "start": 13.84,
+    "end": 14.34
+   },
+   {
+    "text": "Map.",
+    "start": 14.35,
+    "end": 14.58
+   }
+  ]
+ },
+ {
+  "id": "04_pick",
+  "at": 16.5,
+  "words": [
+   {
+    "text": "Press",
+    "start": 16.57,
+    "end": 16.98
+   },
+   {
+    "text": "Command",
+    "start": 16.98,
+    "end": 17.48
+   },
+   {
+    "text": "K.",
+    "start": 17.58,
+    "end": 17.96
+   },
+   {
+    "text": "Every",
+    "start": 17.98,
+    "end": 18.21
+   },
+   {
+    "text": "claim",
+    "start": 18.35,
+    "end": 18.52
+   },
+   {
+    "text": "waiting",
+    "start": 18.52,
+    "end": 18.92
+   },
+   {
+    "text": "on",
+    "start": 18.92,
+    "end": 19.03
+   },
+   {
+    "text": "housing,",
+    "start": 19.08,
+    "end": 19.76
+   },
+   {
+    "text": "one",
+    "start": 19.76,
+    "end": 19.92
+   },
+   {
+    "text": "keystroke",
+    "start": 19.92,
+    "end": 20.4
+   },
+   {
+    "text": "away.",
+    "start": 20.42,
+    "end": 21.28
+   },
+   {
+    "text": "Pick",
+    "start": 21.34,
+    "end": 21.45
+   },
+   {
+    "text": "one,",
+    "start": 21.5,
+    "end": 21.78
+   },
+   {
+    "text": "and",
+    "start": 21.78,
+    "end": 21.94
+   },
+   {
+    "text": "the",
+    "start": 21.94,
+    "end": 22.12
+   },
+   {
+    "text": "map",
+    "start": 22.12,
+    "end": 22.28
+   },
+   {
+    "text": "jumps",
+    "start": 22.28,
+    "end": 22.29
+   },
+   {
+    "text": "straight",
+    "start": 22.76,
+    "end": 22.99
+   },
+   {
+    "text": "to",
+    "start": 22.99,
+    "end": 23.13
+   },
+   {
+    "text": "the",
+    "start": 23.13,
+    "end": 23.3
+   },
+   {
+    "text": "family's",
+    "start": 23.3,
+    "end": 23.75
+   },
+   {
+    "text": "home.",
+    "start": 23.75,
+    "end": 24.2
+   }
+  ]
+ },
+ {
+  "id": "05_find",
+  "at": 27.3,
+  "words": [
+   {
+    "text": "Every",
+    "start": 27.33,
+    "end": 27.57
+   },
+   {
+    "text": "property",
+    "start": 27.69,
+    "end": 28.24
+   },
+   {
+    "text": "nearby,",
+    "start": 28.24,
+    "end": 28.81
+   },
+   {
+    "text": "priced",
+    "start": 28.81,
+    "end": 29.24
+   },
+   {
+    "text": "right",
+    "start": 29.24,
+    "end": 29.59
+   },
+   {
+    "text": "on",
+    "start": 29.59,
+    "end": 29.71
+   },
+   {
+    "text": "the",
+    "start": 29.71,
+    "end": 29.9
+   },
+   {
+    "text": "map.",
+    "start": 30.22,
+    "end": 30.3
+   },
+   {
+    "text": "Filter",
+    "start": 30.3,
+    "end": 30.56
+   },
+   {
+    "text": "for",
+    "start": 30.56,
+    "end": 30.7
+   },
+   {
+    "text": "pets,",
+    "start": 30.76,
+    "end": 31.17
+   },
+   {
+    "text": "photos,",
+    "start": 31.31,
+    "end": 31.81
+   },
+   {
+    "text": "or",
+    "start": 31.87,
+    "end": 31.94
+   },
+   {
+    "text": "listed",
+    "start": 31.94,
+    "end": 32.29
+   },
+   {
+    "text": "rent.",
+    "start": 32.3,
+    "end": 32.74
+   }
+  ]
+ },
+ {
+  "id": "06a_fit",
+  "at": 40.0,
+  "words": [
+   {
+    "text": "Tap",
+    "start": 40.06,
+    "end": 40.19
+   },
+   {
+    "text": "one",
+    "start": 40.29,
+    "end": 40.48
+   },
+   {
+    "text": "to",
+    "start": 40.48,
+    "end": 40.62
+   },
+   {
+    "text": "see",
+    "start": 40.64,
+    "end": 40.88
+   },
+   {
+    "text": "if",
+    "start": 40.88,
+    "end": 41.04
+   },
+   {
+    "text": "it",
+    "start": 41.04,
+    "end": 41.2
+   },
+   {
+    "text": "fits",
+    "start": 41.2,
+    "end": 41.52
+   },
+   {
+    "text": "the",
+    "start": 41.52,
+    "end": 41.76
+   },
+   {
+    "text": "family,",
+    "start": 41.76,
+    "end": 41.92
+   },
+   {
+    "text": "and",
+    "start": 42.33,
+    "end": 42.44
+   },
+   {
+    "text": "exactly",
+    "start": 42.44,
+    "end": 43.0
+   },
+   {
+    "text": "what",
+    "start": 43.0,
+    "end": 43.16
+   },
+   {
+    "text": "it",
+    "start": 43.16,
+    "end": 43.17
+   },
+   {
+    "text": "costs",
+    "start": 43.24,
+    "end": 43.5
+   },
+   {
+    "text": "to",
+    "start": 43.59,
+    "end": 43.69
+   },
+   {
+    "text": "move",
+    "start": 43.71,
+    "end": 43.92
+   },
+   {
+    "text": "in.",
+    "start": 43.96,
+    "end": 44.2
+   }
+  ]
+ },
+ {
+  "id": "06b_add",
+  "at": 46.3,
+  "words": [
+   {
+    "text": "Add",
+    "start": 46.34,
+    "end": 46.52
+   },
+   {
+    "text": "it",
+    "start": 46.52,
+    "end": 46.64
+   },
+   {
+    "text": "to",
+    "start": 46.65,
+    "end": 46.75
+   },
+   {
+    "text": "the",
+    "start": 46.8,
+    "end": 47.02
+   },
+   {
+    "text": "claim,",
+    "start": 47.02,
+    "end": 47.51
+   },
+   {
+    "text": "and",
+    "start": 47.51,
+    "end": 47.62
+   },
+   {
+    "text": "it's",
+    "start": 47.68,
+    "end": 47.82
+   },
+   {
+    "text": "on",
+    "start": 47.82,
+    "end": 47.91
+   },
+   {
+    "text": "Monday,",
+    "start": 47.91,
+    "end": 48.28
+   },
+   {
+    "text": "distance",
+    "start": 48.35,
+    "end": 48.7
+   },
+   {
+    "text": "and",
+    "start": 48.76,
+    "end": 48.89
+   },
+   {
+    "text": "all.",
+    "start": 48.89,
+    "end": 49.18
+   }
+  ]
+ },
+ {
+  "id": "07_send",
+  "at": 54.3,
+  "words": [
+   {
+    "text": "Shortlist",
+    "start": 54.35,
+    "end": 55.02
+   },
+   {
+    "text": "ready?",
+    "start": 55.02,
+    "end": 55.58
+   },
+   {
+    "text": "Send",
+    "start": 55.58,
+    "end": 55.79
+   },
+   {
+    "text": "it.",
+    "start": 56.06,
+    "end": 56.34
+   },
+   {
+    "text": "One",
+    "start": 56.4,
+    "end": 56.58
+   },
+   {
+    "text": "click",
+    "start": 56.58,
+    "end": 56.99
+   },
+   {
+    "text": "copies",
+    "start": 56.99,
+    "end": 57.39
+   },
+   {
+    "text": "a",
+    "start": 57.39,
+    "end": 57.4
+   },
+   {
+    "text": "clean",
+    "start": 57.47,
+    "end": 57.83
+   },
+   {
+    "text": "summary,",
+    "start": 58.4,
+    "end": 58.5
+   },
+   {
+    "text": "opens",
+    "start": 58.56,
+    "end": 58.85
+   },
+   {
+    "text": "an",
+    "start": 58.85,
+    "end": 58.96
+   },
+   {
+    "text": "email",
+    "start": 59.0,
+    "end": 59.34
+   },
+   {
+    "text": "to",
+    "start": 59.34,
+    "end": 59.36
+   },
+   {
+    "text": "the",
+    "start": 59.55,
+    "end": 59.69
+   },
+   {
+    "text": "relocation",
+    "start": 59.69,
+    "end": 60.0
+   },
+   {
+    "text": "specialist,",
+    "start": 60.56,
+    "end": 61.14
+   },
+   {
+    "text": "and",
+    "start": 61.2,
+    "end": 61.36
+   },
+   {
+    "text": "logs",
+    "start": 61.36,
+    "end": 61.6
+   },
+   {
+    "text": "it",
+    "start": 61.65,
+    "end": 61.79
+   },
+   {
+    "text": "on",
+    "start": 61.79,
+    "end": 61.93
+   },
+   {
+    "text": "the",
+    "start": 61.93,
+    "end": 62.0
+   },
+   {
+    "text": "claim.",
+    "start": 62.19,
+    "end": 62.64
+   }
+  ]
+ },
+ {
+  "id": "08_mobile",
+  "at": 64.6,
+  "words": [
+   {
+    "text": "Works",
+    "start": 64.64,
+    "end": 64.88
+   },
+   {
+    "text": "on",
+    "start": 64.92,
+    "end": 65.06
+   },
+   {
+    "text": "your",
+    "start": 65.06,
+    "end": 65.32
+   },
+   {
+    "text": "phone,",
+    "start": 65.32,
+    "end": 65.65
+   },
+   {
+    "text": "too.",
+    "start": 65.65,
+    "end": 65.9
+   }
+  ]
+ },
+ {
+  "id": "09_outro",
+  "at": 70.2,
+  "words": [
+   {
+    "text": "Pick.",
+    "start": 70.24,
+    "end": 70.77
+   },
+   {
+    "text": "Find.",
+    "start": 70.77,
+    "end": 71.34
+   },
+   {
+    "text": "Add.",
+    "start": 71.34,
+    "end": 71.82
+   },
+   {
+    "text": "Send.",
+    "start": 71.82,
+    "end": 72.36
+   },
+   {
+    "text": "The",
+    "start": 72.36,
+    "end": 72.5
+   },
+   {
+    "text": "Nova",
+    "start": 72.56,
+    "end": 72.79
+   },
+   {
+    "text": "Havens",
+    "start": 72.79,
+    "end": 73.16
+   },
+   {
+    "text": "Property",
+    "start": 73.16,
+    "end": 73.64
+   },
+   {
+    "text": "Map.",
+    "start": 73.64,
+    "end": 73.89
+   }
+  ]
+ }
+]
