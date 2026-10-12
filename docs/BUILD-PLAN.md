@@ -50,7 +50,11 @@ Verification: `sha1sum` of each recovered file matches the `uid` Vercel reports 
 - `.env.example`: `MONDAY_DRY_RUN=1` with a comment.
 - Test: `curl -X POST localhost:3000/api/claim/add -d '{...}'` with dry-run on → `dry_`; log shows the payload.
 
-## Phase 3 — Active claims (F2 + F3)
+## Phase 3 — Active claims (F2 + F3) ✅
+
+Shipped with these deviations, confirmed against board 9030696652 on 12 Oct:
+- "Active" is **group-based**, not status-based: the board has no "Awaiting Options" label; claims needing options live in the *New Housing Request* (`topics`) and *New Option Needed* (`group_mkvngrgz`) groups. Configurable via `MONDAY_ACTIVE_CLAIM_GROUPS`; the age window (`MONDAY_ACTIVE_CLAIM_DAYS`) was dropped as redundant.
+- UI built with shadcn/ui (Sheet + Command/cmdk), themed through the existing tokens in `globals.css`.
 
 Parallel-safe once Phase 1 is in:
 

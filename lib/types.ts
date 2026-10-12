@@ -121,6 +121,26 @@ export interface ClaimResponse {
   attachedPins: AttachedPin[];
 }
 
+/** One row of the Active Claims drawer (GET /api/claims/active). */
+export interface ActiveClaim {
+  id: string;
+  name: string;
+  lossAddress: string | null;
+  lat: number | null;
+  lng: number | null;
+  needs: ClaimNeeds;
+  createdAt: string;
+  status: string | null;
+  attachedCount: number;
+  group: string;
+  isTest: boolean;
+}
+
+export interface ActiveClaimsResponse {
+  claims: ActiveClaim[];
+  count: number;
+}
+
 export interface AddToClaimRequest {
   claimId: string;
   propertyId: string;

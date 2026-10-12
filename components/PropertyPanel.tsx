@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Plus, Check, ExternalLink, Images, Phone, Mail, Loader2, Ban, Sparkles } from "lucide-react";
 import type { PropertyDetail, ClaimNeeds, ApiError } from "@/lib/types";
 import { classifyGroup } from "@/lib/types";
@@ -11,6 +11,7 @@ interface Props {
   distanceMiles: number | null;
   needs: ClaimNeeds | null;
   claimId: string | null;
+  claimName: string | null;
   attached: boolean;
   onAttached: (propertyId: string, subitemId: string) => void;
   onClose: () => void;
@@ -34,7 +35,16 @@ const GROUP_TOKEN: Record<ReturnType<typeof classifyGroup>, { bg: string; ink: s
   unknown: { bg: "var(--surface-muted)", ink: "var(--muted)", line: "var(--line)", dot: "#8f8f8f" },
 };
 
-export default function PropertyPanel({ propertyId, distanceMiles, needs, claimId, attached, onAttached, onClose }: Props) {
+export default function PropertyPanel({ propertyId, distanceMiles, needs, claimId, claimName, attached, onAttached, onClose }: Props) {
+  // The panel is keyed by claim + property, so a claim switch unmounts it; this stops a late
+  // add response from reporting into the next claim's state.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const [detail, setDetail] = useState<PropertyDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [add, setAdd] = useState<AddState>({ kind: "idle" });
@@ -74,16 +84,18 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
       });
       const json = (await res.json()) as { ok: true; subitemId: string; alreadyAttached: boolean } | ApiError;
       if (!res.ok || !("ok" in json)) throw new Error((json as ApiError).error || `HTTP ${res.status}`);
+      if (!alive.current) return;
       setAdd({ kind: "done", subitemId: json.subitemId });
       onAttached(propertyId, json.subitemId);
     } catch (e) {
+      if (!alive.current) return;
       setAdd({ kind: "error", message: e instanceof Error ? e.message : "Add to claim failed" });
     }
   }
 
   const isAttached = attached || add.kind === "done";
   const addDisabledReason = !claimId
-    ? "Open the map from a claim to attach properties"
+    ? "Pick a claim from Claims (Ctrl/⌘ K) to attach properties"
     : group === "dnu"
       ? "DO NOT USE properties cannot be attached"
       : isAttached
@@ -306,6 +318,11 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
 
         {!isAttached ? (
           <>
+            {claimId && (
+              <p className="truncate text-xs text-muted">
+                Adding to: <span className="font-medium text-ink">{claimName ?? `claim ${claimId}`}</span>
+              </p>
+            )}
             <button
               type="button"
               disabled={!detail || !!addDisabledReason || add.kind === "adding"}

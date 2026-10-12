@@ -1,5 +1,5 @@
 import "server-only";
-import type { AttachedOption, ClaimNeeds } from "./types";
+import type { ActiveClaim, AttachedOption, ClaimNeeds } from "./types";
 
 // Board wiring — PRD v4 §8.3. Env overrides exist only so a board move is a config change, not a code change.
 export const BOARDS = {
@@ -17,6 +17,7 @@ export const COLS = {
   moveIn: "date_mkqaaq16",
   adults: "numeric_mkqd84rr",
   children: "numeric_mkqd8f42",
+  claimStatus: "color_mkrvebt", // "Current Status"
   // subitem board
   propertyRelation: "board_relation_mm441",
   subitemStatus: "status",
@@ -144,6 +145,21 @@ function num(text: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+const NEEDS_COLS = [COLS.beds, COLS.baths, COLS.pets, COLS.frv, COLS.moveIn, COLS.adults, COLS.children];
+
+function needsFrom(col: (id: string) => { text: string | null } | undefined): ClaimNeeds {
+  const moveInText = col(COLS.moveIn)?.text ?? null;
+  return {
+    bedrooms: num(col(COLS.beds)?.text),
+    bathrooms: num(col(COLS.baths)?.text),
+    pets: num(col(COLS.pets)?.text),
+    frv: num(col(COLS.frv)?.text),
+    moveIn: moveInText ? moveInText.slice(0, 10) : null,
+    adults: num(col(COLS.adults)?.text),
+    children: num(col(COLS.children)?.text),
+  };
+}
+
 export async function readClaim(claimId: string): Promise<ClaimRaw | null> {
   const query = `
     query ($ids: [ID!]) {
@@ -186,16 +202,7 @@ export async function readClaim(claimId: string): Promise<ClaimRaw | null> {
       ? { lat: loc.lat, lng: loc.lng, address: loc.address ?? loc.text ?? "" }
       : null;
 
-  const moveInText = col(COLS.moveIn)?.text ?? null;
-  const needs: ClaimNeeds = {
-    bedrooms: num(col(COLS.beds)?.text),
-    bathrooms: num(col(COLS.baths)?.text),
-    pets: num(col(COLS.pets)?.text),
-    frv: num(col(COLS.frv)?.text),
-    moveIn: moveInText ? moveInText.slice(0, 10) : null,
-    adults: num(col(COLS.adults)?.text),
-    children: num(col(COLS.children)?.text),
-  };
+  const needs = needsFrom(col);
 
   const attached: AttachedOption[] = (item.subitems ?? []).map((s) => {
     const rel = s.column_values.find((c) => c.id === COLS.propertyRelation);
@@ -209,6 +216,87 @@ export async function readClaim(claimId: string): Promise<ClaimRaw | null> {
   });
 
   return { id: item.id, name: item.name, loss, needs, attached };
+}
+
+// ---------- Active claims (drawer) ----------
+
+// "Active" = the groups where a claim is waiting on housing options. Confirmed against the board on 12 Oct:
+// New Housing Request (topics) and New Option Needed. The board has no "Awaiting Options" status label.
+const ACTIVE_GROUPS = (process.env.MONDAY_ACTIVE_CLAIM_GROUPS ?? "topics,group_mkvngrgz")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const TEST_GROUP = process.env.MONDAY_TEST_CLAIM_GROUP ?? "group_mm1jnpwf"; // "Claims AI @ Novahavens.com ONLY FOR TESTING"
+
+interface ActiveItemRaw {
+  id: string;
+  name: string;
+  created_at: string;
+  group: { id: string; title: string };
+  column_values: ClaimItemRaw["column_values"];
+  subitems: Array<{ id: string }> | null;
+}
+
+const ACTIVE_ITEM_FIELDS = `
+  id
+  name
+  created_at
+  group { id title }
+  column_values(ids: ${JSON.stringify([COLS.lossAddress, COLS.claimStatus, ...NEEDS_COLS])}) {
+    id
+    text
+    ... on LocationValue { lat lng address }
+  }
+  subitems { id }`;
+
+export async function listActiveClaims(includeTest: boolean): Promise<ActiveClaim[]> {
+  const groups = includeTest ? [...ACTIVE_GROUPS, TEST_GROUP] : ACTIVE_GROUPS;
+  const first = await monday<{
+    boards: Array<{ groups: Array<{ items_page: { cursor: string | null; items: ActiveItemRaw[] } }> }>;
+  }>(
+    `query ($board: [ID!], $groups: [String]) {
+      boards(ids: $board) {
+        groups(ids: $groups) {
+          items_page(limit: 100) { cursor items { ${ACTIVE_ITEM_FIELDS} } }
+        }
+      }
+    }`,
+    { board: [BOARDS.claim], groups },
+  );
+
+  const raw: ActiveItemRaw[] = [];
+  for (const g of first.boards?.[0]?.groups ?? []) {
+    raw.push(...g.items_page.items);
+    let cursor = g.items_page.cursor;
+    while (cursor) {
+      const next = await monday<{ next_items_page: { cursor: string | null; items: ActiveItemRaw[] } }>(
+        `query ($cursor: String!) { next_items_page(limit: 100, cursor: $cursor) { cursor items { ${ACTIVE_ITEM_FIELDS} } } }`,
+        { cursor },
+      );
+      raw.push(...next.next_items_page.items);
+      cursor = next.next_items_page.cursor;
+    }
+  }
+
+  return raw
+    .map((item) => {
+      const col = (id: string) => item.column_values.find((c) => c.id === id);
+      const loc = col(COLS.lossAddress);
+      return {
+        id: item.id,
+        name: item.name,
+        lossAddress: loc?.address ?? loc?.text ?? null,
+        lat: typeof loc?.lat === "number" ? loc.lat : null,
+        lng: typeof loc?.lng === "number" ? loc.lng : null,
+        needs: needsFrom(col),
+        createdAt: item.created_at,
+        status: col(COLS.claimStatus)?.text ?? null,
+        attachedCount: item.subitems?.length ?? 0,
+        group: item.group.title,
+        isTest: item.group.id === TEST_GROUP,
+      };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 // ---------- Add to claim ----------
