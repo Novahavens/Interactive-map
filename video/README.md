@@ -2,7 +2,7 @@
 
 A 77-second launch + tutorial video for the Nova Havens Property Map, built with [HyperFrames](https://hyperframes.heygen.com) (HTML → MP4). It teaches the four-step flow — **Pick · Find · Add · Send** — using real screen recordings of the app with fictional demo data.
 
-Rendered video: [`docs/video/property-map-launch.mp4`](../docs/video/property-map-launch.mp4)
+Rendered video: [`property-map-launch.mp4`](https://nova-havens-map.vercel.app/video/property-map-launch.mp4) (served from `public/video/`)
 
 ## Running order
 
