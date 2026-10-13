@@ -185,3 +185,25 @@ export function classifyGroup(title: string | null | undefined): PropertyGroup {
   if (t.includes("data base") || t.includes("database")) return "database";
   return "unknown";
 }
+
+/** What the help panel sends along with a troubleshooting report (all optional, all shown to the user). */
+export interface SupportContext {
+  claim: { id: string; name: string | null } | null;
+  property: { id: string; name: string | null } | null;
+  search: { address: string | null; lat: number; lng: number; radiusMiles: number | null; filters: string[] } | null;
+  page: {
+    url: string | null;
+    viewport: string | null;
+    screen: string | null;
+    theme: string | null;
+    userAgent: string | null;
+    language: string | null;
+    timezone: string | null;
+  };
+}
+
+/** POST /api/support. dryRun = Slack isn't configured on this deployment, so the report was only logged. */
+export interface SupportResponse {
+  ok: true;
+  dryRun: boolean;
+}

@@ -20,8 +20,9 @@ import PropertyPanel from "./PropertyPanel";
 import SearchBox from "./SearchBox";
 import ActiveClaimsDrawer from "./ActiveClaimsDrawer";
 import SummarySheet from "./SummarySheet";
+import SupportPanel from "./SupportPanel";
 import { useTheme } from "@/lib/useTheme";
-import type { ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse } from "@/lib/types";
+import type { ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse, SupportContext } from "@/lib/types";
 import { classifyGroup } from "@/lib/types";
 import { cn, money, num, dateShort } from "@/lib/utils";
 
@@ -171,6 +172,25 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   }, [center, radius]);
 
   const selectedPin = useMemo(() => pins.find((p) => p.monday_item_id === selectedId) ?? null, [pins, selectedId]);
+
+  // What a troubleshooting report carries, so whoever reads it can reproduce the screen.
+  const supportContext = useCallback((): SupportContext => {
+    const activeFilters = (Object.keys(filters) as (keyof Filters)[]).filter((k) => filters[k]);
+    return {
+      claim: claim ? { id: claim.id, name: claim.name } : claimId ? { id: claimId, name: null } : null,
+      property: selectedId ? { id: selectedId, name: selectedPin?.name ?? null } : null,
+      search: center ? { address: center.address, lat: center.lat, lng: center.lng, radiusMiles: radius, filters: activeFilters } : null,
+      page: {
+        url: window.location.href,
+        viewport: `${window.innerWidth}×${window.innerHeight}`,
+        screen: `${window.screen.width}×${window.screen.height} @${window.devicePixelRatio}x`,
+        theme,
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
+    };
+  }, [claim, claimId, selectedId, selectedPin, center, radius, filters, theme]);
 
   const handleAttached = useCallback(
     (propertyId: string) => {
@@ -580,6 +600,11 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
               </div>
             </div>
           )}
+
+          {/* Help: stacked above the map's zoom buttons, always reachable */}
+          <div className="absolute bottom-[104px] right-[10px] z-20">
+            <SupportPanel getContext={supportContext} />
+          </div>
 
           {/* Compact: panel floats over the map */}
           {selectedId && (
