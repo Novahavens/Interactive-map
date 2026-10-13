@@ -12,7 +12,7 @@
 [![monday.com](https://img.shields.io/badge/monday.com-system%20of%20record-FF3D57?logo=mondaydotcom&logoColor=white)](https://novahavens-company.monday.com/boards/18415735059)
 [![Google Maps](https://img.shields.io/badge/Google%20Maps-JS%20%2B%20Places%20(New)-4285F4?logo=googlemaps&logoColor=white)](https://developers.google.com/maps/documentation/javascript)
 
-[**Open the map**](https://nova-havens-map.vercel.app) · [▶ Watch the 77s tour](docs/video/property-map-launch.mp4) · [What's new](#-whats-new--october-2026) · [Using it](#-using-the-map) · [How it works](#-how-it-works) · [Run it locally](#-run-it-locally) · [Deploy](#-deploying) · [Troubleshooting](#-troubleshooting)
+[**Open the map**](https://nova-havens-map.vercel.app) · [▶ Watch the 77s tour](https://nova-havens-map.vercel.app/video/property-map-launch.mp4) · [What's new](#-whats-new--october-2026) · [Using it](#-using-the-map) · [How it works](#-how-it-works) · [Run it locally](#-run-it-locally) · [Deploy](#-deploying) · [Troubleshooting](#-troubleshooting)
 
 <br>
 
@@ -25,9 +25,9 @@
 
 <br>
 
-<a href="docs/video/property-map-launch.mp4"><img alt="Watch the launch video: a 77-second tour of Pick, Find, Add and Send" src="docs/video/poster.jpg" width="72%"></a>
+<a href="https://nova-havens-map.vercel.app/video/property-map-launch.mp4"><img alt="Watch the launch video: a 77-second tour of Pick, Find, Add and Send" src="docs/video/poster.jpg" width="72%"></a>
 
-<sub>▶ <b><a href="docs/video/property-map-launch.mp4">Watch the launch video</a></b> (77s, narrated with captions) · Pick → Find → Add → Send · <a href="video/">how it was made</a></sub>
+<sub>▶ <b><a href="https://nova-havens-map.vercel.app/video/property-map-launch.mp4">Watch the launch video</a></b> (77s, narrated with captions) · Pick → Find → Add → Send · <a href="video/">how it was made</a></sub>
 
 </div>
 
