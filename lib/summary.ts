@@ -53,9 +53,12 @@ function needsLine(n: ClaimNeeds): string {
 
 function address(d: PropertyDetail): string {
   const cityLine = [d.city, [d.state, d.zipcode].filter(Boolean).join(" ")].filter(Boolean).join(", ");
-  if (!d.address) return d.name || cityLine || "Property";
+  let line: string;
+  if (!d.address) line = d.name || cityLine || "Property";
   // Some records already carry the city in the street field; don't repeat it.
-  return d.city && !d.address.toLowerCase().includes(d.city.toLowerCase()) ? `${d.address}, ${cityLine}` : d.address;
+  else line = d.city && !d.address.toLowerCase().includes(d.city.toLowerCase()) ? `${d.address}, ${cityLine}` : d.address;
+  // Say so rather than let a city read as an address the family can drive to.
+  return d.location_precision === "approximate" ? `${line} (approximate area; street address to be confirmed with the host)` : line;
 }
 
 /** [label, value] rows for one option; rows with no value are dropped. */

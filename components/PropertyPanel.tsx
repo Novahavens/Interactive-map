@@ -126,6 +126,11 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
               <p className="truncate text-[13px] text-muted">
                 {detail.address ?? [detail.city, detail.state, detail.zipcode].filter(Boolean).join(", ")}
               </p>
+              {detail.location_precision === "approximate" && (
+                <p className="mt-0.5 text-[12px] text-muted" title="Pinned from the listing site or the street, not a confirmed house number">
+                  ≈ Approximate location · confirm the street address with the host
+                </p>
+              )}
             </>
           ) : (
             <div className="nh-skeleton h-12" />

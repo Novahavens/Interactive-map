@@ -2,7 +2,7 @@
 
 export type PropertyGroup = "database" | "preferred" | "dnu" | "unknown";
 
-/** Pin payload returned by properties_within_radius (13 fields). */
+/** Pin payload returned by properties_within_radius (14 fields). */
 export interface Pin {
   monday_item_id: string;
   name: string;
@@ -17,6 +17,8 @@ export interface Pin {
   has_photos: boolean;
   available_from: string | null;
   distance_miles: number;
+  /** Pinned to an area, not a street address (listing-site coordinates or a street centroid). */
+  approximate?: boolean | null;
 }
 
 export interface Coverage {
@@ -79,6 +81,8 @@ export interface PropertyDetail {
   landlord_approval: string | null;
   landlord_approval_note: string | null;
   geocode_status: string | null;
+  /** "exact" | "approximate" | null (no coordinates). */
+  location_precision?: string | null;
   synced_at: string | null;
   updated_at: string | null;
 }

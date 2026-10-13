@@ -64,6 +64,7 @@ Nova Havens places families displaced by insurance claims into temporary housing
 | 🗂️ | **Active Claims drawer** (shadcn Sheet + cmdk), **Ctrl/⌘ K**, claim switching without leaving the map, and **"Adding to: {claim}"** on the property panel. | [#6](https://github.com/Novahavens/Interactive-map/pull/6) |
 | ✉️ | **Send summary** to the relocation specialist: preview, copy, email, and a log on the Monday claim. | [#7](https://github.com/Novahavens/Interactive-map/pull/7) |
 | 🎨 | **shadcn/ui** added and themed through the existing design tokens, so new components match light and dark mode. | [#6](https://github.com/Novahavens/Interactive-map/pull/6) |
+| 📍 | **Coordinates for the rest of the database.** `property-locate` places Furnished Finder listings from their own pages, street-only and near-miss addresses through Geocodio, and new Monday items within about a minute. Area-level pins are drawn dashed with **≈** and labelled *approximate* in the panel and the summary. | this PR |
 
 ---
 
@@ -145,7 +146,7 @@ flowchart TB
   end
 
   subgraph supa["Supabase · Interactive Map database"]
-    EF["Edge functions<br/>monday-webhook · monday-backfill · geocode sweep"]
+    EF["Edge functions<br/>monday-webhook · monday-backfill · property-locate"]
     T[("properties<br/>PostGIS mirror")]
     RPC["SQL functions<br/>properties_within_radius · property_detail · …"]
   end
@@ -234,7 +235,7 @@ sequenceDiagram
 │   ├── monday.ts                 # server-only Monday client, columns, dry-run guard
 │   ├── summary.ts                # pure buildSummary() + parseEmails()
 │   ├── supabase.ts · google.ts · types.ts · utils.ts · useTheme.ts
-├── supabase/                     # geocode backfill function + migrations
+├── supabase/                     # property-locate function + migrations
 ├── docs/                         # PRD, build plan, screenshots
 ├── legacy/                       # retired AI Studio prototype (reference only)
 ├── components.json               # shadcn/ui config
@@ -272,9 +273,23 @@ sequenceDiagram
 | Object | What it is |
 |---|---|
 | `properties` (table) | Mirror of the property board, keyed by `monday_item_id`, with generated PostGIS `geom` and `move_in_total`. RLS on, no policies — reachable only through the functions below. |
-| `properties_within_radius`, `radius_coverage`, `database_coverage` | Pin layer and coverage counts. |
+| `properties_within_radius_v2`, `radius_coverage`, `database_coverage` | Pin layer (with an `approximate` flag per pin) and coverage counts. |
 | `property_detail`, `properties_by_ids`, `property_distance_miles` | Panel record, attached pins, *Distance to Loss*. |
-| Edge functions + hourly geocode sweep | Keep the mirror in sync with Monday and fill in coordinates. |
+| `monday-webhook`, `monday-backfill` | Keep the mirror in sync with Monday within seconds. |
+| `property-locate` + `locate_sweep()` | Fill in coordinates for anything unmapped and write them back to Monday (see below). |
+| `locate_candidates`, `locate_needs_review` (views) | What the locator will try next; what only a person can fix. |
+
+### How a property gets its pin
+
+| Board has… | Route | Pin |
+|---|---|---|
+| A *Full Address* (location column) | Mirrored by `monday-webhook` | Exact, on the map within ~2 s |
+| A numbered street + zip or city/state | US Census geocoder, Geocodio if Census misses | Exact |
+| A street with no number, or a Zillow / Trulia / Redfin link | Geocodio | Exact, or **≈ approximate** (street centre) |
+| A Furnished Finder listing ID or link | The listing's own page via Firecrawl | **≈ approximate** (the site never shows the street) |
+| Nothing locational | — | Listed in `locate_needs_review` for the team |
+
+New or edited unmapped items start a run straight away (row trigger), with a 30-second cron as a safety net, so they reach the map in about a minute. Every pin is written to Monday's location column, so Monday stays the source of truth; a row that fails is retried only after someone edits it on the board. Needs the `FIRECRAWL_API_KEY` and `GEOCODIO_API_KEY` edge-function secrets.
 
 ---
 
@@ -368,7 +383,8 @@ https://nova-havens-map.vercel.app/?claimId={claim item id}
 |---|---|---|
 | Grey map / "Oops! Something went wrong" | Key missing or domain not allowed (`RefererNotAllowedMapError`) | Add the domain to the key's website list; check the env var; redeploy |
 | Address search shows nothing | Places API (New) not enabled/allowed | Enable it and allow it on the key |
-| A property isn't on the map | No coordinates (*Full Address* empty in Monday) | Fix the address in Monday |
+| A property isn't on the map | The locator couldn't place it | `select * from locate_needs_review` shows why; fix the name / city / zip / link in Monday and it is retried within a minute |
+| Pin is dashed with **≈** | Placed from a listing page or a street centre | Confirm the street with the host and enter it in *Full Address* |
 | Claims drawer is empty | No claims in the active groups, or the groups changed | Check the board; adjust `MONDAY_ACTIVE_CLAIM_GROUPS` |
 | **Add to claim** is greyed out | No claim selected, or the property is *DO NOT USE* | Ctrl/⌘ K → pick a claim |
 | **Send summary** is greyed out | The claim has no options yet | Add at least one |
@@ -385,9 +401,9 @@ https://nova-havens-map.vercel.app/?claimId={claim item id}
 - [x] Monday dry-run guard ([#5](https://github.com/Novahavens/Interactive-map/pull/5))
 - [x] Active claims drawer + claim-scoped Add to claim ([#6](https://github.com/Novahavens/Interactive-map/pull/6))
 - [x] Summary to the relocation specialist ([#7](https://github.com/Novahavens/Interactive-map/pull/7))
+- [x] Coordinates for the rest of the database, and new items on the map within a minute
 
 **Next**
-- [ ] **Coordinates for the rest of the database** — about half the properties can't appear on any map; some also have no street address, so they show only as a city in summaries.
 - [ ] **Coverage badge** — the header mixes in-radius and table-wide counts; switch it to `database_coverage()`.
 - [ ] **Grey out claims that already have options sent** in the drawer.
 - [ ] **Call / Text via Quo** and a one-line option summary (placeholders already in the property panel).
