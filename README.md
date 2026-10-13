@@ -105,6 +105,10 @@ Picking a claim fills the search box with its loss address, recentres the map, l
 
 **Add to claim** (bottom of the panel) creates one sub-item on the selected claim with status *Ready to Submit*, linked to the property and with *Distance to Loss (mi)* filled in. The pin turns black. One at a time is deliberate — it's the quality gate.
 
+**Distance to Loss (mi)** (column `numeric_mm7np0z7` on the sub-item board) is the same "X mi from the loss" figure the panel shows: the straight-line distance from the claim's loss address to the property, to two decimals. It's written when the map creates the option.
+- It's left blank if the claim has no loss address in Monday, or the property isn't on the map yet.
+- Options added by hand in Monday aren't touched. Their distance is whatever the person enters.
+
 ### 4 · Send the summary
 
 When the claim has at least one option, **Send summary (N options)** appears under *The family needs*.
@@ -253,7 +257,7 @@ sequenceDiagram
 | `GET /api/claim/[claimId]` | Loss address, needs, attached options + pins | Monday + `properties_by_ids` |
 | `GET /api/claim/[claimId]/summary` | `{ subject, text, html, optionCount, recipient }` | Monday + `property_detail` + `property_distance_miles` |
 | `POST /api/claim/[claimId]/summary` | Logs the summary as a Monday update (body rebuilt server-side) | Monday `create_update` |
-| `POST /api/claim/add` | Creates the linked sub-item with *Distance to Loss* | Monday + `property_distance_miles` |
+| `POST /api/claim/add` | Creates the linked sub-item and writes *Distance to Loss* into `numeric_mm7np0z7` | Monday + `property_distance_miles` |
 
 ---
 
@@ -265,7 +269,7 @@ sequenceDiagram
 |---|---|---|
 | [PROPERTY DATABASE](https://novahavens-company.monday.com/boards/18415735059) | `18415735059` | Every property: location, type, beds/baths, rent and fees, pets, owner, photos, notes. Groups: *Data Base*, *Preferred Landlord*, *DO NOT USE*. |
 | [Claim Process Board](https://novahavens-company.monday.com/boards/9030696652) | `9030696652` | One item per claim. Used here: *Damaged Residence Address*, family needs, *Current Status*, *Relocation Specialist* + *Specialist Email*, and the groups *New Housing Request* / *New Option Needed* (active) and the testing group. |
-| Subitems of Claim Process Board | `9205253360` | The options on a claim — linked via *PROPERTY Street*, with *Distance to Loss (mi)*. |
+| Subitems of Claim Process Board | `9205253360` | The options on a claim — linked via *PROPERTY Street* (`board_relation_mm441`), with *Distance to Loss (mi)* (`numeric_mm7np0z7`, written by **Add to claim** only). |
 | Landlord board | `9616452671` | Owner/landlord contacts and approval status (resolved into the Supabase mirror). |
 
 ### Supabase — *Interactive Map database* (`nmandvqfuwvqxeabptjd`)
