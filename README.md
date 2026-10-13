@@ -65,7 +65,6 @@ Nova Havens places families displaced by insurance claims into temporary housing
 | ✉️ | **Send summary** to the relocation specialist: preview, copy, email, and a log on the Monday claim. | [#7](https://github.com/Novahavens/Interactive-map/pull/7) |
 | 🎨 | **shadcn/ui** added and themed through the existing design tokens, so new components match light and dark mode. | [#6](https://github.com/Novahavens/Interactive-map/pull/6) |
 | 📍 | **Coordinates for the rest of the database.** `property-locate` places Furnished Finder listings from their own pages, street-only and near-miss addresses through Geocodio, and new Monday items within about a minute. Area-level pins are drawn dashed with **≈** and labelled *approximate* in the panel and the summary. | this PR |
-| 📏 | **Distance to Loss on every option**, including the ones added by hand in Monday. `subitem-distance` fills the column within about a minute, or as soon as a brand-new property has coordinates. | this PR |
 
 ---
 
@@ -147,7 +146,7 @@ flowchart TB
   end
 
   subgraph supa["Supabase · Interactive Map database"]
-    EF["Edge functions<br/>monday-webhook · monday-backfill · property-locate · subitem-distance"]
+    EF["Edge functions<br/>monday-webhook · monday-backfill · property-locate"]
     T[("properties<br/>PostGIS mirror")]
     RPC["SQL functions<br/>properties_within_radius · property_detail · …"]
   end
@@ -279,7 +278,6 @@ sequenceDiagram
 | `monday-webhook`, `monday-backfill` | Keep the mirror in sync with Monday within seconds. |
 | `property-locate` + `locate_sweep()` | Fill in coordinates for anything unmapped and write them back to Monday (see below). |
 | `locate_candidates`, `locate_needs_review` (views) | What the locator will try next; what only a person can fix. |
-| `subitem-distance` + `subitem_distance_sweep()` | Fill *Distance to Loss (mi)* on claim options however they were added (see below). |
 
 ### How a property gets its pin
 
@@ -292,19 +290,6 @@ sequenceDiagram
 | Nothing locational | — | Listed in `locate_needs_review` for the team |
 
 New or edited unmapped items start a run straight away (row trigger), with a 30-second cron as a safety net, so they reach the map in about a minute. Every pin is written to Monday's location column, so Monday stays the source of truth; a row that fails is retried only after someone edits it on the board. Needs the `FIRECRAWL_API_KEY` and `GEOCODIO_API_KEY` edge-function secrets.
-
-### How an option gets its Distance to Loss
-
-**Add to claim** writes it when the sub-item is created. Most options are added by hand in Monday, so two webhooks on the claim board (`create_subitem`, `change_subitem_column_value`) queue every new option, and every option whose property is changed, in `subitem_distance`. A 30-second cron (`subitem_distance_sweep()`) measures each one with `property_distance_miles` (the same straight-line figure the map uses) once both ends are known, and writes the column:
-
-| Option's state | What happens |
-|---|---|
-| Linked property and claim loss address both on the map | Written within about a minute |
-| Property just created, not located yet | Waits in Supabase (no Monday calls) and is written once `property-locate` places it |
-| Claim has no loss address | Checked hourly for a week |
-| Column already has a figure | Left alone, unless the option's property is changed, which recomputes it |
-
-The webhook URL carries the `SUBITEM_HOOK_KEY` from `sync_config`. Nothing polls Monday: the account's API allows 10,000 calls a day.
 
 ---
 
@@ -406,7 +391,6 @@ https://nova-havens-map.vercel.app/?claimId={claim item id}
 | "No specialist email on the claim" | *Relocation Specialist* not linked on the claim | Link the specialist in Monday, or copy and send manually |
 | Nothing appears in Monday after adding | `MONDAY_DRY_RUN=1` is on (look for the chip) | Expected locally; unset it only where real writes are intended |
 | Adding/logging fails | `MONDAY_API_TOKEN` expired | Update it in Vercel → *Redeploy* |
-| An option has no *Distance to Loss* | Its property or its claim isn't on the map yet | `select * from subitem_distance where subitem_id = '…'` shows what it's waiting for |
 
 ---
 
