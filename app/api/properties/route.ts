@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   try {
     const sb = supabase();
     const [pinsRes, covRes] = await Promise.all([
-      sb.rpc("properties_within_radius", { p_lat: lat, p_lng: lng, p_miles: miles }),
+      sb.rpc("properties_within_radius_v2", { p_lat: lat, p_lng: lng, p_miles: miles }),
       sb.rpc("radius_coverage", { p_lat: lat, p_lng: lng, p_miles: miles }),
     ]);
     if (pinsRes.error) throw pinsRes.error;
