@@ -64,7 +64,8 @@ Nova Havens places families displaced by insurance claims into temporary housing
 | 🗂️ | **Active Claims drawer** (shadcn Sheet + cmdk), **Ctrl/⌘ K**, claim switching without leaving the map, and **"Adding to: {claim}"** on the property panel. | [#6](https://github.com/Novahavens/Interactive-map/pull/6) |
 | ✉️ | **Send summary** to the relocation specialist: preview, copy, email, and a log on the Monday claim. | [#7](https://github.com/Novahavens/Interactive-map/pull/7) |
 | 🎨 | **shadcn/ui** added and themed through the existing design tokens, so new components match light and dark mode. | [#6](https://github.com/Novahavens/Interactive-map/pull/6) |
-| 📍 | **Coordinates for the rest of the database.** `property-locate` places Furnished Finder listings from their own pages, street-only and near-miss addresses through Geocodio, and new Monday items within about a minute. Area-level pins are drawn dashed with **≈** and labelled *approximate* in the panel and the summary. | this PR |
+| 📍 | **Coordinates for the rest of the database.** `property-locate` places Furnished Finder listings from their own pages, street-only and near-miss addresses through Geocodio, and new Monday items within about a minute. Area-level pins are drawn dashed with **≈** and labelled *approximate* in the panel and the summary. | [#10](https://github.com/Novahavens/Interactive-map/pull/10) |
+| 🛟 | **Report a problem.** A help button on the map sends a screenshot, a description and the current claim/property/device context to #interactive-map-troubleshooting on Slack. | this PR |
 
 ---
 
@@ -331,8 +332,23 @@ npm run dev                  # http://localhost:3000
 | `MONDAY_DRY_RUN` | Server | `1` = never write to Monday. **Local only — never set in Production.** |
 | `MONDAY_ACTIVE_CLAIM_GROUPS` | Server | Optional. Groups that count as active. Default `topics,group_mkvngrgz`. |
 | `MONDAY_TEST_CLAIM_GROUP` | Server | Optional. The testing group for *Show test claims*. Default `group_mm1jnpwf`. |
+| `SLACK_BOT_TOKEN` · `SLACK_SUPPORT_CHANNEL_ID` | Server | *Report a problem* → #interactive-map-troubleshooting. See [Slack setup](#report-a-problem--slack-setup). |
 
 Production and Preview already have everything they need on Vercel. Never commit `.env.local`.
+
+### Report a problem — Slack setup
+
+The **?** button above the map's zoom controls opens *Report a problem*: a screenshot (paste, drop or choose), a description and an optional name. **Send to Slack** posts one message to **#interactive-map-troubleshooting** with the screenshot inline and the context needed to reproduce it: claim, selected property, search address, radius and filters, page URL, window size, theme and browser. Large screenshots are scaled down in the browser before upload.
+
+One-time setup:
+
+1. [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → *From scratch* → name it (e.g. *Interactive Map Reports*) → your workspace.
+2. **OAuth & Permissions** → *Bot Token Scopes* → add `chat:write` and `files:write` → **Install to Workspace** → copy the *Bot User OAuth Token* (`xoxb-…`).
+3. In Slack, create **#interactive-map-troubleshooting** and run `/invite @Interactive Map Reports` in it.
+4. Open the channel's details → copy the **Channel ID** at the bottom (`C…`).
+5. Vercel → *nova-havens-map* → Settings → Environment Variables → add `SLACK_BOT_TOKEN` and `SLACK_SUPPORT_CHANNEL_ID` for Production → **Redeploy**.
+
+Without them, local and preview runs only log the report to the server console. Production says it isn't connected. The route allows 5 reports per 10 minutes from one address, accepts only real PNG, JPEG, WebP or GIF images, and escapes the text so a report can't ping `@channel`.
 
 ---
 
@@ -395,6 +411,8 @@ https://nova-havens-map.vercel.app/?claimId={claim item id}
 | "No specialist email on the claim" | *Relocation Specialist* not linked on the claim | Link the specialist in Monday, or copy and send manually |
 | Nothing appears in Monday after adding | `MONDAY_DRY_RUN=1` is on (look for the chip) | Expected locally; unset it only where real writes are intended |
 | Adding/logging fails | `MONDAY_API_TOKEN` expired | Update it in Vercel → *Redeploy* |
+| *Report a problem* says the bot isn't in the channel | The Slack app was never invited | `/invite @Interactive Map Reports` in #interactive-map-troubleshooting |
+| *Report a problem* says it isn't connected | `SLACK_BOT_TOKEN` / `SLACK_SUPPORT_CHANNEL_ID` missing in Production | Add them in Vercel → *Redeploy* |
 
 ---
 
