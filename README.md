@@ -64,6 +64,7 @@ Nova Havens places families displaced by insurance claims into temporary housing
 | 🗂️ | **Active Claims drawer** (shadcn Sheet + cmdk), **Ctrl/⌘ K**, claim switching without leaving the map, and **"Adding to: {claim}"** on the property panel. | [#6](https://github.com/Novahavens/Interactive-map/pull/6) |
 | ✉️ | **Send summary** to the relocation specialist: preview, copy, email, and a log on the Monday claim. | [#7](https://github.com/Novahavens/Interactive-map/pull/7) |
 | 🎨 | **shadcn/ui** added and themed through the existing design tokens, so new components match light and dark mode. | [#6](https://github.com/Novahavens/Interactive-map/pull/6) |
+| 📍 | **Coordinates for the rest of the database.** `property-locate` places Furnished Finder listings from their own pages, street-only and near-miss addresses through Geocodio, and new Monday items within about a minute. Area-level pins are drawn dashed with **≈** and labelled *approximate* in the panel and the summary. | [#10](https://github.com/Novahavens/Interactive-map/pull/10) |
 | 🛟 | **Report a problem.** A help button on the map sends a screenshot, a description and the current claim/property/device context to #interactive-map-troubleshooting on Slack. | this PR |
 
 ---
@@ -104,6 +105,10 @@ Picking a claim fills the search box with its loss address, recentres the map, l
 ### 3 · Add it to the claim
 
 **Add to claim** (bottom of the panel) creates one sub-item on the selected claim with status *Ready to Submit*, linked to the property and with *Distance to Loss (mi)* filled in. The pin turns black. One at a time is deliberate — it's the quality gate.
+
+**Distance to Loss (mi)** (column `numeric_mm7np0z7` on the sub-item board) is the same "X mi from the loss" figure the panel shows: the straight-line distance from the claim's loss address to the property, to two decimals. It's written when the map creates the option.
+- It's left blank if the claim has no loss address in Monday, or the property isn't on the map yet.
+- Options added by hand in Monday aren't touched. Their distance is whatever the person enters.
 
 ### 4 · Send the summary
 
@@ -146,7 +151,7 @@ flowchart TB
   end
 
   subgraph supa["Supabase · Interactive Map database"]
-    EF["Edge functions<br/>monday-webhook · monday-backfill · geocode sweep"]
+    EF["Edge functions<br/>monday-webhook · monday-backfill · property-locate"]
     T[("properties<br/>PostGIS mirror")]
     RPC["SQL functions<br/>properties_within_radius · property_detail · …"]
   end
@@ -235,7 +240,7 @@ sequenceDiagram
 │   ├── monday.ts                 # server-only Monday client, columns, dry-run guard
 │   ├── summary.ts                # pure buildSummary() + parseEmails()
 │   ├── supabase.ts · google.ts · types.ts · utils.ts · useTheme.ts
-├── supabase/                     # geocode backfill function + migrations
+├── supabase/                     # property-locate function + migrations
 ├── docs/                         # PRD, build plan, screenshots
 ├── legacy/                       # retired AI Studio prototype (reference only)
 ├── components.json               # shadcn/ui config
@@ -253,7 +258,7 @@ sequenceDiagram
 | `GET /api/claim/[claimId]` | Loss address, needs, attached options + pins | Monday + `properties_by_ids` |
 | `GET /api/claim/[claimId]/summary` | `{ subject, text, html, optionCount, recipient }` | Monday + `property_detail` + `property_distance_miles` |
 | `POST /api/claim/[claimId]/summary` | Logs the summary as a Monday update (body rebuilt server-side) | Monday `create_update` |
-| `POST /api/claim/add` | Creates the linked sub-item with *Distance to Loss* | Monday + `property_distance_miles` |
+| `POST /api/claim/add` | Creates the linked sub-item and writes *Distance to Loss* into `numeric_mm7np0z7` | Monday + `property_distance_miles` |
 
 ---
 
@@ -265,7 +270,7 @@ sequenceDiagram
 |---|---|---|
 | [PROPERTY DATABASE](https://novahavens-company.monday.com/boards/18415735059) | `18415735059` | Every property: location, type, beds/baths, rent and fees, pets, owner, photos, notes. Groups: *Data Base*, *Preferred Landlord*, *DO NOT USE*. |
 | [Claim Process Board](https://novahavens-company.monday.com/boards/9030696652) | `9030696652` | One item per claim. Used here: *Damaged Residence Address*, family needs, *Current Status*, *Relocation Specialist* + *Specialist Email*, and the groups *New Housing Request* / *New Option Needed* (active) and the testing group. |
-| Subitems of Claim Process Board | `9205253360` | The options on a claim — linked via *PROPERTY Street*, with *Distance to Loss (mi)*. |
+| Subitems of Claim Process Board | `9205253360` | The options on a claim — linked via *PROPERTY Street* (`board_relation_mm441`), with *Distance to Loss (mi)* (`numeric_mm7np0z7`, written by **Add to claim** only). |
 | Landlord board | `9616452671` | Owner/landlord contacts and approval status (resolved into the Supabase mirror). |
 
 ### Supabase — *Interactive Map database* (`nmandvqfuwvqxeabptjd`)
@@ -273,9 +278,23 @@ sequenceDiagram
 | Object | What it is |
 |---|---|
 | `properties` (table) | Mirror of the property board, keyed by `monday_item_id`, with generated PostGIS `geom` and `move_in_total`. RLS on, no policies — reachable only through the functions below. |
-| `properties_within_radius`, `radius_coverage`, `database_coverage` | Pin layer and coverage counts. |
+| `properties_within_radius_v2`, `radius_coverage`, `database_coverage` | Pin layer (with an `approximate` flag per pin) and coverage counts. |
 | `property_detail`, `properties_by_ids`, `property_distance_miles` | Panel record, attached pins, *Distance to Loss*. |
-| Edge functions + hourly geocode sweep | Keep the mirror in sync with Monday and fill in coordinates. |
+| `monday-webhook`, `monday-backfill` | Keep the mirror in sync with Monday within seconds. |
+| `property-locate` + `locate_sweep()` | Fill in coordinates for anything unmapped and write them back to Monday (see below). |
+| `locate_candidates`, `locate_needs_review` (views) | What the locator will try next; what only a person can fix. |
+
+### How a property gets its pin
+
+| Board has… | Route | Pin |
+|---|---|---|
+| A *Full Address* (location column) | Mirrored by `monday-webhook` | Exact, on the map within ~2 s |
+| A numbered street + zip or city/state | US Census geocoder, Geocodio if Census misses | Exact |
+| A street with no number, or a Zillow / Trulia / Redfin link | Geocodio | Exact, or **≈ approximate** (street centre) |
+| A Furnished Finder listing ID or link | The listing's own page via Firecrawl | **≈ approximate** (the site never shows the street) |
+| Nothing locational | — | Listed in `locate_needs_review` for the team |
+
+New or edited unmapped items start a run straight away (row trigger), with a 30-second cron as a safety net, so they reach the map in about a minute. Every pin is written to Monday's location column, so Monday stays the source of truth; a row that fails is retried only after someone edits it on the board. Needs the `FIRECRAWL_API_KEY` and `GEOCODIO_API_KEY` edge-function secrets.
 
 ---
 
@@ -384,7 +403,8 @@ https://nova-havens-map.vercel.app/?claimId={claim item id}
 |---|---|---|
 | Grey map / "Oops! Something went wrong" | Key missing or domain not allowed (`RefererNotAllowedMapError`) | Add the domain to the key's website list; check the env var; redeploy |
 | Address search shows nothing | Places API (New) not enabled/allowed | Enable it and allow it on the key |
-| A property isn't on the map | No coordinates (*Full Address* empty in Monday) | Fix the address in Monday |
+| A property isn't on the map | The locator couldn't place it | `select * from locate_needs_review` shows why; fix the name / city / zip / link in Monday and it is retried within a minute |
+| Pin is dashed with **≈** | Placed from a listing page or a street centre | Confirm the street with the host and enter it in *Full Address* |
 | Claims drawer is empty | No claims in the active groups, or the groups changed | Check the board; adjust `MONDAY_ACTIVE_CLAIM_GROUPS` |
 | **Add to claim** is greyed out | No claim selected, or the property is *DO NOT USE* | Ctrl/⌘ K → pick a claim |
 | **Send summary** is greyed out | The claim has no options yet | Add at least one |
@@ -403,9 +423,9 @@ https://nova-havens-map.vercel.app/?claimId={claim item id}
 - [x] Monday dry-run guard ([#5](https://github.com/Novahavens/Interactive-map/pull/5))
 - [x] Active claims drawer + claim-scoped Add to claim ([#6](https://github.com/Novahavens/Interactive-map/pull/6))
 - [x] Summary to the relocation specialist ([#7](https://github.com/Novahavens/Interactive-map/pull/7))
+- [x] Coordinates for the rest of the database, and new items on the map within a minute
 
 **Next**
-- [ ] **Coordinates for the rest of the database** — about half the properties can't appear on any map; some also have no street address, so they show only as a city in summaries.
 - [ ] **Coverage badge** — the header mixes in-radius and table-wide counts; switch it to `database_coverage()`.
 - [ ] **Grey out claims that already have options sent** in the drawer.
 - [ ] **Call / Text via Quo** and a one-line option summary (placeholders already in the property panel).

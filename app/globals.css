@@ -239,6 +239,14 @@ a:focus-visible,
 .nh-pin--muted .nh-pin__chip {
   color: var(--muted);
 }
+/* Area, not address: the pin is close but not on the house. */
+.nh-pin--approx .nh-pin__chip {
+  border-style: dashed;
+}
+.nh-pin__approx {
+  color: var(--muted);
+  font-weight: 500;
+}
 
 .nh-cluster {
   display: inline-flex;

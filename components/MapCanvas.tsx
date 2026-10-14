@@ -214,9 +214,10 @@ export default function MapCanvas({
         m.addListener("click", () => onSelect(p.monday_item_id));
         toAdd.push(m);
       }
-      const styleKey = `${group}:${selected ? 1 : 0}:${shown ? 1 : 0}:${chipMoney(p.monthly_rate)}`;
+      const approx = p.approximate === true;
+      const styleKey = `${group}:${selected ? 1 : 0}:${shown ? 1 : 0}:${approx ? 1 : 0}:${chipMoney(p.monthly_rate)}`;
       if (styleKeyRef.current.get(p.monday_item_id) !== styleKey) {
-        m.content = buildPropertyPin(group, selected, shown, chipMoney(p.monthly_rate), p.name);
+        m.content = buildPropertyPin(group, selected, shown, chipMoney(p.monthly_rate), p.name, approx);
         m.zIndex = selected ? 4000 : group === "preferred" ? 300 : group === "dnu" ? 100 : 200;
         styleKeyRef.current.set(p.monday_item_id, styleKey);
       }
@@ -292,6 +293,7 @@ function buildPropertyPin(
   shown: boolean,
   chip: string,
   name: string,
+  approximate = false,
 ): HTMLElement {
   const dotColor = PIN_COLORS[group];
   const wrap = document.createElement("div");
@@ -299,12 +301,14 @@ function buildPropertyPin(
   if (selected) classes.push("nh-pin--selected");
   if (group === "dnu") classes.push("nh-pin--dnu");
   if (!shown) classes.push("nh-pin--dimmed");
+  if (approximate) classes.push("nh-pin--approx");
   wrap.className = classes.join(" ");
   wrap.setAttribute("role", "button");
-  wrap.setAttribute("aria-label", `${name}, ${chip}`);
+  wrap.setAttribute("aria-label", `${name}, ${chip}${approximate ? ", approximate location" : ""}`);
   wrap.innerHTML = `
     <span class="nh-pin__chip">
       <span class="nh-pin__dot" style="background:${dotColor}"></span>
+      ${approximate ? '<span class="nh-pin__approx" aria-hidden="true">≈</span>' : ""}
       <span>${chip}</span>
     </span>
     <span class="nh-pin__caret"></span>
