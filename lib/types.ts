@@ -1,5 +1,7 @@
 // Shared types between API routes and the client.
 
+import type { MapStatus } from "./status";
+
 export type PropertyGroup = "database" | "preferred" | "dnu" | "unknown";
 
 /** Pin payload returned by properties_within_radius (14 fields). */
@@ -19,6 +21,8 @@ export interface Pin {
   distance_miles: number;
   /** Pinned to an area, not a street address (listing-site coordinates or a street centroid). */
   approximate?: boolean | null;
+  /** Dot colour: green (used before / preferred), yellow (neutral), red (do not use). Never blank. */
+  map_status: MapStatus;
 }
 
 export interface Coverage {
@@ -83,6 +87,9 @@ export interface PropertyDetail {
   geocode_status: string | null;
   /** "exact" | "approximate" | null (no coordinates). */
   location_precision?: string | null;
+  /** Dot colour and why (from property_map_status). */
+  map_status?: MapStatus;
+  map_reason?: string;
   synced_at: string | null;
   updated_at: string | null;
 }
@@ -114,6 +121,29 @@ export interface AttachedPin {
   monthly_rate: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
+  map_status?: MapStatus;
+}
+
+/** What the team needs to see about the claim while choosing options. No tenant contact details. */
+export interface ClaimBrief {
+  status: string | null;
+  group: string | null;
+  receivedOn: string | null;
+  moveIn: string | null;
+  leaseMonths: number | null;
+  frv: number | null;
+  adults: number | null;
+  children: number | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  pets: number | null;
+  petDescription: string | null;
+  utilityCap: number | null;
+  specialRequests: string | null;
+  accountManager: string | null;
+  searcher: string | null;
+  coordinator: string | null;
+  company: string | null;
 }
 
 export interface ClaimResponse {
@@ -123,6 +153,7 @@ export interface ClaimResponse {
   needs: ClaimNeeds;
   attached: AttachedOption[];
   attachedPins: AttachedPin[];
+  brief: ClaimBrief;
 }
 
 /** One row of the Active Claims drawer (GET /api/claims/active). */

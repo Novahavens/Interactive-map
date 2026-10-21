@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { asMapStatus } from "@/lib/status";
 import type { Pin, Coverage, PropertiesResponse, ApiError } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -27,16 +28,18 @@ export async function GET(req: NextRequest) {
   try {
     const sb = supabase();
     const [pinsRes, covRes] = await Promise.all([
-      sb.rpc("properties_within_radius_v2", { p_lat: lat, p_lng: lng, p_miles: miles }),
-      sb.rpc("radius_coverage", { p_lat: lat, p_lng: lng, p_miles: miles }),
+      sb.rpc("properties_within_radius_v3", { p_lat: lat, p_lng: lng, p_miles: miles }),
+      sb.rpc("database_coverage"),
     ]);
     if (pinsRes.error) throw pinsRes.error;
     if (covRes.error) throw covRes.error;
 
-    const pins = (pinsRes.data ?? []) as Pin[];
+    // The database always answers with one of three colours; anything else becomes neutral here too.
+    const pins = ((pinsRes.data ?? []) as Pin[]).map((p) => ({ ...p, map_status: asMapStatus(p.map_status) }));
     const covRow = Array.isArray(covRes.data) ? covRes.data[0] : covRes.data;
     const coverage: Coverage = {
-      mappable: Number(covRow?.mappable ?? 0),
+      // Database-wide: the chip says "% of database mappable", so it must not count only the search circle.
+      mappable: Number(covRow?.mapped ?? 0),
       unmapped: Number(covRow?.unmapped ?? 0),
     };
 

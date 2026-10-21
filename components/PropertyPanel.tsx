@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Plus, Check, ExternalLink, Images, Phone, Mail, Loader2, Ban, Sparkles } from "lucide-react";
 import type { PropertyDetail, ClaimNeeds, ApiError } from "@/lib/types";
-import { classifyGroup } from "@/lib/types";
+import { STATUS_HELP, STATUS_LABEL, asMapStatus, reasonText, type MapStatus } from "@/lib/status";
+import { StatusDot } from "./StatusDot";
 import { cn, money, num, dateShort, miles, yesNo } from "@/lib/utils";
 
 interface Props {
@@ -20,19 +21,11 @@ interface Props {
 type AddState = { kind: "idle" } | { kind: "adding" } | { kind: "done"; subitemId: string } | { kind: "error"; message: string };
 type FitState = "ok" | "warn" | "bad" | "unknown";
 
-const GROUP_LABEL: Record<ReturnType<typeof classifyGroup>, string> = {
-  database: "Data Base",
-  preferred: "Preferred Landlord",
-  dnu: "DO NOT USE",
-  unknown: "Unknown group",
-};
-
-// One colour language for the group badge: ok/amber/bad/neutral tokens, same as the Fit rows.
-const GROUP_TOKEN: Record<ReturnType<typeof classifyGroup>, { bg: string; ink: string; line: string; dot: string }> = {
-  database: { bg: "var(--ok-bg)", ink: "var(--ok-ink)", line: "var(--ok-line)", dot: "#17c964" },
-  preferred: { bg: "var(--surface-muted)", ink: "var(--ink)", line: "var(--line2)", dot: "#7928ca" },
-  dnu: { bg: "var(--bad-bg)", ink: "var(--bad-ink)", line: "var(--bad-line)", dot: "#ee0000" },
-  unknown: { bg: "var(--surface-muted)", ink: "var(--muted)", line: "var(--line)", dot: "#8f8f8f" },
+// One colour language for the status badge: the same ok / amber / bad tokens as the Fit rows.
+const STATUS_TOKEN: Record<MapStatus, { bg: string; ink: string; line: string }> = {
+  green: { bg: "var(--ok-bg)", ink: "var(--ok-ink)", line: "var(--ok-line)" },
+  yellow: { bg: "var(--surface-muted)", ink: "var(--ink)", line: "var(--line2)" },
+  red: { bg: "var(--bad-bg)", ink: "var(--bad-ink)", line: "var(--bad-line)" },
 };
 
 export default function PropertyPanel({ propertyId, distanceMiles, needs, claimId, claimName, attached, onAttached, onClose }: Props) {
@@ -69,8 +62,8 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
     };
   }, [propertyId]);
 
-  const group = classifyGroup(detail?.group_title);
-  const groupToken = GROUP_TOKEN[group];
+  const status = asMapStatus(detail?.map_status);
+  const statusToken = STATUS_TOKEN[status];
   const fitRows = detail && needs ? computeFit(detail, needs) : [];
 
   async function handleAdd() {
@@ -96,8 +89,8 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
   const isAttached = attached || add.kind === "done";
   const addDisabledReason = !claimId
     ? "Pick a claim from Claims (Ctrl/⌘ K) to attach properties"
-    : group === "dnu"
-      ? "DO NOT USE properties cannot be attached"
+    : status === "red"
+      ? `${reasonText(detail?.map_reason)}, so it cannot be attached`
       : isAttached
         ? "Already on this claim"
         : null;
@@ -115,10 +108,11 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
               <div className="flex flex-wrap items-center gap-2">
                 <span
                   className="inline-flex h-5 items-center gap-1.5 rounded px-1.5 text-[11px] font-medium"
-                  style={{ background: groupToken.bg, color: groupToken.ink, border: `1px solid ${groupToken.line}` }}
+                  style={{ background: statusToken.bg, color: statusToken.ink, border: `1px solid ${statusToken.line}` }}
+                  title={STATUS_HELP[status]}
                 >
-                  <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: groupToken.dot }} />
-                  {GROUP_LABEL[group]}
+                  <StatusDot status={status} />
+                  {STATUS_LABEL[status]}
                 </span>
                 {distanceMiles != null && <span className="text-[13px] text-muted">{miles(distanceMiles)} from the loss</span>}
               </div>
@@ -164,6 +158,31 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
 
         {detail && (
           <>
+            {/* Why this colour, and what we have written down about the owner and the property */}
+            <div className="border-b border-line px-4 py-3">
+              <div
+                className="flex items-start gap-2 rounded-md border px-2.5 py-2 text-[13px]"
+                style={{ background: statusToken.bg, color: statusToken.ink, borderColor: statusToken.line }}
+              >
+                <StatusDot status={status} className="mt-1" />
+                <div className="min-w-0">
+                  <div className="font-medium">{STATUS_LABEL[status]}</div>
+                  <div className="text-xs opacity-90">{reasonText(detail.map_reason)}</div>
+                  {detail.landlord_approval_note && <p className="mt-1 break-words text-xs">{detail.landlord_approval_note}</p>}
+                </div>
+              </div>
+              {detail.notes && (
+                <details className="group mt-2.5" open={detail.notes.length <= 220}>
+                  <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-medium text-muted">
+                    <span>Notes</span>
+                    <span className="group-open:hidden">Show</span>
+                    <span className="hidden group-open:inline">Hide</span>
+                  </summary>
+                  <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-[13px]">{detail.notes}</p>
+                </details>
+              )}
+            </div>
+
             {/* Fit against the claim */}
             {needs && (
               <Section title="Fit against this claim">
@@ -341,7 +360,7 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" /> Adding to claim…
                 </>
-              ) : group === "dnu" ? (
+              ) : status === "red" ? (
                 <>
                   <Ban className="h-3.5 w-3.5" /> DO NOT USE
                 </>
@@ -352,7 +371,7 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
               )}
             </button>
             <p className="text-center text-xs text-muted">
-              {addDisabledReason ?? "One sub-item, status “Ready to Submit”. One at a time is the quality gate."}
+              {addDisabledReason ?? "One sub-item, status “To Do”. One at a time is the quality gate."}
             </p>
           </>
         ) : (
@@ -365,7 +384,7 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
               <Check className="h-3.5 w-3.5" /> On this claim
             </div>
             <p className="text-center text-xs text-muted">
-              Sub-item created · “Ready to Submit” ·{" "}
+              Sub-item created · “To Do” ·{" "}
               <a
                 href={`https://novahavens.monday.com/boards/9030696652/pulses/${claimId ?? ""}`}
                 target="_blank"

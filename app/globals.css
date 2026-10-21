@@ -205,11 +205,25 @@ a:focus-visible,
   border-right: 5px solid transparent;
   border-top: 6px solid var(--line2);
 }
-.nh-pin__dot {
+/* The status dot: colour from lib/status.ts, plus a shape so green / yellow / red read apart without colour. */
+.nh-dot {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.nh-dot--circle {
   border-radius: 999px;
+}
+.nh-dot--diamond {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+.nh-dot--square {
+  border-radius: 2px;
 }
 .nh-pin--attached .nh-pin__chip {
   background: var(--ink);

@@ -44,7 +44,7 @@ This PRD covers fixing both, plus three features.
 
 - Live app: Next.js 15.5 / React 19 / Tailwind 4, deployed as `dpl_6beu23Uhss23wPB2hEJVWqAkG74r` (source: CLI redeploy). File tree confirmed: `app/` (page, layout, globals.css, 4 API routes), `components/` (MapApp, MapCanvas, PropertyPanel, SearchBox), `lib/` (google, monday, supabase, types, utils, useTheme), `next.config.ts`, `package.json`, `tsconfig.json`, `postcss.config.mjs`.
 - `claimId` is read from the URL in `app/page.tsx` and passed to `MapApp` as a prop. There is no in-app way to change it.
-- `lib/monday.ts` already wires board IDs (`BOARDS.claim = 9030696652`, `BOARDS.claimSubitems = 9205253360`) and column IDs for loss address, beds, baths, pets, FRV, move-in, adults, children, the sub-item property relation, sub-item status (`SUBITEM_START_STATUS = "Ready to Submit"`), and Distance to Loss.
+- `lib/monday.ts` already wires board IDs (`BOARDS.claim = 9030696652`, `BOARDS.claimSubitems = 9205253360`) and column IDs for loss address, beds, baths, pets, FRV, move-in, adults, children, the sub-item property relation, sub-item status (`SUBITEM_START_STATUS = "To Do"`), and Distance to Loss.
 - `PHASE_TWO_IMPLEMENTATION.md` (in repo) already specifies an "Active Claims Drawer" (Feature 1) and an "Email Generator for Relocation Specialist" (Feature 4). This PRD narrows and sequences those; it does not replace that doc.
 
 ## 6. Feature F0 — Source recovery and repo truth
