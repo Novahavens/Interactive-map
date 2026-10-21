@@ -22,7 +22,10 @@ import ActiveClaimsDrawer from "./ActiveClaimsDrawer";
 import SummarySheet from "./SummarySheet";
 import { useTheme } from "@/lib/useTheme";
 import type { ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse } from "@/lib/types";
-import { classifyGroup } from "@/lib/types";
+import { STATUS_LABEL, STATUS_ORDER, asMapStatus, type MapStatus } from "@/lib/status";
+import ClaimBrief from "./ClaimBrief";
+import { StatusDot } from "./StatusDot";
+import StatusLegend from "./StatusLegend";
 import { cn, money, num, dateShort } from "@/lib/utils";
 
 const RADII = [5, 10, 15, 20, 30] as const; // Fazal, 8 Sep
@@ -35,14 +38,7 @@ interface Props {
 }
 
 type Center = { lat: number; lng: number; address: string; source: "claim" | "search" };
-type Filters = { pets: boolean; photos: boolean; priced: boolean };
-
-const GROUP_DOT: Record<ReturnType<typeof classifyGroup>, string> = {
-  database: "#17c964",
-  preferred: "#7928ca",
-  dnu: "#ee0000",
-  unknown: "#8f8f8f",
-};
+type Filters = { pets: boolean; photos: boolean; priced: boolean; hidden: Record<MapStatus, boolean> };
 
 export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props) {
   const { theme, toggle } = useTheme();
@@ -61,7 +57,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
 
   const [center, setCenter] = useState<Center | null>(null);
   const [radius, setRadius] = useState<number>(DEFAULT_RADIUS);
-  const [filters, setFilters] = useState<Filters>({ pets: false, photos: false, priced: false });
+  const [filters, setFilters] = useState<Filters>({ pets: false, photos: false, priced: false, hidden: { green: false, yellow: false, red: false } });
 
   const [pins, setPins] = useState<Pin[]>([]);
   const [coverage, setCoverage] = useState<Coverage | null>(null);
@@ -189,6 +185,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
                 monthly_rate: p?.monthly_rate ?? null,
                 bedrooms: p?.bedrooms ?? null,
                 bathrooms: p?.bathrooms ?? null,
+                map_status: asMapStatus(p?.map_status),
               },
             ],
       );
@@ -206,12 +203,25 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       if (filters.pets && (p.pet_status ?? "").trim().toLowerCase() !== "yes") return false;
       if (filters.photos && !p.has_photos) return false;
       if (filters.priced && p.monthly_rate == null) return false;
+      if (filters.hidden[asMapStatus(p.map_status)]) return false;
       return true;
     },
     [filters],
   );
 
   const visiblePins = useMemo(() => pins.filter(passesFilters), [pins, passesFilters]);
+
+  // The legend counts what the other filters leave in view, so a hidden colour still shows its number.
+  const statusCounts = useMemo(() => {
+    const counts: Record<MapStatus, number> = { green: 0, yellow: 0, red: 0 };
+    for (const p of pins) {
+      if (filters.pets && (p.pet_status ?? "").trim().toLowerCase() !== "yes") continue;
+      if (filters.photos && !p.has_photos) continue;
+      if (filters.priced && p.monthly_rate == null) continue;
+      counts[asMapStatus(p.map_status)]++;
+    }
+    return counts;
+  }, [pins, filters.pets, filters.photos, filters.priced]);
 
   const needsMissing = useMemo(() => {
     if (!claim) return [];
@@ -281,6 +291,12 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
             onClick={() => setFilters((f) => ({ ...f, priced: !f.priced }))}
           />
         </div>
+
+        <StatusLegend
+          counts={statusCounts}
+          hidden={filters.hidden}
+          onToggle={(st) => setFilters((f) => ({ ...f, hidden: { ...f.hidden, [st]: !f.hidden[st] } }))}
+        />
       </div>
 
       {claim && (
@@ -313,6 +329,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
               </li>
             )}
           </ul>
+          <ClaimBrief name={claim.name} brief={claim.brief} />
           <button
             type="button"
             disabled={attachedPins.length === 0}
@@ -333,7 +350,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         <span className="text-[13px] text-muted">
           {center ? `${visiblePins.length.toLocaleString("en-US")} within ${radius} mi` : "—"}
         </span>
-        <span className="text-xs text-muted">by distance</span>
+        <span className="text-xs text-muted">green first, then nearest</span>
       </div>
 
       <ul aria-label="Results" className="nh-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">
@@ -341,10 +358,14 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
           [...Array(6)].map((_, i) => <li key={i} className="nh-skeleton m-1 h-12" />)
         ) : (
           [...visiblePins]
-            .sort((a, b) => a.distance_miles - b.distance_miles)
+            .sort(
+              (a, b) =>
+                STATUS_ORDER.indexOf(asMapStatus(a.map_status)) - STATUS_ORDER.indexOf(asMapStatus(b.map_status)) ||
+                a.distance_miles - b.distance_miles,
+            )
             .map((p) => {
               const on = selectedId === p.monday_item_id;
-              const group = classifyGroup(p.group_title);
+              const status = asMapStatus(p.map_status);
               return (
                 <li key={p.monday_item_id}>
                   <button
@@ -356,7 +377,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
                       on ? "border-line bg-surface-muted" : "border-transparent hover:bg-surface-muted",
                     )}
                   >
-                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: GROUP_DOT[group] }} />
+                    <StatusDot status={status} />
                     <span className="flex min-w-0 flex-1 flex-col leading-tight">
                       <span className="truncate font-medium">{p.name}</span>
                       <span className="truncate text-[13px] text-muted">
@@ -573,9 +594,12 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
               <div className="pointer-events-auto flex h-8 items-center gap-3 rounded-lg border border-line bg-surface px-3 text-xs text-muted">
                 {pinsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 <LegendItem color="var(--loss)" label="Loss" />
-                <LegendItem color="#17c964" label="Data Base" />
-                <LegendItem color="#7928ca" label="Preferred" />
-                <LegendItem color="#ee0000" label="Do not use" faded />
+                {STATUS_ORDER.map((st) => (
+                  <span key={st} className="inline-flex items-center gap-1.5">
+                    <StatusDot status={st} />
+                    <span>{STATUS_LABEL[st]}</span>
+                  </span>
+                ))}
                 <LegendItem color="var(--ink)" label={`On this claim (${attachedPins.length})`} />
               </div>
             </div>

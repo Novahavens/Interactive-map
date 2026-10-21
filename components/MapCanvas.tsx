@@ -3,20 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { MarkerClusterer, SuperClusterAlgorithm } from "@googlemaps/markerclusterer";
 import type { Pin, AttachedPin } from "@/lib/types";
-import { classifyGroup } from "@/lib/types";
+import { STATUS_COLOR, STATUS_SHAPE, asMapStatus, type MapStatus } from "@/lib/status";
 import { loadGoogleMaps } from "@/lib/google";
 
 // Semantic colours — must match the --loss/--database/--preferred/--dnu/--focus
 // tokens in globals.css. Identical in light and dark, so plain hex is fine here;
 // the chip surface itself (bg/border/text) comes from CSS custom properties so
 // it flips with the theme automatically.
+// Property dots take their colour and shape from lib/status.ts (green / yellow / red, never anything else).
 export const PIN_COLORS = {
   loss: "#f5a623",
-  database: "#17c964",
-  preferred: "#7928ca",
-  dnu: "#ee0000",
   attached: "#111111",
-  unknown: "#8f8f8f",
 } as const;
 
 const METERS_PER_MILE = 1609.344;
@@ -30,7 +27,7 @@ interface Props {
   attachedPins: AttachedPin[];
   attachedIds: Set<string>;
   selectedId: string | null;
-  filters: { pets: boolean; photos: boolean; priced: boolean };
+  filters: { pets: boolean; photos: boolean; priced: boolean; hidden: Record<MapStatus, boolean> };
   onSelect: (id: string) => void;
   onReady?: () => void;
   onError?: (message: string) => void;
@@ -47,6 +44,7 @@ function passesFilters(p: Pin, f: Props["filters"]): boolean {
   if (f.pets && (p.pet_status ?? "").trim().toLowerCase() !== "yes") return false;
   if (f.photos && !p.has_photos) return false;
   if (f.priced && p.monthly_rate == null) return false;
+  if (f.hidden[asMapStatus(p.map_status)]) return false;
   return true;
 }
 
@@ -202,7 +200,7 @@ export default function MapCanvas({
       if (typeof p.lat !== "number" || typeof p.lng !== "number") continue;
 
       let m = existing.get(p.monday_item_id);
-      const group = classifyGroup(p.group_title);
+      const status = asMapStatus(p.map_status);
       const selected = selectedId === p.monday_item_id;
       const shown = passesFilters(p, filters);
       if (!m) {
@@ -215,10 +213,10 @@ export default function MapCanvas({
         toAdd.push(m);
       }
       const approx = p.approximate === true;
-      const styleKey = `${group}:${selected ? 1 : 0}:${shown ? 1 : 0}:${approx ? 1 : 0}:${chipMoney(p.monthly_rate)}`;
+      const styleKey = `${status}:${selected ? 1 : 0}:${shown ? 1 : 0}:${approx ? 1 : 0}:${chipMoney(p.monthly_rate)}`;
       if (styleKeyRef.current.get(p.monday_item_id) !== styleKey) {
-        m.content = buildPropertyPin(group, selected, shown, chipMoney(p.monthly_rate), p.name, approx);
-        m.zIndex = selected ? 4000 : group === "preferred" ? 300 : group === "dnu" ? 100 : 200;
+        m.content = buildPropertyPin(status, selected, shown, chipMoney(p.monthly_rate), p.name, approx);
+        m.zIndex = selected ? 4000 : status === "green" ? 300 : status === "red" ? 100 : 200;
         styleKeyRef.current.set(p.monday_item_id, styleKey);
       }
       next.set(p.monday_item_id, m);
@@ -288,26 +286,26 @@ function buildLossPin(): HTMLElement {
 }
 
 function buildPropertyPin(
-  group: "database" | "preferred" | "dnu" | "unknown",
+  status: MapStatus,
   selected: boolean,
   shown: boolean,
   chip: string,
   name: string,
   approximate = false,
 ): HTMLElement {
-  const dotColor = PIN_COLORS[group];
   const wrap = document.createElement("div");
   const classes = ["nh-pin"];
   if (selected) classes.push("nh-pin--selected");
-  if (group === "dnu") classes.push("nh-pin--dnu");
+  if (status === "red") classes.push("nh-pin--dnu");
   if (!shown) classes.push("nh-pin--dimmed");
   if (approximate) classes.push("nh-pin--approx");
   wrap.className = classes.join(" ");
   wrap.setAttribute("role", "button");
-  wrap.setAttribute("aria-label", `${name}, ${chip}${approximate ? ", approximate location" : ""}`);
+  const label = status === "green" ? "used before" : status === "red" ? "do not use" : "neutral";
+  wrap.setAttribute("aria-label", `${name}, ${chip}, ${label}${approximate ? ", approximate location" : ""}`);
   wrap.innerHTML = `
     <span class="nh-pin__chip">
-      <span class="nh-pin__dot" style="background:${dotColor}"></span>
+      <span class="nh-dot nh-dot--${STATUS_SHAPE[status]}" style="background:${STATUS_COLOR[status]}"></span>
       ${approximate ? '<span class="nh-pin__approx" aria-hidden="true">≈</span>' : ""}
       <span>${chip}</span>
     </span>

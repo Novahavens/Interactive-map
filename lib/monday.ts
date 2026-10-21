@@ -1,5 +1,5 @@
 import "server-only";
-import type { ActiveClaim, AttachedOption, ClaimNeeds } from "./types";
+import type { ActiveClaim, AttachedOption, ClaimBrief, ClaimNeeds } from "./types";
 
 // Board wiring — PRD v4 §8.3. Env overrides exist only so a board move is a config change, not a code change.
 export const BOARDS = {
@@ -10,14 +10,23 @@ export const BOARDS = {
 
 export const COLS = {
   lossAddress: "location_mkqdyjmk",
-  beds: "numeric_mm0b1j6h",
-  baths: "numberx0svvlle",
+  beds: "numberx0svvlle", // "# Bedrooms" (values 2-4; numeric_mm0b1j6h is "# Bathrooms")
+  baths: "numeric_mm0b1j6h", // "# Bathrooms"
   pets: "numeric_mm1gyzhf",
   frv: "numeric_mkqdrcm9",
   moveIn: "date_mkqaaq16",
   adults: "numeric_mkqd84rr",
   children: "numeric_mkqd8f42",
   claimStatus: "color_mkrvebt", // "Current Status"
+  received: "date_mkwek71p", // "Date Received"
+  leaseMonths: "numeric_mkr92jxa", // "Initial Lease Term (Months)"
+  petDescription: "text_mkqat460",
+  utilityCap: "numeric_mm5zre3s",
+  specialRequests: "long_text_mkqdw8at", // "Notes & Special Requests"
+  accountManager: "multiple_person_mkrta1fv",
+  searcher: "multiple_person_mm48cyzp",
+  coordinator: "multiple_person_mm5449zf",
+  company: "color_mkqaatwj", // "ZZ.Company" (ALE Solutions, Alacrity, CRS ...)
   specialist: "board_relation_mks1djce", // "Relocation Specialist" (contacts board, external people)
   specialistEmail: "lookup_mm47e8rz", // mirror of the specialist's email; may hold several, e.g. "a@x.com - b@x.com"
   // subitem board
@@ -26,7 +35,7 @@ export const COLS = {
   distanceToLoss: "numeric_mm7np0z7", // Distance to Loss (mi), E-rental-history / comment thread bdafebbd
 };
 
-export const SUBITEM_START_STATUS = "Ready to Submit"; // William, 26 Aug
+export const SUBITEM_START_STATUS = "To Do"; // Gaby, 15 Oct / Lou, 20 Oct: a new option is not yet vetted, so never "Ready to Submit"
 
 const MONDAY_API = "https://api.monday.com/v2";
 
@@ -119,6 +128,7 @@ async function mondayOnce<T>(query: string, variables: Record<string, unknown>):
 interface ClaimItemRaw {
   id: string;
   name: string;
+  group?: { title: string } | null;
   column_values: Array<{
     id: string;
     text: string | null;
@@ -139,6 +149,7 @@ export interface ClaimRaw {
   loss: { lat: number; lng: number; address: string } | null;
   needs: ClaimNeeds;
   attached: AttachedOption[];
+  brief: ClaimBrief;
 }
 
 function num(text: string | null | undefined): number | null {
@@ -148,6 +159,10 @@ function num(text: string | null | undefined): number | null {
 }
 
 const NEEDS_COLS = [COLS.beds, COLS.baths, COLS.pets, COLS.frv, COLS.moveIn, COLS.adults, COLS.children];
+const BRIEF_COLS = [
+  COLS.claimStatus, COLS.received, COLS.leaseMonths, COLS.petDescription, COLS.utilityCap,
+  COLS.specialRequests, COLS.accountManager, COLS.searcher, COLS.coordinator, COLS.company,
+];
 
 function needsFrom(col: (id: string) => { text: string | null } | undefined): ClaimNeeds {
   const moveInText = col(COLS.moveIn)?.text ?? null;
@@ -168,16 +183,8 @@ export async function readClaim(claimId: string): Promise<ClaimRaw | null> {
       items(ids: $ids) {
         id
         name
-        column_values(ids: ${JSON.stringify([
-          COLS.lossAddress,
-          COLS.beds,
-          COLS.baths,
-          COLS.pets,
-          COLS.frv,
-          COLS.moveIn,
-          COLS.adults,
-          COLS.children,
-        ])}) {
+        group { title }
+        column_values(ids: ${JSON.stringify([COLS.lossAddress, ...NEEDS_COLS, ...BRIEF_COLS])}) {
           id
           text
           ... on LocationValue { lat lng address }
@@ -217,7 +224,32 @@ export async function readClaim(claimId: string): Promise<ClaimRaw | null> {
     };
   });
 
-  return { id: item.id, name: item.name, loss, needs, attached };
+  const text = (id: string) => {
+    const t = col(id)?.text?.trim();
+    return t ? t : null;
+  };
+  const brief: ClaimBrief = {
+    status: text(COLS.claimStatus),
+    group: item.group?.title ?? null,
+    receivedOn: text(COLS.received)?.slice(0, 10) ?? null,
+    moveIn: needs.moveIn,
+    leaseMonths: num(col(COLS.leaseMonths)?.text),
+    frv: needs.frv,
+    adults: needs.adults,
+    children: needs.children,
+    bedrooms: needs.bedrooms,
+    bathrooms: needs.bathrooms,
+    pets: needs.pets,
+    petDescription: text(COLS.petDescription),
+    utilityCap: num(col(COLS.utilityCap)?.text),
+    specialRequests: text(COLS.specialRequests),
+    accountManager: text(COLS.accountManager),
+    searcher: text(COLS.searcher),
+    coordinator: text(COLS.coordinator),
+    company: text(COLS.company),
+  };
+
+  return { id: item.id, name: item.name, loss, needs, attached, brief };
 }
 
 // ---------- Active claims (drawer) ----------

@@ -25,7 +25,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ claimId: s
     const ids = Array.from(new Set(claim.attached.map((a) => a.propertyId).filter((x): x is string => !!x)));
     let attachedPins: AttachedPin[] = [];
     if (ids.length) {
-      const { data, error } = await supabase().rpc("properties_by_ids", { p_ids: ids });
+      const { data, error } = await supabase().rpc("properties_by_ids_v2", { p_ids: ids });
       if (error) throw error;
       attachedPins = (data ?? []) as AttachedPin[];
     }

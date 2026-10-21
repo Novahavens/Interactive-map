@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readClaim, createSubitem, MondayError, DRY_RUN } from "@/lib/monday";
 import { supabase } from "@/lib/supabase";
-import { classifyGroup, type AddToClaimRequest, type AddToClaimResponse, type ApiError } from "@/lib/types";
+import { asMapStatus } from "@/lib/status";
+import type { AddToClaimRequest, AddToClaimResponse, ApiError } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +13,9 @@ export const dynamic = "force-dynamic";
  * there is deliberately no bulk path (William, 3 Aug).
  *
  * Order of checks:
- *   1. property exists and is not DO NOT USE (refused server-side, not just greyed in the UI)
+ *   1. property exists and is not red / DO NOT USE, by its group or its owner (refused server-side, not just greyed in the UI)
  *   2. idempotency: if the claim already has a sub-item linked to this property, return it
- *   3. create_subitem with relation + status "Ready to Submit" in a single mutation
+ *   3. create_subitem with relation + status "To Do" in a single mutation
  *   4. verify the link landed; roll back the sub-item if it did not
  */
 export async function POST(req: NextRequest) {
@@ -32,17 +33,24 @@ export async function POST(req: NextRequest) {
 
   try {
     // 1. Property must exist and be addable.
-    const { data, error } = await supabase().rpc("property_detail", { p_monday_item_id: propertyId });
+    const [{ data, error }, statusRes] = await Promise.all([
+      supabase().rpc("property_detail", { p_monday_item_id: propertyId }),
+      supabase().rpc("property_map_status", { p_monday_item_id: propertyId }),
+    ]);
     if (error) throw error;
+    if (statusRes.error) throw statusRes.error;
     const prop = (Array.isArray(data) ? data[0] : data) as
       | { name: string | null; group_title: string | null; monthly_rate: number | null }
       | undefined;
     if (!prop) {
       return NextResponse.json<ApiError>({ error: "Property not found in the database mirror", code: "not_found" }, { status: 404 });
     }
-    if (classifyGroup(prop.group_title) === "dnu") {
+    // Red is red whether the property's group or its owner says so.
+    const st = (Array.isArray(statusRes.data) ? statusRes.data[0] : statusRes.data) as { status?: string; reason?: string } | undefined;
+    if (asMapStatus(st?.status) === "red") {
+      const why = st?.reason === "dnu_owner" ? "The owner is marked DO NOT USE" : "This property is in DO NOT USE";
       return NextResponse.json<ApiError>(
-        { error: "This property is in DO NOT USE and cannot be attached to a claim", code: "dnu_refused" },
+        { error: `${why}, so it cannot be attached to a claim`, code: "dnu_refused" },
         { status: 403 },
       );
     }
