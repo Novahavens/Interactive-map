@@ -32,6 +32,7 @@ export const COLS = {
   // subitem board
   propertyRelation: "board_relation_mm441",
   subitemStatus: "status",
+  linkStatus: "color_mm41z556", // PROPERTY DATABASE "ZZ.Status" (Good link / BAD LINK / Missing Link)
   distanceToLoss: "numeric_mm7np0z7", // Distance to Loss (mi), E-rental-history / comment thread bdafebbd
 };
 
@@ -276,7 +277,7 @@ const ACTIVE_ITEM_FIELDS = `
   name
   created_at
   group { id title }
-  column_values(ids: ${JSON.stringify([COLS.lossAddress, COLS.claimStatus, ...NEEDS_COLS])}) {
+  column_values(ids: ${JSON.stringify([COLS.lossAddress, COLS.claimStatus, COLS.accountManager, ...NEEDS_COLS])}) {
     id
     text
     ... on LocationValue { lat lng address }
@@ -328,6 +329,7 @@ export async function listActiveClaims(includeTest: boolean): Promise<ActiveClai
         attachedCount: item.subitems?.length ?? 0,
         group: item.group.title,
         isTest: item.group.id === TEST_GROUP,
+        accountManager: col(COLS.accountManager)?.text?.trim() || null,
       };
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -417,6 +419,20 @@ export async function createSubitem(
     throw new MondayError("Sub-item was created but the property link did not save; rolled back");
   }
   return created.id;
+}
+
+/** Sets a status column by label on any board (change_column_value). Idempotent: setting the same label again is a no-op in Monday. */
+export async function setStatusLabel(boardId: string, itemId: string, columnId: string, label: string): Promise<void> {
+  if (DRY_RUN) {
+    console.info("[monday dry-run] set_status_label", { boardId, itemId, columnId, label });
+    return;
+  }
+  await monday(
+    `mutation ($board: ID!, $item: ID!, $col: String!, $value: JSON!) {
+      change_column_value(board_id: $board, item_id: $item, column_id: $col, value: $value) { id }
+    }`,
+    { board: boardId, item: itemId, col: columnId, value: JSON.stringify({ label }) },
+  );
 }
 
 export async function deleteItem(itemId: string): Promise<void> {

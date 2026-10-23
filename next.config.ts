@@ -4,6 +4,8 @@ import type { NextConfig } from "next";
 // frame-ancestors is the only CSP directive we set here; everything else is Next defaults.
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Lets a second dev server run beside the default one (NEXT_DIST_DIR=.next-api next dev -p 3021).
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   async headers() {
     return [
       {

@@ -137,7 +137,7 @@ export default function SearchBox({
       <div
         className={cn(
           "flex items-center gap-2.5 rounded-lg border border-line bg-surface focus-within:border-focus",
-          hero ? "h-12 px-3.5 shadow-[0_8px_30px_rgba(0,0,0,0.12)]" : "h-10 px-3",
+          hero ? "h-12 px-3.5 shadow-[0_8px_30px_rgba(0,0,0,0.12)]" : "h-10 px-3 max-lg:h-[44px]",
         )}
       >
         <Search className={cn("shrink-0 text-muted", hero ? "h-4 w-4" : "h-3.5 w-3.5")} aria-hidden />
@@ -162,7 +162,7 @@ export default function SearchBox({
           }}
           placeholder={placeholder}
           aria-label={placeholder}
-          className={cn("w-full min-w-0 flex-grow bg-transparent text-ink outline-none placeholder:text-muted", hero ? "text-[16px]" : "text-sm")}
+          className={cn("w-full min-w-0 flex-grow bg-transparent text-ink outline-none placeholder:text-muted", hero ? "text-[16px]" : "text-sm max-lg:h-[44px] max-lg:text-[16px]")}
         />
         {badge && !q && (
           <span className="shrink-0 rounded px-1.5 py-px text-[11px] text-muted" style={{ border: "1px solid var(--line)" }}>
@@ -180,7 +180,7 @@ export default function SearchBox({
               tokenRef.current = null;
               onClear?.();
             }}
-            className="shrink-0 rounded p-0.5 text-muted hover:bg-surface-muted hover:text-ink"
+            className="inline-flex shrink-0 max-lg:-mr-3 items-center justify-center rounded text-muted hover:bg-surface-muted hover:text-ink max-lg:h-[44px] max-lg:w-[44px] lg:p-0.5"
           >
             <X className="h-3.5 w-3.5" />
           </button>

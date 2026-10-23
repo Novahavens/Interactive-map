@@ -1,39 +1,26 @@
-// The map's dot colour. The rule itself lives in the database (map_status_reason in
-// supabase/migrations/20261022_map_status.sql) so one place decides; this file is only how the
-// app names, colours and explains the three results.
-//
-// Every property is exactly one of these. Anything missing or unrecognised is neutral (yellow),
-// never blank, grey or a fourth colour.
+import type { Pin } from "./types";
+import { petsAllowed } from "./utils";
+
+// The rule lives in the database (map_status_reason in supabase/migrations/20261022_map_status.sql);
+// this file only names and colours the three results. Anything unrecognised is neutral, never a fourth colour.
 
 export type MapStatus = "green" | "yellow" | "red";
 
 export const STATUS_ORDER: MapStatus[] = ["green", "yellow", "red"];
 
-/** Anything that is not exactly "green" or "red" is neutral. */
 export function asMapStatus(v: unknown): MapStatus {
   return v === "green" || v === "red" ? v : "yellow";
 }
 
-export const STATUS_COLOR: Record<MapStatus, string> = {
-  green: "#17c964",
-  yellow: "#facc15",
-  red: "#ee0000",
-};
-
-export const STATUS_LABEL: Record<MapStatus, string> = {
-  green: "Used before",
-  yellow: "Neutral",
-  red: "Do not use",
-};
-
-export const STATUS_HELP: Record<MapStatus, string> = {
-  green: "We have worked with this owner, or they are marked Preferred",
-  yellow: "In the database, no history with us",
-  red: "Do not use",
-};
+/** Each colour also has its own shape, so the three read apart without relying on red versus green. */
+export const STATUS = {
+  green: { color: "#17c964", label: "Used before", help: "We have worked with this owner, or they are marked Preferred", shape: "circle" },
+  yellow: { color: "#facc15", label: "Neutral", help: "In the database, no history with us", shape: "diamond" },
+  red: { color: "#ee0000", label: "Do not use", help: "Do not use", shape: "square" },
+} satisfies Record<MapStatus, { color: string; label: string; help: string; shape: "circle" | "diamond" | "square" }>;
 
 /** Why a property has its colour: the reason codes returned by property_map_status(). */
-export const REASON_TEXT: Record<string, string> = {
+const REASON_TEXT: Record<string, string> = {
   dnu_group: "In the DO NOT USE group",
   dnu_owner: "The owner is marked DO NOT USE",
   preferred_group: "In the Preferred group",
@@ -48,9 +35,16 @@ export function reasonText(reason: string | null | undefined): string {
   return REASON_TEXT[reason ?? "none"] ?? REASON_TEXT.none;
 }
 
-/** Each colour also has its own shape, so the three read apart without relying on red versus green. */
-export const STATUS_SHAPE: Record<MapStatus, "circle" | "diamond" | "square"> = {
-  green: "circle",
-  yellow: "diamond",
-  red: "square",
-};
+export interface PinFilters {
+  pets: boolean;
+  photos: boolean;
+  priced: boolean;
+  hidden: Record<MapStatus, boolean>;
+}
+
+export function passesFilters(p: Pin, f: PinFilters): boolean {
+  if (f.pets && petsAllowed(p.pet_status) !== true) return false;
+  if (f.photos && !p.has_photos) return false;
+  if (f.priced && p.monthly_rate == null) return false;
+  return !f.hidden[asMapStatus(p.map_status)];
+}
