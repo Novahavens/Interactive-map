@@ -17,6 +17,7 @@ export const PIN_COLORS = {
 } as const;
 
 const METERS_PER_MILE = 1609.344;
+const HOVER_Z = 3500; // above every pin, below the selected pin (4000) and the loss pin (5000)
 
 interface Props {
   apiKey: string;
@@ -27,8 +28,11 @@ interface Props {
   attachedPins: AttachedPin[];
   attachedIds: Set<string>;
   selectedId: string | null;
+  /** Property under the pointer or keyboard focus in the list (or on the map). */
+  hoveredId: string | null;
   filters: { pets: boolean; photos: boolean; priced: boolean; hidden: Record<MapStatus, boolean> };
   onSelect: (id: string) => void;
+  onHover: (id: string | null) => void;
   onReady?: () => void;
   onError?: (message: string) => void;
 }
@@ -61,8 +65,10 @@ export default function MapCanvas({
   attachedPins,
   attachedIds,
   selectedId,
+  hoveredId,
   filters,
   onSelect,
+  onHover,
   onReady,
   onError,
 }: Props) {
@@ -77,6 +83,19 @@ export default function MapCanvas({
   const styleKeyRef = useRef<Map<string, string>>(new Map()); // avoids rebuilding pin content on every render
   const [ready, setReady] = useState(false);
   const lastFitKeyRef = useRef<string>("");
+  const hoveredRef = useRef<string | null>(null);
+  hoveredRef.current = hoveredId;
+  const onHoverRef = useRef(onHover);
+  onHoverRef.current = onHover;
+  const baseZRef = useRef<Map<string, number>>(new Map()); // z-index a marker returns to when it stops being hovered
+
+  // Content is rebuilt when a pin's style changes, so hover handlers and the hover class go on every time it is set.
+  const setContent = (m: AdvMarker, id: string, content: HTMLElement) => {
+    content.addEventListener("mouseenter", () => onHoverRef.current(id));
+    content.addEventListener("mouseleave", () => onHoverRef.current(null));
+    if (hoveredRef.current === id) content.classList.add("nh-pin--hover");
+    m.content = content;
+  };
 
   // ---- create the map once ----
   useEffect(() => {
@@ -215,8 +234,10 @@ export default function MapCanvas({
       const approx = p.approximate === true;
       const styleKey = `${status}:${selected ? 1 : 0}:${shown ? 1 : 0}:${approx ? 1 : 0}:${chipMoney(p.monthly_rate)}`;
       if (styleKeyRef.current.get(p.monday_item_id) !== styleKey) {
-        m.content = buildPropertyPin(status, selected, shown, chipMoney(p.monthly_rate), p.name, approx);
-        m.zIndex = selected ? 4000 : status === "green" ? 300 : status === "red" ? 100 : 200;
+        setContent(m, p.monday_item_id, buildPropertyPin(status, selected, shown, chipMoney(p.monthly_rate), p.name, approx));
+        const z = selected ? 4000 : status === "green" ? 300 : status === "red" ? 100 : 200;
+        baseZRef.current.set(p.monday_item_id, z);
+        m.zIndex = hoveredRef.current === p.monday_item_id ? HOVER_Z : z;
         styleKeyRef.current.set(p.monday_item_id, styleKey);
       }
       next.set(p.monday_item_id, m);
@@ -256,8 +277,9 @@ export default function MapCanvas({
         });
         m.addListener("click", () => onSelect(a.monday_item_id));
       }
-      m.content = buildAttachedPin(selected, chipMoney(a.monthly_rate), a.name);
-      m.zIndex = selected ? 4000 : 900;
+      setContent(m, a.monday_item_id, buildAttachedPin(selected, chipMoney(a.monthly_rate), a.name));
+      baseZRef.current.set(a.monday_item_id, selected ? 4000 : 900);
+      m.zIndex = hoveredRef.current === a.monday_item_id ? HOVER_Z : selected ? 4000 : 900;
       m.map = map;
       next.set(a.monday_item_id, m);
     }
@@ -266,6 +288,37 @@ export default function MapCanvas({
     }
     attachedMarkersRef.current = next;
   }, [ready, attachedPins, selectedId, onSelect]);
+
+  // ---- hover: ring + lift on the pin, and bring it into view when the list points at one that is off screen ----
+  // A pin inside a numbered group is not on the map (the clusterer owns it), so there is nothing to highlight
+  // until the group is zoomed open; the row still highlights. The map is never zoomed from here, only panned.
+  const lastHoverRef = useRef<string | null>(null);
+  useEffect(() => {
+    const markerFor = (id: string) => propertyMarkersRef.current.get(id) ?? attachedMarkersRef.current.get(id);
+    const prev = lastHoverRef.current;
+    lastHoverRef.current = hoveredId;
+    if (prev && prev !== hoveredId) {
+      const m = markerFor(prev);
+      if (m) {
+        (m.content as HTMLElement | null)?.classList.remove("nh-pin--hover");
+        m.zIndex = baseZRef.current.get(prev) ?? 200;
+      }
+    }
+    if (!hoveredId) return;
+    const m = markerFor(hoveredId);
+    if (!m) return;
+    (m.content as HTMLElement | null)?.classList.add("nh-pin--hover");
+    m.zIndex = HOVER_Z;
+
+    const map = mapRef.current;
+    const pos = m.position;
+    if (!map || !pos) return;
+    const t = window.setTimeout(() => {
+      const bounds = map.getBounds();
+      if (bounds && !bounds.contains(pos)) map.panTo(pos);
+    }, 150);
+    return () => window.clearTimeout(t);
+  }, [hoveredId]);
 
   return <div ref={divRef} className="h-full w-full" aria-label="Property map" />;
 }

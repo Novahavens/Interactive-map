@@ -143,6 +143,14 @@ export default function ActiveClaimsDrawer({ open, onOpenChange, selectedId, onS
                       >
                         {c.attachedCount} {c.attachedCount === 1 ? "option" : "options"}
                       </span>
+                      {c.accountManager && (
+                        <span
+                          className="max-w-[112px] truncate rounded bg-surface-muted px-1.5 py-px text-[11px] text-muted"
+                          title={`Account manager: ${c.accountManager}`}
+                        >
+                          {c.accountManager}
+                        </span>
+                      )}
                       {selectedId === c.id && <Check className="size-4 text-ink" aria-label="Selected" />}
                     </span>
                   </CommandItem>

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Plus, Check, ExternalLink, Images, Phone, Mail, Loader2, Ban, Sparkles } from "lucide-react";
-import type { PropertyDetail, ClaimNeeds, ApiError } from "@/lib/types";
-import { STATUS_HELP, STATUS_LABEL, asMapStatus, reasonText, type MapStatus } from "@/lib/status";
+import { X, Plus, Check, ExternalLink, Images, Phone, Mail, Loader2, Ban, Sparkles, Flag } from "lucide-react";
+import type { PropertyDetail, ClaimNeeds, ClaimOption, ApiError, FlagLinkRequest, FlagLinkResponse, Pin } from "@/lib/types";
+import { STATUS_HELP, STATUS_LABEL, asMapStatus, isBadLink, otherClaimsOf, propertyChips, reasonText, type MapStatus } from "@/lib/status";
 import { StatusDot } from "./StatusDot";
+import StatusChips from "./StatusChips";
 import { cn, money, num, dateShort, miles, yesNo } from "@/lib/utils";
 
 interface Props {
@@ -13,13 +14,19 @@ interface Props {
   needs: ClaimNeeds | null;
   claimId: string | null;
   claimName: string | null;
+  accountManager: string | null;
+  /** The list's copy of this property: shows the chips before the detail has loaded, and covers an API that omits them. */
+  pin: Pin | null;
   attached: boolean;
   onAttached: (propertyId: string, subitemId: string) => void;
+  onFlagged: (propertyId: string) => void;
   onClose: () => void;
 }
 
 type AddState = { kind: "idle" } | { kind: "adding" } | { kind: "done"; subitemId: string } | { kind: "error"; message: string };
 type FitState = "ok" | "warn" | "bad" | "unknown";
+
+const REPORTER_KEY = "nh-reporter-name";
 
 // One colour language for the status badge: the same ok / amber / bad tokens as the Fit rows.
 const STATUS_TOKEN: Record<MapStatus, { bg: string; ink: string; line: string }> = {
@@ -28,7 +35,7 @@ const STATUS_TOKEN: Record<MapStatus, { bg: string; ink: string; line: string }>
   red: { bg: "var(--bad-bg)", ink: "var(--bad-ink)", line: "var(--bad-line)" },
 };
 
-export default function PropertyPanel({ propertyId, distanceMiles, needs, claimId, claimName, attached, onAttached, onClose }: Props) {
+export default function PropertyPanel({ propertyId, distanceMiles, needs, claimId, claimName, accountManager, pin, attached, onAttached, onFlagged, onClose }: Props) {
   // The panel is keyed by claim + property, so a claim switch unmounts it; this stops a late
   // add response from reporting into the next claim's state.
   const alive = useRef(true);
@@ -41,12 +48,17 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
   const [detail, setDetail] = useState<PropertyDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [add, setAdd] = useState<AddState>({ kind: "idle" });
+  const [confirming, setConfirming] = useState(false);
+  const [flagged, setFlagged] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let cancelled = false;
     setDetail(null);
     setError(null);
     setAdd({ kind: "idle" });
+    setConfirming(false);
+    setFlagged(false);
     (async () => {
       try {
         const res = await fetch(`/api/properties/${propertyId}`, { cache: "no-store" });
@@ -66,8 +78,32 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
   const statusToken = STATUS_TOKEN[status];
   const fitRows = detail && needs ? computeFit(detail, needs) : [];
 
+  // The detail is the fresher copy; the list's pin fills in while it loads and when the API has no such field.
+  const linkStatus = flagged ? "BAD LINK" : (detail?.link_status ?? pin?.link_status ?? null);
+  const otherClaims: ClaimOption[] = otherClaimsOf(detail?.other_claims ?? pin?.other_claims, claimId);
+  const chips = propertyChips(
+    {
+      availability: detail?.availability ?? pin?.availability,
+      link_status: linkStatus,
+      last_contact: detail?.last_contact ?? pin?.last_contact,
+      other_claims: detail?.other_claims ?? pin?.other_claims,
+    },
+    claimId,
+  );
+  const badLink = isBadLink(linkStatus);
+
+  useEffect(() => {
+    if (confirming) cancelRef.current?.focus();
+  }, [confirming]);
+
+  function requestAdd() {
+    if (otherClaims.length > 0) setConfirming(true);
+    else void handleAdd();
+  }
+
   async function handleAdd() {
     if (!claimId || !detail) return;
+    setConfirming(false);
     setAdd({ kind: "adding" });
     try {
       const res = await fetch("/api/claim/add", {
@@ -116,6 +152,7 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
                 </span>
                 {distanceMiles != null && <span className="text-[13px] text-muted">{miles(distanceMiles)} from the loss</span>}
               </div>
+              <StatusChips chips={chips} className="mt-1.5" />
               <h2 className="mt-1.5 truncate text-[17px] font-semibold leading-tight tracking-[-0.01em]">{detail.name ?? "Property"}</h2>
               <p className="truncate text-[13px] text-muted">
                 {detail.address ?? [detail.city, detail.state, detail.zipcode].filter(Boolean).join(", ")}
@@ -182,6 +219,19 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
                 </details>
               )}
             </div>
+
+            {otherClaims.length > 0 && (
+              <Section title="Other claims">
+                <ul className="flex flex-col gap-1 text-[13px]">
+                  {otherClaims.map((c) => (
+                    <li key={c.subitemId} className="flex items-baseline justify-between gap-2">
+                      <span className="min-w-0 truncate font-medium">{c.claimName}</span>
+                      <span className="shrink-0 text-muted">{c.status ?? "no status"}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            )}
 
             {/* Fit against the claim */}
             {needs && (
@@ -315,8 +365,20 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
             {/* Notes + links */}
             <Section title="Notes & links">
               <p className="mb-2.5 text-[13px] text-muted">{detail.notes || "No notes on the record."}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {detail.property_link && <LinkChip href={detail.property_link} icon={<ExternalLink className="h-3.5 w-3.5" />} label="Listing" />}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {detail.property_link && (
+                  <LinkChip
+                    href={detail.property_link}
+                    icon={<ExternalLink className="h-3.5 w-3.5" />}
+                    label="Listing"
+                    struck={badLink}
+                  />
+                )}
+                {detail.property_link && badLink && (
+                  <span className="nh-chip nh-chip--bad nh-chip--outline" title="Reported as a broken listing link">
+                    <span>Bad link</span>
+                  </span>
+                )}
                 {detail.photo_folder_url && <LinkChip href={detail.photo_folder_url} icon={<Images className="h-3.5 w-3.5" />} label="Photos" />}
                 <LinkChip
                   href={`https://novahavens.monday.com/boards/18415735059/pulses/${detail.monday_item_id}`}
@@ -324,6 +386,16 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
                   label="Open in Monday"
                 />
               </div>
+              {detail.property_link && !badLink && (
+                <ReportBadLink
+                  propertyId={detail.monday_item_id}
+                  onReported={() => {
+                    setFlagged(true);
+                    onFlagged(detail.monday_item_id);
+                  }}
+                />
+              )}
+              {flagged && <ReportedNote />}
               <p className="mt-3 text-xs text-muted">
                 Synced from Monday {detail.synced_at ? new Date(detail.synced_at).toLocaleString("en-US") : "—"} · Monday is the system of record.
               </p>
@@ -345,12 +417,49 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
             {claimId && (
               <p className="truncate text-xs text-muted">
                 Adding to: <span className="font-medium text-ink">{claimName ?? `claim ${claimId}`}</span>
+                {accountManager && <span> · {accountManager}</span>}
               </p>
+            )}
+            {confirming && (
+              <div
+                role="alert"
+                className="flex flex-col gap-2 rounded-md border p-2.5 text-[13px]"
+                style={{ borderColor: "var(--amber-line)", background: "var(--amber-bg)", color: "var(--amber-ink)" }}
+              >
+                <p>
+                  Already an option on{" "}
+                  {otherClaims.map((c, i) => (
+                    <span key={c.subitemId}>
+                      {i > 0 && ", "}
+                      <span className="font-medium">{c.claimName}</span>
+                      {c.status ? ` (${c.status})` : ""}
+                    </span>
+                  ))}
+                  . Add anyway?
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleAdd()}
+                    className="inline-flex h-9 items-center justify-center rounded-lg bg-ink text-[13px] font-medium text-bg hover:brightness-110"
+                  >
+                    Add anyway
+                  </button>
+                  <button
+                    ref={cancelRef}
+                    type="button"
+                    onClick={() => setConfirming(false)}
+                    className="inline-flex h-9 items-center justify-center rounded-lg border border-line bg-surface text-[13px] font-medium text-ink"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             )}
             <button
               type="button"
-              disabled={!detail || !!addDisabledReason || add.kind === "adding"}
-              onClick={handleAdd}
+              disabled={!detail || !!addDisabledReason || add.kind === "adding" || confirming}
+              onClick={requestAdd}
               className={cn(
                 "flex h-10 w-full items-center justify-center gap-2 rounded-lg text-sm font-medium transition",
                 addDisabledReason ? "cursor-not-allowed bg-surface-muted text-muted" : "bg-ink text-bg hover:brightness-110 active:brightness-95",
@@ -555,16 +664,157 @@ function Row({ k, v }: { k: string; v: string }) {
   );
 }
 
-function LinkChip({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
+function LinkChip({ href, icon, label, struck }: { href: string; icon: React.ReactNode; label: string; struck?: boolean }) {
   return (
     <a
       href={href}
       target="_blank"
       rel="noreferrer noopener"
-      className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink no-underline hover:bg-surface-muted"
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink no-underline hover:bg-surface-muted",
+        struck && "text-muted line-through",
+      )}
     >
       {icon}
       {label}
     </a>
+  );
+}
+
+// ---------- report a bad listing link ----------
+
+type ReportState = { kind: "closed" } | { kind: "open" } | { kind: "sending" } | { kind: "error"; message: string };
+
+function readReporterName(): string {
+  try {
+    return localStorage.getItem(REPORTER_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function ReportBadLink({ propertyId, onReported }: { propertyId: string; onReported: () => void }) {
+  const [state, setState] = useState<ReportState>({ kind: "closed" });
+  const [name, setName] = useState("");
+  const [note, setNote] = useState("");
+  const nameRef = useRef<HTMLInputElement>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const open = state.kind !== "closed";
+
+  function show() {
+    const saved = readReporterName();
+    setName(saved);
+    setState({ kind: "open" });
+    requestAnimationFrame(() => (saved ? noteRef : nameRef).current?.focus());
+  }
+
+  function cancel() {
+    setState({ kind: "closed" });
+    requestAnimationFrame(() => buttonRef.current?.focus());
+  }
+
+  async function send(e: React.FormEvent) {
+    e.preventDefault();
+    if (state.kind === "sending") return;
+    setState({ kind: "sending" });
+    const body: FlagLinkRequest = {};
+    if (name.trim()) body.reportedBy = name.trim();
+    if (note.trim()) body.note = note.trim();
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/flag-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = (await res.json()) as FlagLinkResponse | ApiError;
+      if (!res.ok || !("ok" in json)) throw new Error((json as ApiError).error || `HTTP ${res.status}`);
+      try {
+        if (name.trim()) localStorage.setItem(REPORTER_KEY, name.trim());
+      } catch {
+        // private window or blocked storage: the report still went through
+      }
+      onReported();
+    } catch (err) {
+      setState({ kind: "error", message: err instanceof Error ? err.message : "Could not send the report" });
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={show}
+        className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md border border-line bg-surface px-2 text-xs font-medium text-muted hover:text-ink"
+      >
+        <Flag className="h-3 w-3" aria-hidden="true" />
+        Report bad link
+      </button>
+    );
+  }
+
+  const sending = state.kind === "sending";
+  return (
+    <form
+      onSubmit={send}
+      onKeyDown={(e) => e.key === "Escape" && !sending && cancel()}
+      className="mt-2 flex flex-col gap-2 rounded-md border border-line bg-surface-muted p-2.5 text-[13px]"
+      aria-label="Report bad link"
+    >
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-muted">Your name</span>
+        <input
+          ref={nameRef}
+          value={name}
+          maxLength={80}
+          onChange={(e) => setName(e.target.value)}
+          autoComplete="name"
+          className="h-8 rounded-md border border-line2 bg-surface px-2 text-ink"
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-muted">What&apos;s wrong? (optional)</span>
+        <textarea
+          ref={noteRef}
+          value={note}
+          maxLength={300}
+          rows={2}
+          onChange={(e) => setNote(e.target.value)}
+          className="resize-none rounded-md border border-line2 bg-surface px-2 py-1.5 text-ink"
+        />
+      </label>
+      {state.kind === "error" && (
+        <p role="alert" className="text-xs" style={{ color: "var(--bad-ink)" }}>
+          <span className="font-medium">Not sent.</span> {state.message}
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={sending}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ink px-3 text-xs font-medium text-bg hover:brightness-110 disabled:opacity-60"
+        >
+          {sending && <Loader2 className="h-3 w-3 animate-spin" />}
+          Send
+        </button>
+        <button
+          type="button"
+          onClick={cancel}
+          disabled={sending}
+          className="inline-flex h-8 items-center rounded-md border border-line bg-surface px-3 text-xs font-medium text-ink"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ReportedNote() {
+  return (
+    <p role="status" className="mt-2 text-xs text-muted">
+      <span className="font-medium text-ink">Reported. Thanks.</span> A note was added to the property on Monday.
+    </p>
   );
 }

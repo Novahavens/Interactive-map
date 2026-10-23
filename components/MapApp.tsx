@@ -22,10 +22,11 @@ import ActiveClaimsDrawer from "./ActiveClaimsDrawer";
 import SummarySheet from "./SummarySheet";
 import { useTheme } from "@/lib/useTheme";
 import type { ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse } from "@/lib/types";
-import { STATUS_LABEL, STATUS_ORDER, asMapStatus, type MapStatus } from "@/lib/status";
+import { STATUS_LABEL, STATUS_ORDER, asMapStatus, propertyChips, type MapStatus } from "@/lib/status";
 import ClaimBrief from "./ClaimBrief";
 import { StatusDot } from "./StatusDot";
-import StatusLegend from "./StatusLegend";
+import StatusLegend, { GroupedKey, OnClaimKey } from "./StatusLegend";
+import StatusChips from "./StatusChips";
 import { cn, money, num, dateShort } from "@/lib/utils";
 
 const RADII = [5, 10, 15, 20, 30] as const; // Fazal, 8 Sep
@@ -65,6 +66,10 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   const [pinsError, setPinsError] = useState<string | null>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // List row <-> map pin highlight. `from` decides whether the list follows (map hover) or stays put (list hover).
+  const [hover, setHover] = useState<{ id: string; from: "list" | "map" } | null>(null);
+  const hoveredId = hover?.id ?? null;
+  const onMapHover = useCallback((id: string | null) => setHover(id ? { id, from: "map" } : null), []);
   const [mapError, setMapError] = useState<string | null>(null);
   const [railSheetOpen, setRailSheetOpen] = useState(false);
 
@@ -198,6 +203,23 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     setRailSheetOpen(false);
   }, []);
 
+  // Pointing at a pin on the map brings its row into view in whichever results list is showing.
+  useEffect(() => {
+    if (!hover || hover.from !== "map") return;
+    const rows = document.querySelectorAll<HTMLElement>("[data-pin-row]");
+    for (const row of rows) {
+      if (row.dataset.pinRow === hover.id && row.offsetParent !== null) {
+        row.scrollIntoView({ block: "nearest" });
+        break;
+      }
+    }
+  }, [hover]);
+
+  // A bad-link report from the panel shows on the list straight away, without waiting for the sync.
+  const handleFlagged = useCallback((propertyId: string) => {
+    setPins((prev) => prev.map((p) => (p.monday_item_id === propertyId ? { ...p, link_status: "BAD LINK" } : p)));
+  }, []);
+
   const passesFilters = useCallback(
     (p: Pin) => {
       if (filters.pets && (p.pet_status ?? "").trim().toLowerCase() !== "yes") return false;
@@ -232,185 +254,201 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     return missing;
   }, [claim]);
 
+  // Two rows: the controls take what they need but shrink and scroll when the column is short, and the results
+  // always keep at least 40% (12rem at the least). Without this the controls pushed the list down to a few pixels.
   const railContent = claim || center ? (
-    <>
-      <div className="flex flex-col gap-2.5 border-b border-line p-3">
-        <SearchBox
-          apiKey={apiKey}
-          placeholder="Loss address"
-          badge={center?.source === "claim" ? "from claim" : undefined}
-          value={center?.source === "claim" ? center.address : undefined}
-          onPick={(loc) => {
-            setSelectedId(null);
-            setCenter({ ...loc, source: "search" });
-          }}
-          onClear={() => {
-            if (claim?.loss) setCenter({ lat: claim.loss.lat, lng: claim.loss.lng, address: claim.loss.address, source: "claim" });
-            else setCenter(null);
-          }}
-        />
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,auto)_minmax(max(12rem,40%),1fr)]">
+      <div className="nh-scroll min-h-0 overflow-y-auto">
+        <div className="flex flex-col gap-2.5 border-b border-line p-3">
+          <SearchBox
+            apiKey={apiKey}
+            placeholder="Loss address"
+            badge={center?.source === "claim" ? "from claim" : undefined}
+            value={center?.source === "claim" ? center.address : undefined}
+            onPick={(loc) => {
+              setSelectedId(null);
+              setCenter({ ...loc, source: "search" });
+            }}
+            onClear={() => {
+              if (claim?.loss) setCenter({ lat: claim.loss.lat, lng: claim.loss.lng, address: claim.loss.address, source: "claim" });
+              else setCenter(null);
+            }}
+          />
 
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[13px] text-muted">Radius</span>
-          <div role="radiogroup" aria-label="Search radius" className="inline-flex gap-0 rounded-[7px] border border-line bg-surface-muted p-0.5">
-            {RADII.map((r) => (
-              <button
-                key={r}
-                type="button"
-                role="radio"
-                aria-checked={radius === r}
-                onClick={() => setRadius(r)}
-                className={cn(
-                  "h-7 whitespace-nowrap rounded-[5px] px-1.5 text-[12px] font-medium",
-                  radius === r ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.12)]" : "text-muted",
-                )}
-              >
-                {r} mi
-              </button>
-            ))}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[13px] text-muted">Radius</span>
+            <div role="radiogroup" aria-label="Search radius" className="inline-flex gap-0 rounded-[7px] border border-line bg-surface-muted p-0.5">
+              {RADII.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  role="radio"
+                  aria-checked={radius === r}
+                  onClick={() => setRadius(r)}
+                  className={cn(
+                    "h-7 whitespace-nowrap rounded-[5px] px-1.5 text-[12px] font-medium",
+                    radius === r ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.12)]" : "text-muted",
+                  )}
+                >
+                  {r} mi
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div className="flex flex-wrap gap-1.5" aria-label="Filters">
-          <FilterPill
-            icon={<PawPrint className="h-3 w-3" />}
-            label="Pets allowed"
-            on={filters.pets}
-            onClick={() => setFilters((f) => ({ ...f, pets: !f.pets }))}
-          />
-          <FilterPill
-            icon={<Images className="h-3 w-3" />}
-            label="Has photos"
-            on={filters.photos}
-            onClick={() => setFilters((f) => ({ ...f, photos: !f.photos }))}
-          />
-          <FilterPill
-            icon={<DollarSign className="h-3 w-3" />}
-            label="Rent listed"
-            on={filters.priced}
-            onClick={() => setFilters((f) => ({ ...f, priced: !f.priced }))}
-          />
-        </div>
-
-        <StatusLegend
-          counts={statusCounts}
-          hidden={filters.hidden}
-          onToggle={(st) => setFilters((f) => ({ ...f, hidden: { ...f.hidden, [st]: !f.hidden[st] } }))}
-        />
-      </div>
-
-      {claim && (
-        <div className="flex flex-col gap-2 border-b border-line p-3">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="nh-eyebrow">The family needs</span>
-            <a
-              href={`https://novahavens.monday.com/boards/9030696652/pulses/${claim.id}`}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="text-xs no-underline"
-            >
-              Edit on Monday →
-            </a>
+          <div className="flex flex-wrap gap-1.5" aria-label="Filters">
+            <FilterPill
+              icon={<PawPrint className="h-3 w-3" />}
+              label="Pets allowed"
+              on={filters.pets}
+              onClick={() => setFilters((f) => ({ ...f, pets: !f.pets }))}
+            />
+            <FilterPill
+              icon={<Images className="h-3 w-3" />}
+              label="Has photos"
+              on={filters.photos}
+              onClick={() => setFilters((f) => ({ ...f, photos: !f.photos }))}
+            />
+            <FilterPill
+              icon={<DollarSign className="h-3 w-3" />}
+              label="Rent listed"
+              on={filters.priced}
+              onClick={() => setFilters((f) => ({ ...f, priced: !f.priced }))}
+            />
           </div>
-          <ul aria-label="What the family needs" className="flex flex-wrap gap-1.5 text-[13px]">
-            {claim.needs.pets != null && (
-              <NeedChip label="Pets" value={num(claim.needs.pets)} />
-            )}
-            {claim.needs.moveIn && <NeedChip label="Move-in" value={dateShort(claim.needs.moveIn)} />}
-            {claim.needs.pets == null && !claim.needs.moveIn && needsMissing.length === 0 && (
-              <NeedChip label="People" value={claim.needs.adults != null || claim.needs.children != null ? `${num(claim.needs.adults)} adult(s)` : "—"} />
-            )}
-            {needsMissing.length > 0 && (
-              <li
-                className="inline-flex h-7 items-center rounded-md border border-dashed px-2.5"
-                style={{ borderColor: "var(--amber-line)", color: "var(--amber-ink)" }}
-              >
-                {needsMissing.join(" · ")} not on claim
-              </li>
-            )}
-          </ul>
-          <ClaimBrief name={claim.name} brief={claim.brief} />
-          <button
-            type="button"
-            disabled={attachedPins.length === 0}
-            onClick={() => setSummaryOpen(true)}
-            title={attachedPins.length === 0 ? "Add at least one option to the claim first" : "Preview and email the options to the relocation specialist"}
-            className={cn(
-              "mt-0.5 inline-flex h-9 items-center justify-center gap-2 rounded-lg text-[13px] font-medium",
-              attachedPins.length === 0 ? "cursor-not-allowed border border-dashed border-line2 text-muted" : "bg-ink text-bg hover:brightness-110",
-            )}
-          >
-            <Send className="h-3.5 w-3.5" />
-            Send summary{attachedPins.length > 0 ? ` (${attachedPins.length} option${attachedPins.length === 1 ? "" : "s"})` : ""}
-          </button>
+
+          <StatusLegend
+            counts={statusCounts}
+            hidden={filters.hidden}
+            onToggle={(st) => setFilters((f) => ({ ...f, hidden: { ...f.hidden, [st]: !f.hidden[st] } }))}
+          />
         </div>
-      )}
 
-      <div className="flex items-baseline justify-between px-3 pb-1.5 pt-2.5">
-        <span className="text-[13px] text-muted">
-          {center ? `${visiblePins.length.toLocaleString("en-US")} within ${radius} mi` : "—"}
-        </span>
-        <span className="text-xs text-muted">green first, then nearest</span>
-      </div>
-
-      <ul aria-label="Results" className="nh-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">
-        {pinsLoading && visiblePins.length === 0 ? (
-          [...Array(6)].map((_, i) => <li key={i} className="nh-skeleton m-1 h-12" />)
-        ) : (
-          [...visiblePins]
-            .sort(
-              (a, b) =>
-                STATUS_ORDER.indexOf(asMapStatus(a.map_status)) - STATUS_ORDER.indexOf(asMapStatus(b.map_status)) ||
-                a.distance_miles - b.distance_miles,
-            )
-            .map((p) => {
-              const on = selectedId === p.monday_item_id;
-              const status = asMapStatus(p.map_status);
-              return (
-                <li key={p.monday_item_id}>
-                  <button
-                    type="button"
-                    onClick={() => onSelect(p.monday_item_id)}
-                    aria-pressed={on}
-                    className={cn(
-                      "flex w-full items-center gap-2.5 rounded-lg border px-2 py-2 text-left",
-                      on ? "border-line bg-surface-muted" : "border-transparent hover:bg-surface-muted",
-                    )}
-                  >
-                    <StatusDot status={status} />
-                    <span className="flex min-w-0 flex-1 flex-col leading-tight">
-                      <span className="truncate font-medium">{p.name}</span>
-                      <span className="truncate text-[13px] text-muted">
-                        {num(p.bedrooms)} bd · {num(p.bathrooms)} ba
-                        {p.pet_status?.trim().toLowerCase() === "yes" ? " · pets ok" : ""}
-                        {p.has_photos ? " · photos" : ""}
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 flex-col items-end leading-tight">
-                      <span className="font-mono text-[13px] font-semibold">{p.monthly_rate == null ? "no rent" : money(p.monthly_rate)}</span>
-                      <span className="text-xs text-muted">{p.distance_miles.toFixed(1)} mi</span>
-                    </span>
-                  </button>
+        {claim && (
+          <div className="flex flex-col gap-2 border-b border-line p-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="nh-eyebrow">The family needs</span>
+              <a
+                href={`https://novahavens.monday.com/boards/9030696652/pulses/${claim.id}`}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-xs no-underline"
+              >
+                Edit on Monday →
+              </a>
+            </div>
+            <ul aria-label="What the family needs" className="flex flex-wrap gap-1.5 text-[13px]">
+              {claim.needs.pets != null && (
+                <NeedChip label="Pets" value={num(claim.needs.pets)} />
+              )}
+              {claim.needs.moveIn && <NeedChip label="Move-in" value={dateShort(claim.needs.moveIn)} />}
+              {claim.needs.pets == null && !claim.needs.moveIn && needsMissing.length === 0 && (
+                <NeedChip label="People" value={claim.needs.adults != null || claim.needs.children != null ? `${num(claim.needs.adults)} adult(s)` : "—"} />
+              )}
+              {needsMissing.length > 0 && (
+                <li
+                  className="inline-flex h-7 items-center rounded-md border border-dashed px-2.5"
+                  style={{ borderColor: "var(--amber-line)", color: "var(--amber-ink)" }}
+                >
+                  {needsMissing.join(" · ")} not on claim
                 </li>
-              );
-            })
+              )}
+            </ul>
+            <ClaimBrief name={claim.name} brief={claim.brief} />
+            <button
+              type="button"
+              disabled={attachedPins.length === 0}
+              onClick={() => setSummaryOpen(true)}
+              title={attachedPins.length === 0 ? "Add at least one option to the claim first" : "Preview and email the options to the relocation specialist"}
+              className={cn(
+                "mt-0.5 inline-flex h-9 items-center justify-center gap-2 rounded-lg text-[13px] font-medium",
+                attachedPins.length === 0 ? "cursor-not-allowed border border-dashed border-line2 text-muted" : "bg-ink text-bg hover:brightness-110",
+              )}
+            >
+              <Send className="h-3.5 w-3.5" />
+              Send summary{attachedPins.length > 0 ? ` (${attachedPins.length} option${attachedPins.length === 1 ? "" : "s"})` : ""}
+            </button>
+          </div>
         )}
-      </ul>
 
-      {coverage && coverage.unmapped > 0 && (
-        <div className="flex flex-col gap-1 border-t border-line px-3 py-2.5 text-xs text-muted">
-          <span>{coverage.unmapped.toLocaleString("en-US")} properties have no coordinates and cannot appear on any map yet.</span>
-          <a
-            href="https://novahavens.monday.com/boards/18415735059"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="font-medium no-underline"
-          >
-            What&apos;s being done about it →
-          </a>
+      </div>
+
+      <div className="flex min-h-0 flex-col">
+        <div className="flex items-baseline justify-between px-3 pb-1.5 pt-2.5">
+          <span className="text-[13px] text-muted">
+            {center ? `${visiblePins.length.toLocaleString("en-US")} within ${radius} mi` : "—"}
+          </span>
+          <span className="text-xs text-muted">green first, then nearest</span>
         </div>
-      )}
-    </>
+
+        <ul aria-label="Results" className="nh-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">
+          {pinsLoading && visiblePins.length === 0 ? (
+            [...Array(6)].map((_, i) => <li key={i} className="nh-skeleton m-1 h-12" />)
+          ) : (
+            [...visiblePins]
+              .sort(
+                (a, b) =>
+                  STATUS_ORDER.indexOf(asMapStatus(a.map_status)) - STATUS_ORDER.indexOf(asMapStatus(b.map_status)) ||
+                  a.distance_miles - b.distance_miles,
+              )
+              .map((p) => {
+                const on = selectedId === p.monday_item_id;
+                const status = asMapStatus(p.map_status);
+                const chips = propertyChips(p, claimId);
+                return (
+                  <li key={p.monday_item_id}>
+                    <button
+                      type="button"
+                      data-pin-row={p.monday_item_id}
+                      onClick={() => onSelect(p.monday_item_id)}
+                      onMouseEnter={() => setHover({ id: p.monday_item_id, from: "list" })}
+                      onMouseLeave={() => setHover(null)}
+                      onFocus={() => setHover({ id: p.monday_item_id, from: "list" })}
+                      onBlur={() => setHover(null)}
+                      aria-pressed={on}
+                      className={cn(
+                        "flex w-full flex-col gap-1 rounded-lg border px-2 py-2 text-left",
+                        on ? "border-line bg-surface-muted" : "border-transparent hover:bg-surface-muted",
+                        hoveredId === p.monday_item_id && "nh-row--hover",
+                      )}
+                    >
+                      <span className="flex w-full items-center gap-2.5">
+                        <StatusDot status={status} />
+                        <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                          <span className="truncate font-medium">{p.name}</span>
+                          <span className="truncate text-[13px] text-muted">
+                            {num(p.bedrooms)} bd · {num(p.bathrooms)} ba
+                            {p.pet_status?.trim().toLowerCase() === "yes" ? " · pets ok" : ""}
+                            {p.has_photos ? " · photos" : ""}
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 flex-col items-end leading-tight">
+                          <span className="font-mono text-[13px] font-semibold">{p.monthly_rate == null ? "no rent" : money(p.monthly_rate)}</span>
+                          <span className="text-xs text-muted">{p.distance_miles.toFixed(1)} mi</span>
+                        </span>
+                      </span>
+                      <StatusChips chips={chips} className="w-full pl-[19px]" />
+                    </button>
+                  </li>
+                );
+              })
+          )}
+          {coverage && coverage.unmapped > 0 && (
+            <li className="mt-1 flex flex-col gap-1 border-t border-line px-1 py-2.5 text-xs text-muted">
+              <span>{coverage.unmapped.toLocaleString("en-US")} properties have no coordinates and cannot appear on any map yet.</span>
+              <a
+                href="https://novahavens.monday.com/boards/18415735059"
+                target="_blank"
+                rel="noreferrer noopener"
+                className="font-medium no-underline"
+              >
+                What&apos;s being done about it →
+              </a>
+            </li>
+          )}
+        </ul>
+      </div>
+    </div>
   ) : null;
 
   return (
@@ -522,8 +560,10 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
               attachedPins={attachedPins}
               attachedIds={attachedIds}
               selectedId={selectedId}
+              hoveredId={hoveredId}
               filters={filters}
               onSelect={onSelect}
+              onHover={onMapHover}
               onError={setMapError}
             />
           ) : (
@@ -590,8 +630,8 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
 
           {/* Legend */}
           {center && (
-            <div className="pointer-events-none absolute bottom-3 left-3 z-10">
-              <div className="pointer-events-auto flex h-8 items-center gap-3 rounded-lg border border-line bg-surface px-3 text-xs text-muted">
+            <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[calc(100%-24px)]">
+              <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs text-muted">
                 {pinsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 <LegendItem color="var(--loss)" label="Loss" />
                 {STATUS_ORDER.map((st) => (
@@ -600,7 +640,8 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
                     <span>{STATUS_LABEL[st]}</span>
                   </span>
                 ))}
-                <LegendItem color="var(--ink)" label={`On this claim (${attachedPins.length})`} />
+                <OnClaimKey label={`On this claim (${attachedPins.length})`} />
+                <GroupedKey />
               </div>
             </div>
           )}
@@ -613,6 +654,9 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
                 <PropertyPanel
                   key={`${claim?.id ?? "none"}:${selectedId}`}
                   claimName={claim?.name ?? null}
+                  accountManager={claim?.brief?.accountManager ?? null}
+                  pin={selectedPin}
+                  onFlagged={handleFlagged}
                   propertyId={selectedId}
                   distanceMiles={selectedPin?.distance_miles ?? null}
                   needs={claim?.needs ?? null}
@@ -632,6 +676,9 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
             <PropertyPanel
               key={`${claim?.id ?? "none"}:${selectedId}`}
               claimName={claim?.name ?? null}
+              accountManager={claim?.brief?.accountManager ?? null}
+              pin={selectedPin}
+              onFlagged={handleFlagged}
               propertyId={selectedId}
               distanceMiles={selectedPin?.distance_miles ?? null}
               needs={claim?.needs ?? null}

@@ -26,6 +26,7 @@
   --bad-bg: #fde8e8;
   --bad-ink: #b00020;
   --bad-line: #f5b5b5;
+  --info-ink: #0761d1;
 
   /* semantic — identical in both themes */
   --loss: #f5a623;
@@ -57,6 +58,7 @@
   --bad-bg: #2a0606;
   --bad-ink: #ff6166;
   --bad-line: #4a0b0b;
+  --info-ink: #4da3ff;
 
   color-scheme: dark;
 }
@@ -82,6 +84,7 @@
   --color-bad-bg: var(--bad-bg);
   --color-bad-ink: var(--bad-ink);
   --color-bad-line: var(--bad-line);
+  --color-info-ink: var(--info-ink);
 
   --color-loss: var(--loss);
   --color-database: var(--database);
@@ -262,6 +265,15 @@ a:focus-visible,
   font-weight: 500;
 }
 
+/* Hover from the list highlights the pin (and the other way round): a ring in the ink colour, a lift, above its neighbours. */
+.nh-pin--hover {
+  transform: scale(1.25);
+}
+.nh-pin--hover .nh-pin__chip {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
 .nh-cluster {
   display: inline-flex;
   height: 30px;
@@ -330,6 +342,55 @@ a:focus-visible,
   50% {
     opacity: 0.45;
   }
+}
+
+/* Compact state chips under list rows and in the panel header (lib/status.ts decides label and tone). */
+.nh-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+.nh-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nh-chip--ok {
+  color: var(--ok-ink);
+}
+.nh-chip--info {
+  color: var(--info-ink);
+}
+.nh-chip--muted {
+  color: var(--muted);
+}
+.nh-chip--bad {
+  color: var(--bad-ink);
+}
+.nh-chip--amber {
+  color: var(--amber-ink);
+  background: var(--amber-bg);
+  border-color: var(--amber-line);
+}
+.nh-chip--outline {
+  border-color: var(--bad-line);
+}
+.nh-chip--strike > span {
+  text-decoration: line-through;
+}
+
+/* The row the pointer is on, on the map */
+.nh-row--hover {
+  background: var(--surface-muted);
+  border-color: var(--line2) !important;
 }
 
 /* Thin scrollbars in rails and panels */

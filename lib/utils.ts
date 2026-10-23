@@ -23,6 +23,14 @@ export function dateShort(iso: string | null | undefined): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+/** "2026-11-02" -> "2 Nov". */
+export function dayMonth(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso.length === 10 ? `${iso}T00:00:00` : iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
 export function miles(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(Number(n))) return "—";
   const v = Number(n);
