@@ -58,7 +58,7 @@ export function ReportBadLink({ propertyId, onReported }: { propertyId: string; 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const json = (await res.json().catch(() => null)) as (FlagLinkResponse & { noted?: boolean }) | ApiError | null;
+      const json = (await res.json().catch(() => null)) as FlagLinkResponse | ApiError | null;
       if (res.status === 409) return onReported("already");
       if (!res.ok || !json || !("ok" in json)) throw new Error(errorCopy(res.status, json as ApiError | null));
       try {

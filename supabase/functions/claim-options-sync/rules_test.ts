@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { ACTIVE_GROUPS, ACTIVE_STATUSES, isActiveGroup, isActiveStatus, replaceGuard, toOptions, type RawClaim } from "./rules.ts";
+import { ACTIVE_GROUPS, ACTIVE_STATUSES, isActiveGroup, isActiveStatus, replaceGuard, shouldThrottle, toOptions, type RawClaim } from "./rules.ts";
 
 Deno.test("active groups are exactly the nine in the contract", () => {
   assertEquals(Object.keys(ACTIVE_GROUPS).sort(), [
@@ -71,8 +71,50 @@ Deno.test("a sub-item seen twice (page overlap) produces one row", () => {
   assertEquals(toOptions([claim("c1", "topics", [s]), claim("c1", "topics", [s])]).length, 1);
 });
 
-Deno.test("replace guard: zero claims never replaces, any claims does", () => {
-  assertEquals(replaceGuard(0).replace, false);
-  assertEquals(replaceGuard(1), { replace: true });
-  assertEquals(replaceGuard(330), { replace: true });
+const ALL = Object.keys(ACTIVE_GROUPS);
+
+Deno.test("replace guard: zero claims never replaces", () => {
+  assertEquals(replaceGuard(0, null, ALL).replace, false);
+  assertEquals(replaceGuard(0, 330, ALL).replace, false);
+});
+
+Deno.test("replace guard: a normal read replaces, with or without history", () => {
+  assertEquals(replaceGuard(330, null, ALL), { replace: true });
+  assertEquals(replaceGuard(330, 340, ALL), { replace: true });
+  assertEquals(replaceGuard(1, 0, ALL), { replace: true });
+});
+
+Deno.test("replace guard: under half of the last good run is a partial read", () => {
+  assertEquals(replaceGuard(165, 330, ALL), { replace: true });
+  const r = replaceGuard(164, 330, ALL);
+  assertEquals(r.replace, false);
+});
+
+Deno.test("replace guard: any missing active group refuses, and names it", () => {
+  const r = replaceGuard(330, 330, ALL.filter((g) => g !== "topics"));
+  assertEquals(r.replace, false);
+  assertEquals(r.replace === false && r.reason.includes("topics"), true);
+  assertEquals(replaceGuard(330, 330, []).replace, false);
+  assertEquals(replaceGuard(330, null, [...ALL, "group_mkygh9qd"]), { replace: true });
+});
+
+const NOW = Date.parse("2026-10-23T12:00:00Z");
+const ago = (ms: number) => new Date(NOW - ms).toISOString();
+
+Deno.test("throttle: a run started within 20 s skips, in flight or finished", () => {
+  assertEquals(shouldThrottle({ started_at: ago(5_000), finished_at: null, error: null }, NOW), true);
+  assertEquals(shouldThrottle({ started_at: ago(19_000), finished_at: ago(1_000), error: null }, NOW), true);
+  assertEquals(shouldThrottle({ started_at: ago(5_000), finished_at: ago(1_000), error: "boom" }, NOW), true);
+});
+
+Deno.test("throttle: a run still unfinished after 20 s counts as in flight until 90 s", () => {
+  assertEquals(shouldThrottle({ started_at: ago(30_000), finished_at: null, error: null }, NOW), true);
+  assertEquals(shouldThrottle({ started_at: ago(91_000), finished_at: null, error: null }, NOW), false);
+});
+
+Deno.test("throttle: finished, failed or missing history does not block a webhook run", () => {
+  assertEquals(shouldThrottle({ started_at: ago(30_000), finished_at: ago(20_000), error: null }, NOW), false);
+  assertEquals(shouldThrottle({ started_at: ago(30_000), finished_at: null, error: "boom" }, NOW), false);
+  assertEquals(shouldThrottle({ started_at: null, finished_at: null, error: null }, NOW), false);
+  assertEquals(shouldThrottle(null, NOW), false);
 });

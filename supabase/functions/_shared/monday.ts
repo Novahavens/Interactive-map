@@ -10,9 +10,9 @@ export async function monday<T>(query: string, variables: Record<string, unknown
     headers: { "Content-Type": "application/json", Authorization: token, "API-Version": "2024-10" },
     body: JSON.stringify({ query, variables }),
   });
-  const body = await response.json();
-  // monday returns 200 with an errors array. Never trust the status alone.
-  if (!response.ok || (Array.isArray(body?.errors) && body.errors.length)) {
+  const body = await response.json().catch(() => ({}));
+  // monday returns 200 with an errors array. Never trust the status alone, and a body without data is a failure.
+  if (!response.ok || !body?.data || (Array.isArray(body.errors) && body.errors.length)) {
     throw new Error(body?.errors?.[0]?.message ?? `monday.com returned ${response.status}`);
   }
   return body.data as T;

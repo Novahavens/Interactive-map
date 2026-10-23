@@ -20,3 +20,15 @@ export function supabase(): SupabaseClient {
   });
   return client;
 }
+
+/** RPC results come back as one row or an array of rows depending on the function. */
+export function first<T>(data: unknown): T | undefined {
+  return ((Array.isArray(data) ? data[0] : data) ?? undefined) as T | undefined;
+}
+
+/** Runs RPCs in parallel and returns their data in order; throws the first Supabase error. */
+export async function rpcAll(calls: [fn: string, args?: Record<string, unknown>][]): Promise<unknown[]> {
+  const results = await Promise.all(calls.map(([fn, args]) => supabase().rpc(fn, args)));
+  for (const r of results) if (r.error) throw r.error;
+  return results.map((r) => r.data);
+}

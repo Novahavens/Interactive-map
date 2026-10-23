@@ -81,8 +81,34 @@ export function toOptions(claims: RawClaim[]): OptionRow[] {
   return [...out.values()];
 }
 
-/** A Monday outage, a renamed group or a bad token must never wipe the mirror. Zero claims is never
- *  a real answer (the board always has claims in these groups). */
-export function replaceGuard(claims: number): { replace: true } | { replace: false; reason: string } {
-  return claims > 0 ? { replace: true } : { replace: false, reason: "Monday returned 0 claims; keeping the existing rows" };
+/** Below this share of the last successful run's claims, a read is treated as partial (a failed page, a token that lost access). */
+export const MIN_SHARE_OF_LAST = 0.5;
+
+/** A Monday outage, a renamed group, a bad token or a half-read board must never wipe the mirror.
+ *  Refuses when: no claims came back; fewer than half of the last good run's claims came back; or the
+ *  response lacks any of the nine active groups (a group that exists but is empty is still returned). */
+export function replaceGuard(
+  claims: number,
+  lastClaims: number | null,
+  groupIds: readonly string[],
+): { replace: true } | { replace: false; reason: string } {
+  if (claims <= 0) return { replace: false, reason: "Monday returned 0 claims; keeping the existing rows" };
+  const missing = Object.keys(ACTIVE_GROUPS).filter((g) => !groupIds.includes(g));
+  if (missing.length) return { replace: false, reason: `Monday response lacks group(s) ${missing.join(", ")}; keeping the existing rows` };
+  if (lastClaims && claims < lastClaims * MIN_SHARE_OF_LAST) {
+    return { replace: false, reason: `Monday returned ${claims} claims, under half of the last run's ${lastClaims}; keeping the existing rows` };
+  }
+  return { replace: true };
+}
+
+export const THROTTLE_MS = 20_000;
+/** A run that started but never finished and is younger than this still counts as in flight. */
+export const IN_FLIGHT_MS = 90_000;
+
+/** Webhook runs are only a hint: skip when the newest run started within 20 s, or is still running. */
+export function shouldThrottle(last: { started_at: string | null; finished_at: string | null; error: string | null } | null, now: number): boolean {
+  if (!last?.started_at) return false;
+  const age = now - new Date(last.started_at).getTime();
+  if (age < THROTTLE_MS) return true;
+  return last.finished_at === null && last.error === null && age < IN_FLIGHT_MS;
 }

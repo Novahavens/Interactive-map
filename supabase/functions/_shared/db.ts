@@ -1,9 +1,9 @@
 // Supabase side of the sync: the one place the edge functions write to the mirror.
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { LANDLORD_COLUMNS, landlordIdsOf, toLandlord, toRow, type LandlordInfo, type MondayItem } from "./mapping.ts";
 import { monday } from "./monday.ts";
 
-let client: ReturnType<typeof createClient> | undefined;
+let client: SupabaseClient | undefined;
 
 export function supabase() {
   client ??= createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
