@@ -28,14 +28,14 @@ export async function GET(req: NextRequest) {
   try {
     const sb = supabase();
     const [pinsRes, covRes] = await Promise.all([
-      sb.rpc("properties_within_radius_v3", { p_lat: lat, p_lng: lng, p_miles: miles }),
+      sb.rpc("properties_within_radius_v4", { p_lat: lat, p_lng: lng, p_miles: miles }),
       sb.rpc("database_coverage"),
     ]);
     if (pinsRes.error) throw pinsRes.error;
     if (covRes.error) throw covRes.error;
 
     // The database always answers with one of three colours; anything else becomes neutral here too.
-    const pins = ((pinsRes.data ?? []) as Pin[]).map((p) => ({ ...p, map_status: asMapStatus(p.map_status) }));
+    const pins = ((pinsRes.data ?? []) as Pin[]).map((p) => ({ ...p, map_status: asMapStatus(p.map_status), other_claims: p.other_claims ?? [] }));
     const covRow = Array.isArray(covRes.data) ? covRes.data[0] : covRes.data;
     const coverage: Coverage = {
       // Database-wide: the chip says "% of database mappable", so it must not count only the search circle.
