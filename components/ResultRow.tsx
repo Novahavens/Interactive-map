@@ -36,7 +36,7 @@ export default memo(function ResultRow({ pin, selected, hovered, claimId, onSele
         onBlur={() => onHover(null)}
         aria-pressed={selected}
         className={cn(
-          "flex w-full flex-col gap-1 rounded-lg border px-2 py-2 text-left",
+          "flex min-h-[44px] w-full flex-col gap-1 rounded-lg border px-2 py-2 text-left",
           selected ? "border-line bg-surface-muted" : "border-transparent hover:bg-surface-muted",
           hovered && "nh-row--hover",
         )}
@@ -44,8 +44,8 @@ export default memo(function ResultRow({ pin, selected, hovered, claimId, onSele
         <span className="flex w-full items-center gap-2.5">
           <StatusDot status={asMapStatus(pin.map_status)} />
           <span className="flex min-w-0 flex-1 flex-col leading-tight">
-            <span className="truncate font-medium">{pin.name}</span>
-            <span className="truncate text-[13px] text-muted">
+            <span className="break-words font-medium max-lg:line-clamp-2 lg:truncate">{pin.name}</span>
+            <span className="text-[13px] text-muted max-lg:line-clamp-2 lg:truncate">
               {num(pin.bedrooms)} bd · {num(pin.bathrooms)} ba
               {petsAllowed(pin.pet_status) ? " · pets ok" : ""}
               {pin.has_photos ? " · photos" : ""}

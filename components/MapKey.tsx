@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { StatusDot } from "./StatusDot";
 
 type Props =
-  | { variant: "rail"; counts: Record<MapStatus, number>; hidden: Record<MapStatus, boolean>; onToggle: (s: MapStatus) => void }
+  | { variant: "rail"; counts: Record<MapStatus, number>; hidden: Record<MapStatus, boolean>; onToggle: (s: MapStatus) => void; touch?: boolean }
   | { variant: "floating"; attachedCount: number; loading: boolean };
 
 /**
@@ -15,7 +15,7 @@ type Props =
  */
 export default function MapKey(props: Props) {
   if (props.variant === "rail") {
-    const { counts, hidden, onToggle } = props;
+    const { counts, hidden, onToggle, touch } = props;
     return (
       <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Dot colours">
         {STATUS_ORDER.map((s) => {
@@ -28,7 +28,8 @@ export default function MapKey(props: Props) {
               title={`${STATUS[s].help}. Click to ${on ? "hide" : "show"}.`}
               onClick={() => onToggle(s)}
               className={cn(
-                "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[13px]",
+                "inline-flex items-center gap-1.5 rounded-full border px-2.5 text-[13px]",
+                touch ? "min-h-[44px] px-3" : "h-7",
                 on ? "border-line2 bg-surface text-ink" : "border-line bg-surface-muted text-muted line-through",
               )}
             >

@@ -6,8 +6,6 @@ import {
   RefreshCw,
   Sun,
   Moon,
-  ListFilter,
-  X,
   PawPrint,
   Images,
   DollarSign,
@@ -22,7 +20,8 @@ import SummarySheet from "./SummarySheet";
 import { useTheme } from "@/lib/useTheme";
 import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse } from "@/lib/types";
 import { STATUS_ORDER, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
-import ClaimBrief from "./ClaimBrief";
+import ClaimBrief, { claimGlance } from "./ClaimBrief";
+import ResultsSheet, { type SheetSnap } from "./ResultsSheet";
 import MapKey from "./MapKey";
 import ResultRow, { type HoverSource } from "./ResultRow";
 import { cn, MONDAY_BOARDS, mondayItemUrl } from "@/lib/utils";
@@ -75,7 +74,8 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   const railRef = useRef<HTMLElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const [mapError, setMapError] = useState<string | null>(null);
-  const [railSheetOpen, setRailSheetOpen] = useState(false);
+  const [sheetSnap, setSheetSnap] = useState<SheetSnap>("collapsed");
+  const [sheetHeaderOpen, setSheetHeaderOpen] = useState(false);
 
   // Attached options: what the claim already carries, plus anything added this session.
   const [attachedPins, setAttachedPins] = useState<AttachedPin[]>([]);
@@ -204,7 +204,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
 
   const onSelect = useCallback((id: string) => {
     setSelectedId(id);
-    setRailSheetOpen(false);
+    setSheetSnap("collapsed");
   }, []);
 
   // Pointing at a pin on the map brings its row into view in whichever results list is showing.
@@ -250,154 +250,170 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     return missing;
   }, [claim]);
 
-  // Two rows: the controls take what they need but shrink and scroll when the column is short, and the results
+  // The pieces of the results column. Desktop lays them out as the docked rail; phones put the same pieces in <ResultsSheet>.
+  // `touch` only makes the tappable controls 44px tall (phones); nothing else differs.
+  const searchBlock = (
+    <SearchBox
+      apiKey={apiKey}
+      placeholder="Loss address"
+      badge={center?.source === "claim" ? "from claim" : undefined}
+      value={center?.source === "claim" ? center.address : undefined}
+      onPick={(loc) => {
+        setSelectedId(null);
+        setCenter({ ...loc, source: "search" });
+      }}
+      onClear={() => {
+        if (claim?.loss) setCenter({ lat: claim.loss.lat, lng: claim.loss.lng, address: claim.loss.address, source: "claim" });
+        else setCenter(null);
+      }}
+    />
+  );
+  const controlsBlock = (touch: boolean) => (
+    <div className="flex flex-col gap-2.5 border-b border-line p-3">
+      {searchBlock}
+
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[13px] text-muted">Radius</span>
+        <div role="radiogroup" aria-label="Search radius" className="inline-flex gap-0 rounded-[7px] border border-line bg-surface-muted p-0.5">
+          {RADII.map((r) => (
+            <button
+              key={r}
+              type="button"
+              role="radio"
+              aria-checked={radius === r}
+              onClick={() => setRadius(r)}
+              className={cn(
+                "whitespace-nowrap rounded-[5px] px-1.5 text-[12px] font-medium",
+                touch ? "h-[44px] min-w-[44px] px-2.5 text-[13px]" : "h-7",
+                radius === r ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.12)]" : "text-muted",
+              )}
+            >
+              {r} mi
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5" aria-label="Filters">
+        <FilterPill
+          touch={touch}
+          icon={<PawPrint className="h-3 w-3" />}
+          label="Pets allowed"
+          on={filters.pets}
+          onClick={() => setFilters((f) => ({ ...f, pets: !f.pets }))}
+        />
+        <FilterPill
+          touch={touch}
+          icon={<Images className="h-3 w-3" />}
+          label="Has photos"
+          on={filters.photos}
+          onClick={() => setFilters((f) => ({ ...f, photos: !f.photos }))}
+        />
+        <FilterPill
+          touch={touch}
+          icon={<DollarSign className="h-3 w-3" />}
+          label="Rent listed"
+          on={filters.priced}
+          onClick={() => setFilters((f) => ({ ...f, priced: !f.priced }))}
+        />
+      </div>
+
+      <MapKey
+        variant="rail"
+        touch={touch}
+        counts={statusCounts}
+        hidden={filters.hidden}
+        onToggle={(st) => setFilters((f) => ({ ...f, hidden: { ...f.hidden, [st]: !f.hidden[st] } }))}
+      />
+    </div>
+  );
+  const needsBlock = (touch: boolean) =>
+    claim && (
+      <div className="flex flex-col gap-2 border-b border-line p-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="nh-eyebrow">The family needs</span>
+          <a
+            href={mondayItemUrl(MONDAY_BOARDS.claim, claim.id)}
+            target="_blank"
+            rel="noreferrer noopener"
+            className={cn("text-xs no-underline", touch && "inline-flex min-h-[44px] items-center")}
+          >
+            Edit on Monday →
+          </a>
+        </div>
+        {needsMissing.length > 0 && (
+          <p
+            className="inline-flex h-7 w-fit items-center rounded-md border border-dashed px-2.5 text-[13px]"
+            style={{ borderColor: "var(--amber-line)", color: "var(--amber-ink)" }}
+          >
+            {needsMissing.join(" · ")} not on claim
+          </p>
+        )}
+        <ClaimBrief name={claim.name} brief={claim.brief} hideGlance={touch} />
+        <button
+          type="button"
+          disabled={attachedPins.length === 0}
+          onClick={() => setSummaryOpen(true)}
+          title={attachedPins.length === 0 ? "Add at least one option to the claim first" : "Preview and email the options to the relocation specialist"}
+          className={cn(
+            "mt-0.5 inline-flex items-center justify-center gap-2 rounded-lg text-[13px] font-medium",
+            touch ? "h-[44px]" : "h-9",
+            attachedPins.length === 0 ? "cursor-not-allowed border border-dashed border-line2 text-muted" : "bg-ink text-bg hover:brightness-110",
+          )}
+        >
+          <Send className="h-3.5 w-3.5" />
+          Send summary{attachedPins.length > 0 ? ` (${attachedPins.length} option${attachedPins.length === 1 ? "" : "s"})` : ""}
+        </button>
+      </div>
+    );
+  const resultRows = (
+    <>
+      {pinsLoading && visiblePins.length === 0 ? (
+        [...Array(6)].map((_, i) => <li key={i} className="nh-skeleton m-1 h-12" />)
+      ) : (
+        sortedPins.map((p) => (
+          <ResultRow
+            key={p.monday_item_id}
+            pin={p}
+            selected={selectedId === p.monday_item_id}
+            hovered={hoveredId === p.monday_item_id}
+            claimId={claimId}
+            onSelect={onSelect}
+            onHover={onHover}
+          />
+        ))
+      )}
+      {coverage && coverage.unmapped > 0 && (
+        <li className="mt-1 flex flex-col gap-1 border-t border-line px-1 py-2.5 text-xs text-muted">
+          <span>{coverage.unmapped.toLocaleString("en-US")} properties have no coordinates and cannot appear on any map yet.</span>
+          <a href={mondayItemUrl(MONDAY_BOARDS.property)} target="_blank" rel="noreferrer noopener" className="inline-flex min-h-[44px] items-center font-medium no-underline lg:min-h-0">
+            What&apos;s being done about it →
+          </a>
+        </li>
+      )}
+    </>
+  );
+  const countLabel = center ? `${visiblePins.length.toLocaleString("en-US")} within ${radius} mi` : "—";
+  const activeFilters = (filters.pets ? 1 : 0) + (filters.photos ? 1 : 0) + (filters.priced ? 1 : 0) + STATUS_ORDER.filter((s) => filters.hidden[s]).length;
+  const compactSummary = [center?.address || "Loss address", `${radius} mi`, activeFilters ? `${activeFilters} filter${activeFilters === 1 ? "" : "s"}` : "no filters"].join(" · ");
+
+  // Desktop rail, two rows: the controls take what they need but shrink and scroll when the column is short, and the results
   // always keep at least 40% (12rem at the least). Without this the controls pushed the list down to a few pixels.
   const railContent = claim || center ? (
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,auto)_minmax(max(12rem,40%),1fr)]">
       <div className="nh-scroll min-h-0 overflow-y-auto">
-        <div className="flex flex-col gap-2.5 border-b border-line p-3">
-          <SearchBox
-            apiKey={apiKey}
-            placeholder="Loss address"
-            badge={center?.source === "claim" ? "from claim" : undefined}
-            value={center?.source === "claim" ? center.address : undefined}
-            onPick={(loc) => {
-              setSelectedId(null);
-              setCenter({ ...loc, source: "search" });
-            }}
-            onClear={() => {
-              if (claim?.loss) setCenter({ lat: claim.loss.lat, lng: claim.loss.lng, address: claim.loss.address, source: "claim" });
-              else setCenter(null);
-            }}
-          />
-
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[13px] text-muted">Radius</span>
-            <div role="radiogroup" aria-label="Search radius" className="inline-flex gap-0 rounded-[7px] border border-line bg-surface-muted p-0.5">
-              {RADII.map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  role="radio"
-                  aria-checked={radius === r}
-                  onClick={() => setRadius(r)}
-                  className={cn(
-                    "h-7 whitespace-nowrap rounded-[5px] px-1.5 text-[12px] font-medium",
-                    radius === r ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.12)]" : "text-muted",
-                  )}
-                >
-                  {r} mi
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-1.5" aria-label="Filters">
-            <FilterPill
-              icon={<PawPrint className="h-3 w-3" />}
-              label="Pets allowed"
-              on={filters.pets}
-              onClick={() => setFilters((f) => ({ ...f, pets: !f.pets }))}
-            />
-            <FilterPill
-              icon={<Images className="h-3 w-3" />}
-              label="Has photos"
-              on={filters.photos}
-              onClick={() => setFilters((f) => ({ ...f, photos: !f.photos }))}
-            />
-            <FilterPill
-              icon={<DollarSign className="h-3 w-3" />}
-              label="Rent listed"
-              on={filters.priced}
-              onClick={() => setFilters((f) => ({ ...f, priced: !f.priced }))}
-            />
-          </div>
-
-          <MapKey
-            variant="rail"
-            counts={statusCounts}
-            hidden={filters.hidden}
-            onToggle={(st) => setFilters((f) => ({ ...f, hidden: { ...f.hidden, [st]: !f.hidden[st] } }))}
-          />
-        </div>
-
-        {claim && (
-          <div className="flex flex-col gap-2 border-b border-line p-3">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="nh-eyebrow">The family needs</span>
-              <a
-                href={mondayItemUrl(MONDAY_BOARDS.claim, claim.id)}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="text-xs no-underline"
-              >
-                Edit on Monday →
-              </a>
-            </div>
-            {needsMissing.length > 0 && (
-              <p
-                className="inline-flex h-7 w-fit items-center rounded-md border border-dashed px-2.5 text-[13px]"
-                style={{ borderColor: "var(--amber-line)", color: "var(--amber-ink)" }}
-              >
-                {needsMissing.join(" · ")} not on claim
-              </p>
-            )}
-            <ClaimBrief name={claim.name} brief={claim.brief} />
-            <button
-              type="button"
-              disabled={attachedPins.length === 0}
-              onClick={() => setSummaryOpen(true)}
-              title={attachedPins.length === 0 ? "Add at least one option to the claim first" : "Preview and email the options to the relocation specialist"}
-              className={cn(
-                "mt-0.5 inline-flex h-9 items-center justify-center gap-2 rounded-lg text-[13px] font-medium",
-                attachedPins.length === 0 ? "cursor-not-allowed border border-dashed border-line2 text-muted" : "bg-ink text-bg hover:brightness-110",
-              )}
-            >
-              <Send className="h-3.5 w-3.5" />
-              Send summary{attachedPins.length > 0 ? ` (${attachedPins.length} option${attachedPins.length === 1 ? "" : "s"})` : ""}
-            </button>
-          </div>
-        )}
-
+        {controlsBlock(false)}
+        {needsBlock(false)}
       </div>
 
       <div className="flex min-h-0 flex-col">
         <div className="flex items-baseline justify-between px-3 pb-1.5 pt-2.5">
-          <span className="text-[13px] text-muted">
-            {center ? `${visiblePins.length.toLocaleString("en-US")} within ${radius} mi` : "—"}
-          </span>
+          <span className="text-[13px] text-muted">{countLabel}</span>
           <span className="text-xs text-muted">green first, then nearest</span>
         </div>
 
         <ul aria-label="Results" className="nh-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">
-          {pinsLoading && visiblePins.length === 0 ? (
-            [...Array(6)].map((_, i) => <li key={i} className="nh-skeleton m-1 h-12" />)
-          ) : (
-            sortedPins.map((p) => (
-              <ResultRow
-                key={p.monday_item_id}
-                pin={p}
-                selected={selectedId === p.monday_item_id}
-                hovered={hoveredId === p.monday_item_id}
-                claimId={claimId}
-                onSelect={onSelect}
-                onHover={onHover}
-              />
-            ))
-          )}
-          {coverage && coverage.unmapped > 0 && (
-            <li className="mt-1 flex flex-col gap-1 border-t border-line px-1 py-2.5 text-xs text-muted">
-              <span>{coverage.unmapped.toLocaleString("en-US")} properties have no coordinates and cannot appear on any map yet.</span>
-              <a
-                href={mondayItemUrl(MONDAY_BOARDS.property)}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="font-medium no-underline"
-              >
-                What&apos;s being done about it →
-              </a>
-            </li>
-          )}
+          {resultRows}
         </ul>
       </div>
     </div>
@@ -566,20 +582,6 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
             </div>
           )}
 
-          {/* Compact / mobile: floating results toggle (rail hidden below lg) */}
-          {center && (
-            <div className="pointer-events-none absolute left-3 top-3 z-10 lg:hidden">
-              <button
-                type="button"
-                onClick={() => setRailSheetOpen(true)}
-                className="pointer-events-auto inline-flex h-9 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-[13px] font-medium shadow-[0_2px_8px_rgba(0,0,0,0.12)]"
-              >
-                <ListFilter className="h-3.5 w-3.5" />
-                <span>{visiblePins.length.toLocaleString("en-US")} within {radius} mi</span>
-              </button>
-            </div>
-          )}
-
           {(claimError || pinsError) && center && (
             <div
               className="pointer-events-none absolute left-3 z-10 max-w-[calc(100%-24px)] lg:top-3"
@@ -597,7 +599,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
 
           {/* Legend */}
           {center && (
-            <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[calc(100%-24px)]">
+            <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[calc(100%-24px)] max-lg:bottom-[68px]">
               <MapKey variant="floating" attachedCount={attachedPins.length} loading={pinsLoading} />
             </div>
           )}
@@ -620,39 +622,41 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
           </div>
         )}
 
-        {/* ---------- Mobile rail sheet ---------- */}
-        {railSheetOpen && center && (
-          <div className="absolute inset-0 z-40 flex lg:hidden">
-            <div className="absolute inset-0" style={{ background: "var(--scrim)" }} onClick={() => setRailSheetOpen(false)} />
-            <div ref={sheetRef} className="relative mt-auto flex max-h-[80%] w-full flex-col rounded-t-xl border-t border-line bg-surface">
-              <div className="flex items-center justify-between border-b border-line px-3 py-2.5">
-                <span className="text-sm font-medium">Search and results</span>
-                <button
-                  type="button"
-                  onClick={() => setRailSheetOpen(false)}
-                  aria-label="Close"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="flex min-h-0 flex-1 flex-col">{railContent}</div>
-            </div>
-          </div>
+        {/* ---------- Mobile bottom sheet (below lg): peek / half / expanded ---------- */}
+        {center && (
+          <ResultsSheet
+            sheetRef={sheetRef}
+            snap={sheetSnap}
+            onSnap={setSheetSnap}
+            hidden={!!selectedId}
+            countLabel={countLabel}
+            glance={claim ? claimGlance(claim.brief).join(" · ") : ""}
+            headerOpen={sheetHeaderOpen}
+            onHeaderOpen={setSheetHeaderOpen}
+            compactSummary={compactSummary}
+            header={
+              <>
+                {controlsBlock(true)}
+                {needsBlock(true)}
+              </>
+            }
+            rows={resultRows}
+          />
         )}
       </div>
     </div>
   );
 }
 
-function FilterPill({ icon, label, on, onClick }: { icon: React.ReactNode; label: string; on: boolean; onClick: () => void }) {
+function FilterPill({ icon, label, on, onClick, touch }: { icon: React.ReactNode; label: string; on: boolean; onClick: () => void; touch?: boolean }) {
   return (
     <button
       type="button"
       aria-pressed={on}
       onClick={onClick}
       className={cn(
-        "inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px]",
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 text-[13px]",
+        touch ? "min-h-[44px] px-3" : "h-8",
         on ? "border border-ink bg-ink text-bg" : "border border-line bg-surface text-ink",
       )}
     >

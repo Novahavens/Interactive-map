@@ -98,8 +98,12 @@ const check = (name, ok, extra = "") => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function open(browser, { w, h, theme = "light", iframe = false, reporter = "Tester" }) {
-  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
+async function open(browser, { w, h, theme = "light", iframe = false, reporter = "Tester", touch = false }) {
+  const ctx = await browser.newContext(
+    touch
+      ? { viewport: { width: w, height: h }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 }
+      : { viewport: { width: w, height: h }, deviceScaleFactor: 1 },
+  );
   const state = { flag: { status: 200, body: null, calls: 0, noted: true }, adds: [] };
   await ctx.addInitScript(([t, name]) => {
     try {
@@ -412,6 +416,7 @@ for (const c of CASES) {
     const s = await open(browser, c);
     const { p, root } = s;
     await openList(s);
+    if (brief && s.phone) await root.getByRole("button", { name: "Search, radius and filters" }).first().click(); // the phone sheet folds the header
     if (brief) await root.locator("summary:visible", { hasText: "Claim information" }).first().click();
     await p.waitForTimeout(200);
     const ul = results(root);
@@ -469,6 +474,168 @@ for (const c of CASES) {
   await s.p.waitForTimeout(300);
   await s.p.screenshot({ path: `${OUT}/desktop-dark-hover.png` });
   await s.ctx.close();
+}
+
+// ===================================================================================================
+// Phone bottom sheet: snap points, list size, scroll isolation, touch targets (iPhone 390x844, small Android 360x780)
+// ===================================================================================================
+const SHOTS = process.env.SHOTS ?? "/tmp/claude-0/-home-user-Interactive-map/519172db-2710-58fd-844f-0ffa565c5e27/scratchpad/mobile-shots";
+fs.mkdirSync(SHOTS, { recursive: true });
+const text2 = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
+const SHEET = '[role="region"][aria-label="Search and results"]';
+async function cdpTouch(cdp, type, x, y) {
+  await cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
+}
+async function touchDrag(cdp, x, y0, y1, steps = 14) {
+  await cdpTouch(cdp, "touchStart", x, y0);
+  for (let i = 1; i <= steps; i++) {
+    await cdpTouch(cdp, "touchMove", x, y0 + ((y1 - y0) * i) / steps);
+    await sleep(14);
+  }
+  await cdpTouch(cdp, "touchEnd", x, y1);
+  await sleep(450); // snap transition
+}
+const sheetBox = (root) => root.locator(SHEET).boundingBox();
+async function metrics(root) {
+  const ul = results(root);
+  const lb = await ul.count() ? await ul.boundingBox() : null;
+  const sb = await sheetBox(root);
+  return { list: lb ? lb.height : 0, sheet: sb ? sb.height : 0 };
+}
+const bodyScroll = (p) => p.evaluate(() => ({ b: document.body.scrollTop, d: document.scrollingElement.scrollTop, w: document.scrollingElement.scrollWidth, iw: innerWidth }));
+
+for (const dev of [{ name: "iphone-390x844", w: 390, h: 844 }, { name: "android-360x780", w: 360, h: 780 }]) {
+  for (const theme of ["light", "dark"]) {
+    const L = `${dev.name} ${theme}`;
+    const s = await open(browser, { w: dev.w, h: dev.h, theme, touch: true });
+    const { p, root } = s;
+    const cdp = await s.ctx.newCDPSession(p);
+    const shot = (n) => p.screenshot({ path: `${SHOTS}/${dev.name}-${theme}-${n}.png` });
+
+    // collapsed peek bar
+    let m = await metrics(root);
+    check(`sheet [${L}]: starts collapsed as a ~56px peek bar showing the count`, Math.abs(m.sheet - 56) <= 1 && (await text2(root.locator(SHEET))).includes("within 10 mi"), `sheet ${m.sheet}`);
+    check(`sheet [${L}]: collapsed state has no results list in the way`, (await results(root).count()) === 0);
+    await shot("1-collapsed");
+
+    // tap the bar: half
+    await root.getByRole("button", { name: /within/ }).first().tap();
+    await sleep(450);
+    m = await metrics(root);
+    check(`sheet [${L}]: half = 50% of the viewport`, Math.abs(m.sheet - dev.h * 0.5) <= 2, `sheet ${m.sheet}`);
+    check(`sheet [${L}]: half state list height >= 40% of viewport`, m.list >= dev.h * 0.4, `list ${m.list} = ${((m.list / dev.h) * 100).toFixed(1)}%`);
+    const glance = await text2(root.locator('[data-testid="sheet-glance"]'));
+    check(`sheet [${L}]: family cheat-sheet stays on one line in the bar`, glance.includes("2 adults") && glance.includes("3 bd / 2 ba"), glance);
+    await shot("2-half");
+
+    // wheel scroll in half: the list moves, the page does not
+    const ul = results(root);
+    const wm = await wheelMoves(p, ul);
+    let bs = await bodyScroll(p);
+    check(`sheet [${L}]: wheel scrolls the list, not the page`, wm.moved && bs.b === 0 && bs.d === 0, `list ${wm.before}->${wm.after}, page ${JSON.stringify(bs)}`);
+    await ul.evaluate((e) => (e.scrollTop = 0));
+
+    // handle drag: up -> expanded
+    let sb = await sheetBox(root);
+    await touchDrag(cdp, 150, sb.y + 20, sb.y - 300);
+    m = await metrics(root);
+    check(`sheet [${L}]: dragging the handle up snaps to expanded (92% of 100dvh)`, Math.abs(m.sheet - dev.h * 0.92) <= 2, `sheet ${m.sheet}`);
+    check(`sheet [${L}]: expanded list height >= 60% of viewport`, m.list >= dev.h * 0.6, `list ${m.list} = ${((m.list / dev.h) * 100).toFixed(1)}%`);
+    await shot("3-expanded");
+
+    // real touch scroll inside the list while expanded: list scrolls, sheet and page stay put
+    const lb = await ul.boundingBox();
+    const before = await ul.evaluate((e) => e.scrollTop);
+    await touchDrag(cdp, 200, lb.y + lb.height - 40, lb.y + 60);
+    const after = await ul.evaluate((e) => e.scrollTop);
+    const m2 = await metrics(root);
+    bs = await bodyScroll(p);
+    check(`sheet [${L}]: touch swipe scrolls the list (sheet stays expanded, page does not move)`, after > before && Math.abs(m2.sheet - m.sheet) <= 1 && bs.b === 0 && bs.d === 0, `scrollTop ${before}->${after}, sheet ${m2.sheet}, page ${JSON.stringify(bs)}`);
+    // list scrolled away from the top: a downward swipe scrolls the list back up, it does not pull the sheet down
+    const mid = await ul.evaluate((e) => e.scrollTop);
+    await touchDrag(cdp, 200, lb.y + 80, lb.y + 200, 8);
+    const up = await ul.evaluate((e) => e.scrollTop);
+    const m3 = await metrics(root);
+    check(`sheet [${L}]: swipe down mid-list scrolls the list back, does not drag the sheet`, up < mid && Math.abs(m3.sheet - m.sheet) <= 1, `scrollTop ${mid}->${up}, sheet ${m3.sheet}`);
+    await ul.evaluate((e) => (e.scrollTop = 0));
+    // at the top, a downward swipe on the list takes the sheet down to half
+    await touchDrag(cdp, 200, lb.y + 60, lb.y + 420);
+    m = await metrics(root);
+    check(`sheet [${L}]: list at top, swipe down drags the sheet to half`, Math.abs(m.sheet - dev.h * 0.5) <= 2, `sheet ${m.sheet}`);
+    // swipe up on the list in half expands the sheet first
+    const lb2 = await ul.boundingBox();
+    await touchDrag(cdp, 200, lb2.y + lb2.height - 40, lb2.y - 200);
+    m = await metrics(root);
+    check(`sheet [${L}]: swipe up on the list in half expands the sheet`, Math.abs(m.sheet - dev.h * 0.92) <= 2, `sheet ${m.sheet}`);
+
+    // handle drag down twice: half, then collapsed
+    sb = await sheetBox(root);
+    await touchDrag(cdp, 150, sb.y + 20, sb.y + 360);
+    m = await metrics(root);
+    check(`sheet [${L}]: dragging the handle down from expanded snaps to half`, Math.abs(m.sheet - dev.h * 0.5) <= 2, `sheet ${m.sheet}`);
+    sb = await sheetBox(root);
+    await touchDrag(cdp, 150, sb.y + 20, sb.y + 600);
+    m = await metrics(root);
+    check(`sheet [${L}]: dragging the handle down from half snaps to collapsed`, Math.abs(m.sheet - 56) <= 1, `sheet ${m.sheet}`);
+    // tapping the bar after a drag still works (no stuck drag state); Chrome swallows a tap that lands within ~1s of a fling
+    await sleep(1300);
+    await root.getByRole("button", { name: /within/ }).first().tap();
+    await sleep(450);
+    check(`sheet [${L}]: tapping the bar after a drag reopens to half`, Math.abs((await metrics(root)).sheet - dev.h * 0.5) <= 2);
+
+    // header: collapsed by default, one tap in the compact row opens it; claim information starts closed
+    check(`sheet [${L}]: header (search, radius, filters, claim information) is folded by default`, (await root.locator('[data-testid="sheet-header"]').count()) === 0);
+    await root.getByRole("button", { name: "Search, radius and filters" }).first().tap();
+    await sleep(450);
+    m = await metrics(root);
+    check(`sheet [${L}]: opening the header from half expands the sheet and the list stays usable (>= 150px)`, Math.abs(m.sheet - dev.h * 0.92) <= 2 && m.list >= 150, `sheet ${m.sheet}, list ${m.list} = ${((m.list / dev.h) * 100).toFixed(1)}%`);
+    check(`sheet [${L}]: claim information is collapsed by default`, (await root.locator(`${SHEET} details`, { hasText: "Claim information" }).first().evaluate((e) => e.open)) === false);
+    await shot("4-expanded-header-open");
+
+    // touch targets: every interactive element inside the sheet, header open and closed
+    const audit = async (label) => {
+      const bad = await p.evaluate((sel) => {
+        const root = document.querySelector(sel);
+        const out = [];
+        for (const el of root.querySelectorAll("button, a[href], input, summary, [role=radio], [role=button]")) {
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;
+          if (r.height < 43.5 || r.width < 43.5) out.push(`${el.tagName.toLowerCase()}[${(el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 24)}] ${Math.round(r.width)}x${Math.round(r.height)}`);
+        }
+        return out;
+      }, SHEET);
+      check(`sheet [${L}]: every control has a >=44px target (${label})`, bad.length === 0, bad.slice(0, 6).join("; "));
+    };
+    await root.locator(`${SHEET} summary`, { hasText: "Claim information" }).first().tap();
+    await sleep(150);
+    await audit("expanded, header and claim information open");
+    await shot("5-expanded-claim-info-open");
+    await root.locator(`${SHEET} summary`, { hasText: "Claim information" }).first().tap();
+    await root.getByRole("button", { name: "Search, radius and filters" }).first().tap(); // fold the header
+    await sleep(300);
+    await audit("expanded, header folded");
+    await ul.evaluate((e) => (e.scrollTop = 0));
+    // rows are 44px+ and long names get two lines, not one clipped line
+    const rowH = await root.locator(`${SHEET} button[id^='row-']`).first().evaluate((e) => e.getBoundingClientRect().height);
+    check(`sheet [${L}]: result rows are >=44px tall`, rowH >= 44, `${rowH}`);
+
+    // no sideways overflow anywhere
+    const ov = await p.evaluate((sel) => {
+      const sh = document.querySelector(sel);
+      const wide = [...sh.querySelectorAll("*")].filter((e) => e.getBoundingClientRect().right > innerWidth + 0.5 && getComputedStyle(e).position !== "fixed").length;
+      return { sheet: sh.scrollWidth - sh.clientWidth, doc: document.scrollingElement.scrollWidth - innerWidth, wide };
+    }, SHEET);
+    check(`sheet [${L}]: no horizontal overflow in the sheet or the page`, ov.sheet <= 0 && ov.doc <= 0 && ov.wide === 0, JSON.stringify(ov));
+
+    // selecting a row hides the sheet behind the panel and the page still does not scroll
+    await root.locator(`[id="row-3003"]:visible`).first().tap();
+    await panel(root).getByRole("heading", { name: "Fixture 3003" }).waitFor();
+    check(`sheet [${L}]: opening a property hides the sheet; closing returns the peek bar`, (await root.locator(`${SHEET}:visible`).count()) === 0);
+    await panel(root).getByRole("button", { name: /close/i }).first().tap();
+    await sleep(300);
+    check(`sheet [${L}]: peek bar is back after the panel closes`, Math.abs((await metrics(root)).sheet - 56) <= 1);
+    await s.ctx.close();
+  }
 }
 
 await browser.close();
