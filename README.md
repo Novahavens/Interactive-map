@@ -67,10 +67,14 @@ Nova Havens places families displaced by insurance claims into temporary housing
 | ✉️ | **Send summary** to the relocation specialist: preview, copy, email, and a log on the Monday claim. | [#7](https://github.com/Novahavens/Interactive-map/pull/7) |
 | 🎨 | **shadcn/ui** added and themed through the existing design tokens, so new components match light and dark mode. | [#6](https://github.com/Novahavens/Interactive-map/pull/6) |
 | 📍 | **Coordinates for the rest of the database.** `property-locate` places Furnished Finder listings from their own pages, street-only and near-miss addresses through Geocodio, and new Monday items within about a minute. Area-level pins are drawn dashed with **≈** and labelled *approximate* in the panel and the summary. | [#10](https://github.com/Novahavens/Interactive-map/pull/10) |
-| 🚦 | **Green, yellow and red dots.** Every one of the 16,384 properties is exactly one colour, decided in one place (the database). Green is an owner we've placed a tenant with (read from claims), or Preferred / Approved on the owner board; red is do not use by group or by owner and always wins. Each colour has its own shape, there's a legend that also filters, and green is listed first. | this PR |
-| 📋 | **Claim information card** and an owner-status banner with the reason and notes at the top of the property panel. Tenant phone and email are deliberately left out: the map URL has no login. | this PR |
-| 🔔 | **Owner changes reach the map in seconds.** A webhook on the owner board re-reads every property an owner has, so changing someone to Preferred or DO NOT USE changes their dots straight away. | this PR |
-| 🛠️ | **Fixes:** new options now arrive as **To Do** (not *Ready to Submit*); the claim's bedroom and bathroom needs were read from each other's columns; "% of database mappable" counted only the search circle; red properties can't be added to a claim whether the group *or* the owner says do not use. | this PR |
+| 🚦 | **Green, yellow and red dots.** Every one of the 16,384 properties is exactly one colour, decided in one place (the database). Green is an owner we've placed a tenant with (read from claims), or Preferred / Approved on the owner board; red is do not use by group or by owner and always wins. Each colour has its own shape, there's a legend that also filters, and green is listed first. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
+| 📋 | **Claim information card** and an owner-status banner with the reason and notes at the top of the property panel. Tenant phone and email are deliberately left out: the map URL has no login. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
+| 🔔 | **Owner changes reach the map in seconds.** A webhook on the owner board re-reads every property an owner has, so changing someone to Preferred or DO NOT USE changes their dots straight away. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
+| 🟢 | **Live status on every property.** *Available now / soon / unverified / unavailable / listing removed* from the availability monitor, **"On claim …"** when the property is already an option on another active claim (with the status), **Last contact** date, and **Bad link**. Add to claim warns before adding a property that is an option elsewhere. | this PR |
+| 🔗 | **Report bad link** from the property panel: one click sets *ZZ.Status = BAD LINK* on the property, posts a note on it saying who reported it, and the map shows it straight away. Rate-limited and once per property per day. | this PR |
+| 🖱️ | **Hover a result, see its pin.** The pin grows and the map pans to it; hovering a pin highlights the row. The legend now explains the ⚫ check and the numbered clusters. The account manager shows on the claims list and the panel. | this PR |
+| 📱 | **Phone results sheet** with collapsed / half / expanded states: the list gets most of the screen, search and filters fold into one row, and the sheet and the list no longer fight over scrolling. The desktop rail no longer squeezes the list to a few pixels at short windows (Lou's scroll bug). | this PR |
+| 🛠️ | **Fixes:** new options now arrive as **To Do** (not *Ready to Submit*); the claim's bedroom and bathroom needs were read from each other's columns; "% of database mappable" counted only the search circle; red properties can't be added to a claim whether the group *or* the owner says do not use. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
 
 ---
 
@@ -93,12 +97,21 @@ Picking a claim fills the search box with its loss address, recentres the map, l
 
 1. **Pick a radius** — 5, 10 (default), 15, 20 or 30 mi.
 2. **Narrow down** with *Pets allowed*, *Has photos*, *Rent listed*.
-3. **Scan the list** (green first, then nearest) or the pins. Numbered circles are clusters — zoom in to split them. The three colour chips under the filters show how many of each are in view and hide or show them.
+3. **Scan the list** (green first, then nearest) or the pins. **Hover a row and its pin grows and the map pans to it**; hover a pin and the row lights up. Numbered circles are clusters — zoom in to split them. The three colour chips under the filters show how many of each are in view and hide or show them.
+   Each row also carries what's known right now:
+
+   | Chip | Means |
+   |---|---|
+   | **Available now / soon**, *Unverified*, **Unavailable**, ~~Listing removed~~ | The availability monitor's last answer for the listing |
+   | **On claim Smith — #1234 · Option Submitted** | Already an option on another active claim (on 2+ claims it says so). Add to claim asks "Add anyway?" |
+   | **Bad link** | The listing link is dead (reported from the map, or by the monitor) |
+   | Last contact Oct 5 | *Last Contact Date* on the property |
 4. **Tap a property** to open its panel:
-   - **Status banner** — the dot colour and *why* ("The owner is marked Preferred", "We have placed a tenant with this owner before", "In the DO NOT USE group"), plus the owner's approval note and the property's notes.
+   - **Status banner** — the dot colour and *why*, with the same chips as the list and an **Other claims** list ("The owner is marked Preferred", "We have placed a tenant with this owner before", "In the DO NOT USE group"), plus the owner's approval note and the property's notes.
    - **Fit against this claim** — family size, pets, FRV and move-in date, each ticked, flagged or marked unknown.
    - **Cost to place** — monthly rent, every deposit and fee, and the **move-in total** (recurring pet rent is shown but excluded).
    - **Property, contacts, notes & links** — beds, baths, sq ft, type, availability, owner and landlord, listing, photo folder, *Open in Monday*.
+   - **Report bad link** — next to the listing link. Type your name once (remembered on your device), optionally what's wrong, Send. The property gets *ZZ.Status = BAD LINK* and a note on Monday, the link is struck through on the map, and properties@ is told by the Monday automation on that status.
 
 | Dot | Meaning |
 |---|---|
@@ -107,12 +120,17 @@ Picking a claim fills the search box with its loss address, recentres the map, l
 | 🔴 **Do not use** (square) | The group or the owner is DO NOT USE. Shown for context, can't be added to a claim |
 | 🟠 **Loss** | The damaged-residence address |
 | ⚫ **On this claim** | Already attached to the selected claim |
+| 🔘 **7** | Several properties close together: zoom in to split them |
 
 The shapes are there so the three read apart without relying on red versus green.
 
 ![The map with green, yellow and red dots, the legend and filter chips, the claim information card and a green property's status banner](docs/screenshots/status-dots.jpg)
 
-**Claim information** (collapsible, under *The family needs*) shows the claim's status, company, dates, lease length, family, bedrooms and bathrooms needed, FRV, utility cap, pet description, notes and special requests, and the account manager, searcher and coordinator. It never shows the tenant's or owner's phone or email.
+![Property panel with Available now, Bad link and Last contact chips, the struck-through listing link after a report, and the account manager on the Adding to line](docs/screenshots/live-status.jpg)
+
+![Hovering a result highlights its pin on the map](docs/screenshots/hover-pin.jpg)
+
+**The family at a glance** sits above the list on every screen ("2 adults · 1 child · 1 pet · 3 bd / 2 ba · move-in Nov 2"), and the claims list and the panel show the claim's **account manager**. **Claim information** (collapsible, under *The family needs*) shows the claim's status, company, dates, lease length, family, bedrooms and bathrooms needed, FRV, utility cap, pet description, notes and special requests, and the account manager, searcher and coordinator. It never shows the tenant's or owner's phone or email.
 
 ### 3 · Add it to the claim
 
@@ -139,10 +157,12 @@ When the claim has at least one option, **Send summary (N options)** appears und
 
 ### On a phone
 
+The results live in a bottom sheet with three heights: a **peek bar** with the count and the family line, **half** (the map stays usable above it) and **expanded** (the list takes about 80% of the screen). Drag the handle or swipe the list at its top; search, radius and filters fold into one row with a chevron; Claim information stays closed until you open it.
+
 <p align="center">
   <img alt="Phone: map with radius and pins" src="docs/screenshots/mobile-map.jpg" width="31%">
   &nbsp;
-  <img alt="Phone: search and results sheet with Send summary" src="docs/screenshots/mobile-results.jpg" width="31%">
+  <img alt="Phone: results bottom sheet at half height with the family line and status chips" src="docs/screenshots/mobile-sheet.jpg" width="31%">
   &nbsp;
   <img alt="Phone, dark mode: active claims drawer" src="docs/screenshots/mobile-claims-dark.jpg" width="31%">
 </p>
@@ -267,9 +287,10 @@ sequenceDiagram
 | Route | Returns | Backed by |
 |---|---|---|
 | `GET /api/health` | `{ ok, dryRun }` | env |
-| `GET /api/properties?lat=&lng=&miles=` | `{ pins, coverage }`, every pin has a `map_status` | `properties_within_radius_v3`, `database_coverage` |
-| `GET /api/properties/[id]` | Full property record plus `map_status` and `map_reason` | `property_detail`, `property_map_status` |
-| `GET /api/claims/active?q=&includeTest=&fresh=` | `{ claims, count }` — cached 60 s per instance | Monday `items_page` / `next_items_page` per group |
+| `GET /api/properties?lat=&lng=&miles=` | `{ pins, coverage }`, every pin has `map_status`, `availability`, `link_status`, `last_contact` and `other_claims` | `properties_within_radius_v4`, `database_coverage` |
+| `GET /api/properties/[id]` | Full property record plus `map_status`, `map_reason` and `other_claims` | `property_detail`, `property_map_status`, `property_claim_options` |
+| `POST /api/properties/[id]/flag-link` | `{ ok, alreadyFlagged, noted }`. Sets *ZZ.Status = BAD LINK* and posts an update on the property. 409 if reported in the last 24 h, 429 over 10 per IP per 10 min or 300 a day, 400 without a listing link | `flag_link_guard` / `flag_link_undo` + Monday `change_column_value`, `create_update` |
+| `GET /api/claims/active?q=&includeTest=&fresh=` | `{ claims, count }` with each claim's `accountManager` — cached 60 s per instance | Monday `items_page` / `next_items_page` per group |
 | `GET /api/claim/[claimId]` | Loss address, needs, claim brief, attached options + pins | Monday + `properties_by_ids_v2` |
 | `GET /api/claim/[claimId]/summary` | `{ subject, text, html, optionCount, recipient }` | Monday + `property_detail` + `property_distance_miles` |
 | `POST /api/claim/[claimId]/summary` | Logs the summary as a Monday update (body rebuilt server-side) | Monday `create_update` |
@@ -283,9 +304,9 @@ sequenceDiagram
 
 | Board | ID | Role |
 |---|---|---|
-| [PROPERTY DATABASE](https://novahavens-company.monday.com/boards/18415735059) | `18415735059` | Every property: location, type, beds/baths, rent and fees, pets, owner, photos, notes. Groups: *PROPERTY DATA BASE* (and the older *Data Base*), *OWNER PREFERED*, *OWNER DO NOT USE*. |
+| [PROPERTY DATABASE](https://novahavens-company.monday.com/boards/18415735059) | `18415735059` | Every property: location, type, beds/baths, rent and fees, pets, owner, photos, notes, *Availability* + *Availability Checked* (set by the availability monitor), *Last Contact Date*, *ZZ.Status* (Good link / BAD LINK / Missing Link). Groups: *PROPERTY DATA BASE* (and the older *Data Base*), *OWNER PREFERED*, *OWNER DO NOT USE*. |
 | [Claim Process Board](https://novahavens-company.monday.com/boards/9030696652) | `9030696652` | One item per claim. Used here: *Damaged Residence Address*, family needs, *Current Status*, *Relocation Specialist* + *Specialist Email*, and the groups *New Housing Request* / *New Option Needed* (active) and the testing group. |
-| Subitems of Claim Process Board | `9205253360` | The options on a claim — linked via *PROPERTY Street* (`board_relation_mm441`), with *Distance to Loss (mi)* (`numeric_mm7np0z7`, written by **Add to claim** only). |
+| Subitems of Claim Process Board | `9205253360` | The options on a claim — linked via *Property Selected* (`board_relation_mm441`), with *Status* and *Distance to Loss (mi)* (`numeric_mm7np0z7`, written by **Add to claim** only). Active options feed the "On claim …" chips. |
 | [Landlord & PMs Contact](https://novahavens-company.monday.com/boards/9616452671) | `9616452671` | Owners and property managers with *Approvement Status* (*Preferred* / *DO NOT USE*), note, phone and email, linked to their properties (*Property Ownership*). Drives red and green; changes reach the map through a webhook. |
 
 ### Supabase — *Interactive Map database* (`nmandvqfuwvqxeabptjd`)
@@ -293,8 +314,10 @@ sequenceDiagram
 | Object | What it is |
 |---|---|
 | `properties` (table) | Mirror of the property board, keyed by `monday_item_id`, with generated PostGIS `geom` and `move_in_total`. RLS on, no policies — reachable only through the functions below. |
-| `properties_within_radius_v3`, `database_coverage` | Pin layer (with `approximate` and `map_status` per pin) and the database-wide coverage count. (`_v2` stays as a rollback.) |
-| `property_detail`, `property_map_status`, `properties_by_ids_v2`, `property_distance_miles` | Panel record, the colour and its reason, attached pins, *Distance to Loss*. |
+| `properties_within_radius_v4`, `database_coverage` | Pin layer (with `approximate`, `map_status`, availability, link status, last contact and `other_claims` per pin; radius clamped to 1–30 mi) and the database-wide coverage count. (`_v3` stays as a rollback.) |
+| `property_detail`, `property_map_status`, `property_claim_options`, `properties_by_ids_v2`, `property_distance_miles` | Panel record, the colour and its reason, options on other claims, attached pins, *Distance to Loss*. |
+| `claim_options` (table), `claim-options-sync` + `claim_options_kick()` | Every active option on an active claim (property → claim, status). One Monday call per run; every 10 minutes and on claim-board webhooks; a partial read never wipes it. |
+| `flag_link_log` (table), `flag_link_guard()`, `flag_link_undo()` | Report bad link: the limits, the record of who reported what, and the rollback if Monday can't be reached. |
 | `map_status_reason()`, `map_status_of()`, `properties_map_status` (view) | The one rule that gives every property its colour, and a view of all of them. |
 | `used_before_keys` (table), `used-before-sync` + `used_before_kick()` | Owner emails and phones from claims where a tenant was placed; refreshed every 10 minutes. |
 | `monday-webhook`, `monday-backfill` | Keep the mirror in sync with Monday within seconds. |
@@ -420,7 +443,9 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 - **Mark an owner** *Preferred* or *DO NOT USE* in *Approvement Status* on the landlord board. It applies to every property linked to that owner, within seconds.
 - **Link properties to their owner** (*Owner Full Name* on the property, or *Property Ownership* on the owner). Only properties linked to an owner carry the owner's status; the old free-text owner fields can't be matched reliably.
 - **Move the claim to the right group.** A claim that reaches a placed group makes its owner green (via the owner's email or phone on the claim) within 10 minutes, or straight away when the claim board webhook fires.
-- Nothing else. The map never writes owner status or group back to Monday.
+- **Keep the option's status current** on the claim. An option counts as "on a claim" while its status is To Do, Ready to Submit, Potential option, Pending details, Option Submitted, Awaiting Response, Available, See Note, FF Calendar, Selected – WON or Lease signing, and the claim is in a working or placed group (not Stuck, Lost, Moved Out, Deposit or the test group).
+- **Blacklist from a claim:** open the option's property, then its owner, and set the owner's *Approvement Status*; the sub-item status "DO NOT USE" only marks that one option.
+- The map writes to Monday in exactly three places: the sub-item **Add to claim** creates, *Distance to Loss* on it, and *ZZ.Status = BAD LINK* plus a note from **Report bad link**. Nothing else.
 
 **How fast changes show**
 
@@ -429,6 +454,9 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 | Owner's approval status, note, phone or email | A few seconds (owner-board webhook → `monday-webhook`) |
 | A property's group, owner link or details | A few seconds (`monday-webhook`) |
 | A claim moves into or out of a placed group | Up to 10 minutes (`used-before-sync`; faster when the claim-board webhook fires) |
+| An option's status changes, a new option, a claim changes group | Seconds (claim-board webhooks → `claim-options-sync`), otherwise within 10 minutes |
+| Availability / link status from the monitor, Last Contact Date | A few seconds (`monday-webhook`) |
+| Report bad link from the map | Instant on the map; the Monday write and note within a second |
 
 `used-before-sync` keeps the previous list if Monday returns fewer than 50 contacts, so an outage can't turn every green dot yellow. Webhook URLs carry a key (`MAP_HOOK_KEY` in `sync_config`). Only a handful of Monday calls per hour are used: the account allows 10,000 a day.
 
@@ -447,6 +475,10 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 | A property is yellow but we've used the owner | The owner isn't linked to the property, or the claim isn't in a placed group, or its email/phone differ from the claim's | Link the owner to the property; check the owner's email/phone on the claim; `select reason from properties_map_status where monday_item_id = '…'` |
 | An owner was marked Preferred / DO NOT USE but the dots haven't changed | The owner has no properties linked, or the owner-board webhook is missing | Link the properties; check *Webhooks* on the landlord board for the `landlord-webhook` URL |
 | No green dots appear for claims we placed | `used-before-sync` is failing | `select * from used_before_log order by id desc limit 5` shows the last runs and any error |
+| "On claim" shows a claim that was closed | The claim is still in a working group, or the sync hasn't run | Move the claim to Lost / Moved Out; `select * from claim_options_log order by id desc limit 5` |
+| Report bad link says "Too many reports" | 10 per person per 10 minutes, or 300 a day | Wait, or flag it on the board (ZZ.Status) |
+| A reported link isn't BAD LINK on Monday | The Monday write failed and was rolled back (the map said so) | Try again; check `MONDAY_API_TOKEN` |
+| The phone list is tiny | Sheet is at the peek or half height | Drag the handle up, or tap the count |
 | **Send summary** is greyed out | The claim has no options yet | Add at least one |
 | "No specialist email on the claim" | *Relocation Specialist* not linked on the claim | Link the specialist in Monday, or copy and send manually |
 | Nothing appears in Monday after adding | `MONDAY_DRY_RUN=1` is on (look for the chip) | Expected locally; unset it only where real writes are intended |
