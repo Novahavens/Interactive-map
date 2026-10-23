@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
-  Loader2,
   RefreshCw,
   Sun,
   Moon,
@@ -21,13 +20,12 @@ import SearchBox from "./SearchBox";
 import ActiveClaimsDrawer from "./ActiveClaimsDrawer";
 import SummarySheet from "./SummarySheet";
 import { useTheme } from "@/lib/useTheme";
-import type { ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse } from "@/lib/types";
-import { STATUS_LABEL, STATUS_ORDER, asMapStatus, propertyChips, type MapStatus } from "@/lib/status";
+import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse } from "@/lib/types";
+import { STATUS_ORDER, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
 import ClaimBrief from "./ClaimBrief";
-import { StatusDot } from "./StatusDot";
-import StatusLegend, { GroupedKey, OnClaimKey } from "./StatusLegend";
-import StatusChips from "./StatusChips";
-import { cn, money, num, dateShort } from "@/lib/utils";
+import MapKey from "./MapKey";
+import ResultRow, { type HoverSource } from "./ResultRow";
+import { cn, MONDAY_BOARDS, mondayItemUrl } from "@/lib/utils";
 
 const RADII = [5, 10, 15, 20, 30] as const; // Fazal, 8 Sep
 const DEFAULT_RADIUS = 10;
@@ -39,7 +37,7 @@ interface Props {
 }
 
 type Center = { lat: number; lng: number; address: string; source: "claim" | "search" };
-type Filters = { pets: boolean; photos: boolean; priced: boolean; hidden: Record<MapStatus, boolean> };
+const NONE_HIDDEN: Record<MapStatus, boolean> = { green: false, yellow: false, red: false };
 
 export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props) {
   const { theme, toggle } = useTheme();
@@ -58,7 +56,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
 
   const [center, setCenter] = useState<Center | null>(null);
   const [radius, setRadius] = useState<number>(DEFAULT_RADIUS);
-  const [filters, setFilters] = useState<Filters>({ pets: false, photos: false, priced: false, hidden: { green: false, yellow: false, red: false } });
+  const [filters, setFilters] = useState<PinFilters>({ pets: false, photos: false, priced: false, hidden: NONE_HIDDEN });
 
   const [pins, setPins] = useState<Pin[]>([]);
   const [coverage, setCoverage] = useState<Coverage | null>(null);
@@ -66,10 +64,16 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   const [pinsError, setPinsError] = useState<string | null>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // List row <-> map pin highlight. `from` decides whether the list follows (map hover) or stays put (list hover).
-  const [hover, setHover] = useState<{ id: string; from: "list" | "map" } | null>(null);
+  // List row <-> map pin highlight. `from` decides whether the list follows (map hover) or the map pans (pointer on a row).
+  const [hover, setHover] = useState<{ id: string; from: HoverSource } | null>(null);
   const hoveredId = hover?.id ?? null;
-  const onMapHover = useCallback((id: string | null) => setHover(id ? { id, from: "map" } : null), []);
+  const onHover = useCallback(
+    (id: string | null, from: HoverSource = "map") =>
+      setHover((prev) => (id === null ? null : prev?.id === id && prev.from === from ? prev : { id, from })),
+    [],
+  );
+  const railRef = useRef<HTMLElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [railSheetOpen, setRailSheetOpen] = useState(false);
 
@@ -205,45 +209,37 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
 
   // Pointing at a pin on the map brings its row into view in whichever results list is showing.
   useEffect(() => {
-    if (!hover || hover.from !== "map") return;
-    const rows = document.querySelectorAll<HTMLElement>("[data-pin-row]");
-    for (const row of rows) {
-      if (row.dataset.pinRow === hover.id && row.offsetParent !== null) {
-        row.scrollIntoView({ block: "nearest" });
-        break;
-      }
-    }
+    if (hover?.from !== "map") return;
+    const rows = [railRef, sheetRef].map((r) => r.current?.querySelector<HTMLElement>(`#row-${CSS.escape(hover.id)}`));
+    rows.find((row) => row && row.offsetParent !== null)?.scrollIntoView({ block: "nearest" });
   }, [hover]);
 
   // A bad-link report from the panel shows on the list straight away, without waiting for the sync.
   const handleFlagged = useCallback((propertyId: string) => {
-    setPins((prev) => prev.map((p) => (p.monday_item_id === propertyId ? { ...p, link_status: "BAD LINK" } : p)));
+    setPins((prev) => prev.map((p) => (p.monday_item_id === propertyId ? { ...p, link_status: BAD_LINK } : p)));
   }, []);
 
-  const passesFilters = useCallback(
-    (p: Pin) => {
-      if (filters.pets && (p.pet_status ?? "").trim().toLowerCase() !== "yes") return false;
-      if (filters.photos && !p.has_photos) return false;
-      if (filters.priced && p.monthly_rate == null) return false;
-      if (filters.hidden[asMapStatus(p.map_status)]) return false;
-      return true;
-    },
-    [filters],
+  const visiblePins = useMemo(() => pins.filter((p) => passesFilters(p, filters)), [pins, filters]);
+  const sortedPins = useMemo(
+    () =>
+      [...visiblePins].sort(
+        (a, b) =>
+          STATUS_ORDER.indexOf(asMapStatus(a.map_status)) - STATUS_ORDER.indexOf(asMapStatus(b.map_status)) || a.distance_miles - b.distance_miles,
+      ),
+    [visiblePins],
   );
 
-  const visiblePins = useMemo(() => pins.filter(passesFilters), [pins, passesFilters]);
+  // A hovered row or pin that filtering, the radius or an add took off the map never sends a mouseleave.
+  useEffect(() => {
+    if (hoveredId && !attachedIds.has(hoveredId) && !visiblePins.some((p) => p.monday_item_id === hoveredId)) setHover(null);
+  }, [hoveredId, visiblePins, attachedIds]);
 
   // The legend counts what the other filters leave in view, so a hidden colour still shows its number.
   const statusCounts = useMemo(() => {
     const counts: Record<MapStatus, number> = { green: 0, yellow: 0, red: 0 };
-    for (const p of pins) {
-      if (filters.pets && (p.pet_status ?? "").trim().toLowerCase() !== "yes") continue;
-      if (filters.photos && !p.has_photos) continue;
-      if (filters.priced && p.monthly_rate == null) continue;
-      counts[asMapStatus(p.map_status)]++;
-    }
+    for (const p of pins) if (passesFilters(p, { ...filters, hidden: NONE_HIDDEN })) counts[asMapStatus(p.map_status)]++;
     return counts;
-  }, [pins, filters.pets, filters.photos, filters.priced]);
+  }, [pins, filters]);
 
   const needsMissing = useMemo(() => {
     if (!claim) return [];
@@ -317,7 +313,8 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
             />
           </div>
 
-          <StatusLegend
+          <MapKey
+            variant="rail"
             counts={statusCounts}
             hidden={filters.hidden}
             onToggle={(st) => setFilters((f) => ({ ...f, hidden: { ...f.hidden, [st]: !f.hidden[st] } }))}
@@ -329,7 +326,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
             <div className="flex items-baseline justify-between gap-2">
               <span className="nh-eyebrow">The family needs</span>
               <a
-                href={`https://novahavens.monday.com/boards/9030696652/pulses/${claim.id}`}
+                href={mondayItemUrl(MONDAY_BOARDS.claim, claim.id)}
                 target="_blank"
                 rel="noreferrer noopener"
                 className="text-xs no-underline"
@@ -337,23 +334,14 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
                 Edit on Monday →
               </a>
             </div>
-            <ul aria-label="What the family needs" className="flex flex-wrap gap-1.5 text-[13px]">
-              {claim.needs.pets != null && (
-                <NeedChip label="Pets" value={num(claim.needs.pets)} />
-              )}
-              {claim.needs.moveIn && <NeedChip label="Move-in" value={dateShort(claim.needs.moveIn)} />}
-              {claim.needs.pets == null && !claim.needs.moveIn && needsMissing.length === 0 && (
-                <NeedChip label="People" value={claim.needs.adults != null || claim.needs.children != null ? `${num(claim.needs.adults)} adult(s)` : "—"} />
-              )}
-              {needsMissing.length > 0 && (
-                <li
-                  className="inline-flex h-7 items-center rounded-md border border-dashed px-2.5"
-                  style={{ borderColor: "var(--amber-line)", color: "var(--amber-ink)" }}
-                >
-                  {needsMissing.join(" · ")} not on claim
-                </li>
-              )}
-            </ul>
+            {needsMissing.length > 0 && (
+              <p
+                className="inline-flex h-7 w-fit items-center rounded-md border border-dashed px-2.5 text-[13px]"
+                style={{ borderColor: "var(--amber-line)", color: "var(--amber-ink)" }}
+              >
+                {needsMissing.join(" · ")} not on claim
+              </p>
+            )}
             <ClaimBrief name={claim.name} brief={claim.brief} />
             <button
               type="button"
@@ -385,59 +373,23 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
           {pinsLoading && visiblePins.length === 0 ? (
             [...Array(6)].map((_, i) => <li key={i} className="nh-skeleton m-1 h-12" />)
           ) : (
-            [...visiblePins]
-              .sort(
-                (a, b) =>
-                  STATUS_ORDER.indexOf(asMapStatus(a.map_status)) - STATUS_ORDER.indexOf(asMapStatus(b.map_status)) ||
-                  a.distance_miles - b.distance_miles,
-              )
-              .map((p) => {
-                const on = selectedId === p.monday_item_id;
-                const status = asMapStatus(p.map_status);
-                const chips = propertyChips(p, claimId);
-                return (
-                  <li key={p.monday_item_id}>
-                    <button
-                      type="button"
-                      data-pin-row={p.monday_item_id}
-                      onClick={() => onSelect(p.monday_item_id)}
-                      onMouseEnter={() => setHover({ id: p.monday_item_id, from: "list" })}
-                      onMouseLeave={() => setHover(null)}
-                      onFocus={() => setHover({ id: p.monday_item_id, from: "list" })}
-                      onBlur={() => setHover(null)}
-                      aria-pressed={on}
-                      className={cn(
-                        "flex w-full flex-col gap-1 rounded-lg border px-2 py-2 text-left",
-                        on ? "border-line bg-surface-muted" : "border-transparent hover:bg-surface-muted",
-                        hoveredId === p.monday_item_id && "nh-row--hover",
-                      )}
-                    >
-                      <span className="flex w-full items-center gap-2.5">
-                        <StatusDot status={status} />
-                        <span className="flex min-w-0 flex-1 flex-col leading-tight">
-                          <span className="truncate font-medium">{p.name}</span>
-                          <span className="truncate text-[13px] text-muted">
-                            {num(p.bedrooms)} bd · {num(p.bathrooms)} ba
-                            {p.pet_status?.trim().toLowerCase() === "yes" ? " · pets ok" : ""}
-                            {p.has_photos ? " · photos" : ""}
-                          </span>
-                        </span>
-                        <span className="flex shrink-0 flex-col items-end leading-tight">
-                          <span className="font-mono text-[13px] font-semibold">{p.monthly_rate == null ? "no rent" : money(p.monthly_rate)}</span>
-                          <span className="text-xs text-muted">{p.distance_miles.toFixed(1)} mi</span>
-                        </span>
-                      </span>
-                      <StatusChips chips={chips} className="w-full pl-[19px]" />
-                    </button>
-                  </li>
-                );
-              })
+            sortedPins.map((p) => (
+              <ResultRow
+                key={p.monday_item_id}
+                pin={p}
+                selected={selectedId === p.monday_item_id}
+                hovered={hoveredId === p.monday_item_id}
+                claimId={claimId}
+                onSelect={onSelect}
+                onHover={onHover}
+              />
+            ))
           )}
           {coverage && coverage.unmapped > 0 && (
             <li className="mt-1 flex flex-col gap-1 border-t border-line px-1 py-2.5 text-xs text-muted">
               <span>{coverage.unmapped.toLocaleString("en-US")} properties have no coordinates and cannot appear on any map yet.</span>
               <a
-                href="https://novahavens.monday.com/boards/18415735059"
+                href={mondayItemUrl(MONDAY_BOARDS.property)}
                 target="_blank"
                 rel="noreferrer noopener"
                 className="font-medium no-underline"
@@ -449,6 +401,20 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         </ul>
       </div>
     </div>
+  ) : null;
+
+  const panel = selectedId ? (
+    <PropertyPanel
+      key={`${claim?.id ?? "none"}:${selectedId}`}
+      propertyId={selectedId}
+      pin={selectedPin}
+      claim={claim ? { id: claim.id, name: claim.name, accountManager: claim.brief?.accountManager ?? null } : null}
+      needs={claim?.needs ?? null}
+      attached={attachedIds.has(selectedId)}
+      onAttached={handleAttached}
+      onFlagged={handleFlagged}
+      onClose={() => setSelectedId(null)}
+    />
   ) : null;
 
   return (
@@ -543,7 +509,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       <div className="relative flex min-h-0 flex-1">
         {/* ---------- Left rail (docked, lg+) ---------- */}
         {center && (
-          <aside aria-label="Search and results" className="hidden w-80 shrink-0 flex-col border-r border-line bg-surface lg:flex">
+          <aside ref={railRef} aria-label="Search and results" className="hidden w-80 shrink-0 flex-col border-r border-line bg-surface lg:flex">
             {railContent}
           </aside>
         )}
@@ -561,9 +527,10 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
               attachedIds={attachedIds}
               selectedId={selectedId}
               hoveredId={hoveredId}
+              panToHovered={hover?.from === "list"}
               filters={filters}
               onSelect={onSelect}
-              onHover={onMapHover}
+              onHover={onHover}
               onError={setMapError}
             />
           ) : (
@@ -631,18 +598,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
           {/* Legend */}
           {center && (
             <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[calc(100%-24px)]">
-              <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs text-muted">
-                {pinsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                <LegendItem color="var(--loss)" label="Loss" />
-                {STATUS_ORDER.map((st) => (
-                  <span key={st} className="inline-flex items-center gap-1.5">
-                    <StatusDot status={st} />
-                    <span>{STATUS_LABEL[st]}</span>
-                  </span>
-                ))}
-                <OnClaimKey label={`On this claim (${attachedPins.length})`} />
-                <GroupedKey />
-              </div>
+              <MapKey variant="floating" attachedCount={attachedPins.length} loading={pinsLoading} />
             </div>
           )}
 
@@ -651,20 +607,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
             <div className="absolute inset-0 z-30 lg:hidden">
               <div className="absolute inset-0" style={{ background: "var(--scrim)" }} onClick={() => setSelectedId(null)} />
               <div className="absolute inset-x-3 bottom-3 top-3 flex overflow-hidden rounded-xl border border-line shadow-[0_12px_40px_rgba(0,0,0,0.25)] sm:inset-x-auto sm:right-3 sm:w-[400px]">
-                <PropertyPanel
-                  key={`${claim?.id ?? "none"}:${selectedId}`}
-                  claimName={claim?.name ?? null}
-                  accountManager={claim?.brief?.accountManager ?? null}
-                  pin={selectedPin}
-                  onFlagged={handleFlagged}
-                  propertyId={selectedId}
-                  distanceMiles={selectedPin?.distance_miles ?? null}
-                  needs={claim?.needs ?? null}
-                  claimId={claim ? claim.id : null}
-                  attached={attachedIds.has(selectedId)}
-                  onAttached={handleAttached}
-                  onClose={() => setSelectedId(null)}
-                />
+                {panel}
               </div>
             </div>
           )}
@@ -673,20 +616,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         {/* ---------- Docked panel (lg+) ---------- */}
         {selectedId && (
           <div className="hidden w-[400px] shrink-0 border-l border-line lg:flex">
-            <PropertyPanel
-              key={`${claim?.id ?? "none"}:${selectedId}`}
-              claimName={claim?.name ?? null}
-              accountManager={claim?.brief?.accountManager ?? null}
-              pin={selectedPin}
-              onFlagged={handleFlagged}
-              propertyId={selectedId}
-              distanceMiles={selectedPin?.distance_miles ?? null}
-              needs={claim?.needs ?? null}
-              claimId={claim ? claim.id : null}
-              attached={attachedIds.has(selectedId)}
-              onAttached={handleAttached}
-              onClose={() => setSelectedId(null)}
-            />
+            {panel}
           </div>
         )}
 
@@ -694,7 +624,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         {railSheetOpen && center && (
           <div className="absolute inset-0 z-40 flex lg:hidden">
             <div className="absolute inset-0" style={{ background: "var(--scrim)" }} onClick={() => setRailSheetOpen(false)} />
-            <div className="relative mt-auto flex max-h-[80%] w-full flex-col rounded-t-xl border-t border-line bg-surface">
+            <div ref={sheetRef} className="relative mt-auto flex max-h-[80%] w-full flex-col rounded-t-xl border-t border-line bg-surface">
               <div className="flex items-center justify-between border-b border-line px-3 py-2.5">
                 <span className="text-sm font-medium">Search and results</span>
                 <button
@@ -735,24 +665,6 @@ function FilterPill({ icon, label, on, onClick }: { icon: React.ReactNode; label
       )}
       <span>{label}</span>
     </button>
-  );
-}
-
-function NeedChip({ label, value }: { label: string; value: string }) {
-  return (
-    <li className="inline-flex h-7 items-center gap-1.5 rounded-md bg-surface-muted px-2.5">
-      <span className="text-muted">{label}</span>
-      <span className="font-medium">{value}</span>
-    </li>
-  );
-}
-
-function LegendItem({ color, label, faded }: { color: string; label: string; faded?: boolean }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: color, opacity: faded ? 0.5 : 1 }} />
-      <span>{label}</span>
-    </span>
   );
 }
 

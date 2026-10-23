@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MarkerClusterer, SuperClusterAlgorithm } from "@googlemaps/markerclusterer";
 import type { Pin, AttachedPin } from "@/lib/types";
-import { STATUS_COLOR, STATUS_SHAPE, asMapStatus, type MapStatus } from "@/lib/status";
+import { STATUS, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
 import { loadGoogleMaps } from "@/lib/google";
 
 // Semantic colours — must match the --loss/--database/--preferred/--dnu/--focus
@@ -11,7 +11,7 @@ import { loadGoogleMaps } from "@/lib/google";
 // the chip surface itself (bg/border/text) comes from CSS custom properties so
 // it flips with the theme automatically.
 // Property dots take their colour and shape from lib/status.ts (green / yellow / red, never anything else).
-export const PIN_COLORS = {
+const PIN_COLORS = {
   loss: "#f5a623",
   attached: "#111111",
 } as const;
@@ -30,8 +30,11 @@ interface Props {
   selectedId: string | null;
   /** Property under the pointer or keyboard focus in the list (or on the map). */
   hoveredId: string | null;
-  filters: { pets: boolean; photos: boolean; priced: boolean; hidden: Record<MapStatus, boolean> };
+  /** Pan to the hovered pin when it is off screen. Only pointer hover over a list row asks for this. */
+  panToHovered: boolean;
+  filters: PinFilters;
   onSelect: (id: string) => void;
+  /** Must be stable: pin elements keep the callback they were built with. */
   onHover: (id: string | null) => void;
   onReady?: () => void;
   onError?: (message: string) => void;
@@ -42,14 +45,6 @@ type AdvMarker = google.maps.marker.AdvancedMarkerElement;
 function chipMoney(n: number | null): string {
   if (n == null) return "—";
   return n >= 1000 ? `$${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : `$${n}`;
-}
-
-function passesFilters(p: Pin, f: Props["filters"]): boolean {
-  if (f.pets && (p.pet_status ?? "").trim().toLowerCase() !== "yes") return false;
-  if (f.photos && !p.has_photos) return false;
-  if (f.priced && p.monthly_rate == null) return false;
-  if (f.hidden[asMapStatus(p.map_status)]) return false;
-  return true;
 }
 
 /**
@@ -66,6 +61,7 @@ export default function MapCanvas({
   attachedIds,
   selectedId,
   hoveredId,
+  panToHovered,
   filters,
   onSelect,
   onHover,
@@ -80,22 +76,8 @@ export default function MapCanvas({
   const clustererRef = useRef<MarkerClusterer | null>(null);
   const propertyMarkersRef = useRef<Map<string, AdvMarker>>(new Map());
   const attachedMarkersRef = useRef<Map<string, AdvMarker>>(new Map());
-  const styleKeyRef = useRef<Map<string, string>>(new Map()); // avoids rebuilding pin content on every render
   const [ready, setReady] = useState(false);
   const lastFitKeyRef = useRef<string>("");
-  const hoveredRef = useRef<string | null>(null);
-  hoveredRef.current = hoveredId;
-  const onHoverRef = useRef(onHover);
-  onHoverRef.current = onHover;
-  const baseZRef = useRef<Map<string, number>>(new Map()); // z-index a marker returns to when it stops being hovered
-
-  // Content is rebuilt when a pin's style changes, so hover handlers and the hover class go on every time it is set.
-  const setContent = (m: AdvMarker, id: string, content: HTMLElement) => {
-    content.addEventListener("mouseenter", () => onHoverRef.current(id));
-    content.addEventListener("mouseleave", () => onHoverRef.current(null));
-    if (hoveredRef.current === id) content.classList.add("nh-pin--hover");
-    m.content = content;
-  };
 
   // ---- create the map once ----
   useEffect(() => {
@@ -120,6 +102,8 @@ export default function MapCanvas({
           keyboardShortcuts: false,
         });
         mapRef.current = map;
+        // A pin the clusterer swallows (zoom, radius change) is removed from under the pointer without a mouseleave.
+        map.addListener("zoom_changed", () => onHover(null));
 
         clustererRef.current = new MarkerClusterer({
           map,
@@ -232,29 +216,23 @@ export default function MapCanvas({
         toAdd.push(m);
       }
       const approx = p.approximate === true;
-      const styleKey = `${status}:${selected ? 1 : 0}:${shown ? 1 : 0}:${approx ? 1 : 0}:${chipMoney(p.monthly_rate)}`;
-      if (styleKeyRef.current.get(p.monday_item_id) !== styleKey) {
-        setContent(m, p.monday_item_id, buildPropertyPin(status, selected, shown, chipMoney(p.monthly_rate), p.name, approx));
-        const z = selected ? 4000 : status === "green" ? 300 : status === "red" ? 100 : 200;
-        baseZRef.current.set(p.monday_item_id, z);
-        m.zIndex = hoveredRef.current === p.monday_item_id ? HOVER_Z : z;
-        styleKeyRef.current.set(p.monday_item_id, styleKey);
-      }
+      const hovered = hoveredId === p.monday_item_id;
+      const chip = chipMoney(p.monthly_rate);
+      const key = `${status}:${selected ? 1 : 0}:${hovered ? 1 : 0}:${shown ? 1 : 0}:${approx ? 1 : 0}:${chip}`;
+      const z = selected ? 4000 : hovered ? HOVER_Z : status === "green" ? 300 : status === "red" ? 100 : 200;
+      if (setPinContent(m, key, p.monday_item_id, onHover, () => buildPropertyPin(status, selected, hovered, shown, chip, p.name, approx))) m.zIndex = z;
       next.set(p.monday_item_id, m);
     }
 
     const toRemove: AdvMarker[] = [];
     for (const [id, m] of existing) {
-      if (!next.has(id)) {
-        toRemove.push(m);
-        styleKeyRef.current.delete(id);
-      }
+      if (!next.has(id)) toRemove.push(m);
     }
     if (toRemove.length) clusterer.removeMarkers(toRemove, true);
     if (toAdd.length) clusterer.addMarkers(toAdd, true);
     if (toRemove.length || toAdd.length) clusterer.render();
     propertyMarkersRef.current = next;
-  }, [ready, pins, attachedIds, selectedId, filters, onSelect]);
+  }, [ready, pins, attachedIds, selectedId, hoveredId, filters, onSelect, onHover]);
 
   // ---- attached options (black chip, never clustered, regardless of radius) ----
   useEffect(() => {
@@ -277,9 +255,12 @@ export default function MapCanvas({
         });
         m.addListener("click", () => onSelect(a.monday_item_id));
       }
-      setContent(m, a.monday_item_id, buildAttachedPin(selected, chipMoney(a.monthly_rate), a.name));
-      baseZRef.current.set(a.monday_item_id, selected ? 4000 : 900);
-      m.zIndex = hoveredRef.current === a.monday_item_id ? HOVER_Z : selected ? 4000 : 900;
+      const hovered = hoveredId === a.monday_item_id;
+      const chip = chipMoney(a.monthly_rate);
+      const key = `attached:${selected ? 1 : 0}:${hovered ? 1 : 0}:${chip}`;
+      if (setPinContent(m, key, a.monday_item_id, onHover, () => buildAttachedPin(selected, hovered, chip, a.name))) {
+        m.zIndex = selected ? 4000 : hovered ? HOVER_Z : 900;
+      }
       m.map = map;
       next.set(a.monday_item_id, m);
     }
@@ -287,40 +268,34 @@ export default function MapCanvas({
       if (!next.has(id)) m.map = null;
     }
     attachedMarkersRef.current = next;
-  }, [ready, attachedPins, selectedId, onSelect]);
+  }, [ready, attachedPins, selectedId, hoveredId, onSelect, onHover]);
 
-  // ---- hover: ring + lift on the pin, and bring it into view when the list points at one that is off screen ----
   // A pin inside a numbered group is not on the map (the clusterer owns it), so there is nothing to highlight
-  // until the group is zoomed open; the row still highlights. The map is never zoomed from here, only panned.
-  const lastHoverRef = useRef<string | null>(null);
+  // until the group is zoomed open; the row still highlights. The map is panned, never zoomed.
   useEffect(() => {
-    const markerFor = (id: string) => propertyMarkersRef.current.get(id) ?? attachedMarkersRef.current.get(id);
-    const prev = lastHoverRef.current;
-    lastHoverRef.current = hoveredId;
-    if (prev && prev !== hoveredId) {
-      const m = markerFor(prev);
-      if (m) {
-        (m.content as HTMLElement | null)?.classList.remove("nh-pin--hover");
-        m.zIndex = baseZRef.current.get(prev) ?? 200;
-      }
-    }
-    if (!hoveredId) return;
-    const m = markerFor(hoveredId);
-    if (!m) return;
-    (m.content as HTMLElement | null)?.classList.add("nh-pin--hover");
-    m.zIndex = HOVER_Z;
-
+    if (!hoveredId || !panToHovered) return;
     const map = mapRef.current;
-    const pos = m.position;
+    const pos = (propertyMarkersRef.current.get(hoveredId) ?? attachedMarkersRef.current.get(hoveredId))?.position;
     if (!map || !pos) return;
     const t = window.setTimeout(() => {
       const bounds = map.getBounds();
       if (bounds && !bounds.contains(pos)) map.panTo(pos);
     }, 150);
     return () => window.clearTimeout(t);
-  }, [hoveredId]);
+  }, [hoveredId, panToHovered]);
 
   return <div ref={divRef} className="h-full w-full" aria-label="Property map" />;
+}
+
+/** Rebuilds a marker's element only when its style key changes, so the element under the pointer is not replaced for nothing. */
+function setPinContent(m: AdvMarker, key: string, id: string, onHover: Props["onHover"], build: () => HTMLElement): boolean {
+  if ((m.content as HTMLElement | null)?.dataset.key === key) return false;
+  const el = build();
+  el.dataset.key = key;
+  el.addEventListener("mouseenter", () => onHover(id));
+  el.addEventListener("mouseleave", () => onHover(null));
+  m.content = el;
+  return true;
 }
 
 // ---------- pin content builders — plain DOM, styled entirely by globals.css ----------
@@ -341,6 +316,7 @@ function buildLossPin(): HTMLElement {
 function buildPropertyPin(
   status: MapStatus,
   selected: boolean,
+  hovered: boolean,
   shown: boolean,
   chip: string,
   name: string,
@@ -349,6 +325,7 @@ function buildPropertyPin(
   const wrap = document.createElement("div");
   const classes = ["nh-pin"];
   if (selected) classes.push("nh-pin--selected");
+  if (hovered) classes.push("nh-pin--hover");
   if (status === "red") classes.push("nh-pin--dnu");
   if (!shown) classes.push("nh-pin--dimmed");
   if (approximate) classes.push("nh-pin--approx");
@@ -358,7 +335,7 @@ function buildPropertyPin(
   wrap.setAttribute("aria-label", `${name}, ${chip}, ${label}${approximate ? ", approximate location" : ""}`);
   wrap.innerHTML = `
     <span class="nh-pin__chip">
-      <span class="nh-dot nh-dot--${STATUS_SHAPE[status]}" style="background:${STATUS_COLOR[status]}"></span>
+      <span class="nh-dot nh-dot--${STATUS[status].shape}" style="background:${STATUS[status].color}"></span>
       ${approximate ? '<span class="nh-pin__approx" aria-hidden="true">≈</span>' : ""}
       <span>${chip}</span>
     </span>
@@ -367,10 +344,11 @@ function buildPropertyPin(
   return wrap;
 }
 
-function buildAttachedPin(selected: boolean, chip: string, name: string): HTMLElement {
+function buildAttachedPin(selected: boolean, hovered: boolean, chip: string, name: string): HTMLElement {
   const wrap = document.createElement("div");
   const classes = ["nh-pin", "nh-pin--attached"];
   if (selected) classes.push("nh-pin--selected");
+  if (hovered) classes.push("nh-pin--hover");
   wrap.className = classes.join(" ");
   wrap.setAttribute("role", "button");
   wrap.setAttribute("aria-label", `${name}, on this claim, ${chip}`);

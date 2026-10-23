@@ -2,17 +2,8 @@
 
 import type { MapStatus } from "./status";
 
-/** Property "Availability" on the property board, set by the Property Availability Monitor. Free text in Monday; these are its labels today. */
-export type Availability =
-  | "Available Now"
-  | "Available Soon"
-  | "Available (Unverified)"
-  | "Unavailable"
-  | "Listing Removed"
-  | "Check Failed";
-
-/** Property "ZZ.Status" (link quality) on the property board. "BAD LINK" is what Report bad link sets. */
-export type LinkStatus = "Good link" | "BAD LINK" | "Missing Link";
+/** Link-quality label (ZZ.Status on the property board) that "Report bad link" sets. Other labels are free text from Monday. */
+export const BAD_LINK = "BAD LINK";
 
 /** An active option (claim sub-item) that points at a property. From the claim_options mirror. */
 export interface ClaimOption {
@@ -41,13 +32,13 @@ export interface Pin {
   approximate?: boolean | null;
   /** Dot colour: green (used before / preferred), yellow (neutral), red (do not use). Never blank. */
   map_status: MapStatus;
-  /** Availability label as Monday has it (see Availability); null when the monitor has not checked it. */
+  /** Availability label as Monday has it (Monday label, free text); null when the monitor has not checked it. */
   availability: string | null;
   /** When the availability monitor last checked (YYYY-MM-DD). */
   availability_checked: string | null;
   /** Property-board "Last Contact Date" (YYYY-MM-DD). */
   last_contact: string | null;
-  /** Link quality label (see LinkStatus); null when never checked. */
+  /** Link quality label (Monday label, free text, e.g. BAD_LINK); null when never checked. */
   link_status: string | null;
   /** Every active option on any claim that points at this property. Empty when none. The client drops the current claim. */
   other_claims: ClaimOption[];
@@ -249,6 +240,8 @@ export interface FlagLinkResponse {
   ok: true;
   /** True when the property was already BAD LINK; nothing was written. */
   alreadyFlagged: boolean;
+  /** False when the Monday update (the note saying who reported it) failed; the flag itself was set. */
+  noted: boolean;
   dryRun?: boolean;
 }
 

@@ -15,6 +15,7 @@ const OUT = process.argv[2] ?? "test-results/live-status";
 const CHROME = process.env.CHROME ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 const PW_CORE = process.env.PW_CORE ?? "/tmp/claude-0/-home-user-Interactive-map/519172db-2710-58fd-844f-0ffa565c5e27/scratchpad/pw/node_modules/playwright-core/index.mjs";
 const { chromium } = await import("playwright-core").catch(() => import(PW_CORE));
+const EMBED_FIXTURE = new URL("./fixtures/embed-test.html", import.meta.url);
 fs.mkdirSync(OUT, { recursive: true });
 
 // ---------- fixtures (fictional) ----------
@@ -65,6 +66,8 @@ const pins = [
 const oldShape = { ...pin(3010), lat: LOSS.lat + 0.0005, lng: LOSS.lng }; // sits in the filler pile
 for (const k of ["availability", "availability_checked", "last_contact", "link_status", "other_claims"]) delete oldShape[k];
 pins.push(oldShape);
+// The list's copy says BAD LINK while the detail (a stale mirror) still says Good link: the panel must not offer Report.
+pins.push(pin(3009, { link_status: "BAD LINK", lat: LOSS.lat + 0.0006, lng: LOSS.lng }));
 // Filler that shares a spot, so it clusters: it only makes the list long.
 for (let k = 0; k < 30; k++) pins.push({ ...pin(3200 + k), lat: LOSS.lat + 0.001 * k, lng: LOSS.lng + 0.001 * k, distance_miles: 2 + k * 0.2 });
 const byId = new Map(pins.map((p) => [p.monday_item_id, p]));
@@ -83,6 +86,7 @@ function detail(p) {
   };
   // 3002's detail omits the new fields on purpose: the panel must fall back to the list's copy.
   if (p.monday_item_id !== "3002") Object.assign(d, { availability: p.availability, availability_checked: p.availability_checked, link_status: p.link_status, other_claims: p.other_claims });
+  if (p.monday_item_id === "3009") d.link_status = "Good link";
   return d;
 }
 
@@ -96,7 +100,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function open(browser, { w, h, theme = "light", iframe = false, reporter = "Tester" }) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
-  const state = { flag: { status: 200, body: null, calls: 0 }, adds: [] };
+  const state = { flag: { status: 200, body: null, calls: 0, noted: true }, adds: [] };
   await ctx.addInitScript(([t, name]) => {
     try {
       localStorage.setItem("nh-theme", t);
@@ -111,8 +115,8 @@ async function open(browser, { w, h, theme = "light", iframe = false, reporter =
   await ctx.route(/\/api\/properties\/\d+\/flag-link$/, async (r) => {
     state.flag.calls++;
     state.flag.body = r.request().postDataJSON();
-    if (state.flag.status === 200) await r.fulfill({ json: { ok: true, alreadyFlagged: false } });
-    else await r.fulfill({ status: state.flag.status, json: { error: "Too many reports. Try again in a few minutes." } });
+    if (state.flag.status === 200) await r.fulfill({ json: { ok: true, alreadyFlagged: false, noted: state.flag.noted } });
+    else await r.fulfill({ status: state.flag.status, json: { error: state.flag.error ?? "Too many reports. Try again in a few minutes." } });
   });
   await ctx.route("**/api/claim/add", async (r) => {
     state.adds.push(r.request().postDataJSON());
@@ -122,9 +126,10 @@ async function open(browser, { w, h, theme = "light", iframe = false, reporter =
   p.on("pageerror", (e) => errors.push(String(e)));
   p.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource|favicon|net::ERR/i.test(m.text())) errors.push(m.text()); });
   p.on("dialog", (d) => { errors.push(`unexpected ${d.type()} dialog: ${d.message()}`); void d.dismiss(); });
+  if (iframe) await p.route("**/embed-test.html", (r) => r.fulfill({ contentType: "text/html", body: fs.readFileSync(EMBED_FIXTURE, "utf8") }));
   await p.goto(iframe ? `${BASE}/embed-test.html` : `${BASE}/?claimId=${CLAIM_ID}`, { waitUntil: "networkidle" });
   const root = iframe ? p.frameLocator("iframe") : p;
-  await root.locator("[data-pin-row]:visible, button:has-text('within')").first().waitFor();
+  await root.locator("button[id^='row-']:visible, button:has-text('within')").first().waitFor();
   await p.waitForTimeout(4500); // Google Maps draws the pins
   return { ctx, p, root, state, phone: w < 1024 };
 }
@@ -140,8 +145,8 @@ async function openList(s) {
 }
 async function selectRow(s, id) {
   await openList(s);
-  await s.root.locator(`[data-pin-row="${id}"]:visible`).first().scrollIntoViewIfNeeded();
-  await s.root.locator(`[data-pin-row="${id}"]:visible`).first().click();
+  await s.root.locator(`[id="row-${id}"]:visible`).first().scrollIntoViewIfNeeded();
+  await s.root.locator(`[id="row-${id}"]:visible`).first().click();
   await panel(s.root).getByRole("heading", { name: `Fixture ${id}` }).waitFor();
 }
 async function wheelMoves(p, loc) {
@@ -168,12 +173,12 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
 {
   const s = await open(browser, { w: 1440, h: 860 });
   const { p, root } = s;
-  const row = (id) => root.locator(`[data-pin-row="${id}"]:visible`).first();
+  const row = (id) => root.locator(`[id="row-${id}"]:visible`).first();
   const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
 
   // ---- 5. list chips ----
   const t1 = await text(row(3001));
-  check("row: Available now (green) and Last contact 5 Oct", t1.includes("Available now") && t1.includes("Last contact 5 Oct") && !t1.includes("Bad link"), t1);
+  check("row: Available now (green) and Last contact Oct 5", t1.includes("Available now") && t1.includes("Last contact Oct 5") && !t1.includes("Bad link"), t1);
   check("row: Available now chip is green text", await row(3001).locator(".nh-chip--ok").count() === 1);
   const t2 = await text(row(3002));
   check("row: Available soon (blue) and 'On claim <name> · <status>' amber chip", t2.includes("Available soon") && t2.includes("On claim Other Family — #7 · Option Submitted"), t2);
@@ -203,7 +208,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
 
   // ---- 4. cheat-sheet ----
   const glance = await text(root.locator('[aria-label="Claim at a glance"]'));
-  check("cheat-sheet strip is always visible and complete", glance === "2 adults · 1 child · 1 pet · 3 bd / 2 ba · move-in 2 Nov", glance);
+  check("cheat-sheet strip is always visible and complete", glance === "2 adults · 1 child · 1 pet · 3 bd / 2 ba · move-in Nov 2", glance);
   const det = root.locator("details", { hasText: "Claim information" }).first();
   check("Claim information stays collapsed by default", (await det.evaluate((e) => e.open)) === false);
   const bl = await det.evaluate((e) => getComputedStyle(e).borderLeftWidth);
@@ -257,6 +262,12 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   const mapBox = await root.locator('[aria-label="Property map"]').boundingBox();
   const offscreen = !off || off.y + off.height < mapBox.y || off.y > mapBox.y + mapBox.height || off.x + off.width < mapBox.x || off.x > mapBox.x + mapBox.width;
   check("precondition: after dragging the map the pin is off screen", offscreen, JSON.stringify(off));
+  const inMap = (b) => !!b && b.x >= mapBox.x && b.x + b.width <= mapBox.x + mapBox.width && b.y >= mapBox.y && b.y + b.height <= mapBox.y + mapBox.height;
+  await p.keyboard.press("Tab");
+  await row(3001).focus();
+  await p.waitForTimeout(1200);
+  check("keyboard focus on a row highlights it but does not pan the map", (await row(3001).evaluate((e) => e.classList.contains("nh-row--hover"))) && !inMap(await pinEl(3001).boundingBox()));
+  await root.locator("body").evaluate(() => document.activeElement && document.activeElement.blur());
   await row(3001).hover();
   await p.waitForTimeout(1500);
   const on = await pinEl(3001).boundingBox();
@@ -266,6 +277,18 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   const b2 = await pinEl(3005).boundingBox();
   const gap1 = a2 && b2 ? Math.hypot(a2.x - b2.x, a2.y - b2.y) : -2;
   check("panning did not change the zoom", gap0 > 0 && Math.abs(gap1 - gap0) < 2, `${gap0.toFixed(1)} -> ${gap1.toFixed(1)}`);
+  await p.mouse.move(700, 5);
+
+  // ---- 2. a hovered row that a filter removes does not leave the highlight stuck ----
+  await row(3004).hover();
+  await p.waitForTimeout(250);
+  check("precondition: 3004 is hovered", (await hovered()) === 1);
+  await root.locator('[aria-label="Dot colours"] button', { hasText: "Neutral" }).click();
+  await p.waitForTimeout(400);
+  check("hiding the hovered pin's colour clears the hover", (await hovered()) === 0);
+  await root.locator('[aria-label="Dot colours"] button', { hasText: "Neutral" }).click();
+  await p.waitForTimeout(400);
+  check("showing the colour again does not bring a stale hover back", (await hovered()) === 0);
   await p.mouse.move(700, 5);
 
   // ---- 6. panel chips, other claims, bad link ----
@@ -301,12 +324,19 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   // Account manager in the panel footer
   await selectRow(s, 3001);
   check("panel footer: 'Adding to <claim> · <account manager>'", (await text(panel(root))).includes(`Adding to: ${claim.name} · Melissa C.`));
+  check("panel: Last contact appears once, as a chip (Oct 5)", (await panel(root).getByText(/Last contact/).count()) === 1 && (await panel(root).locator(".nh-chip", { hasText: "Last contact Oct 5" }).count()) === 1);
 
   // bad link already set: struck listing, badge, no Report button
   await selectRow(s, 3003);
   const listing = panel(root).getByRole("link", { name: "Listing" });
-  check("BAD LINK property: listing struck through with a Bad link badge", (await listing.evaluate((e) => getComputedStyle(e).textDecorationLine)).includes("line-through") && (await text(panel(root).locator("section", { hasText: "Notes & links" }))).includes("Bad link"));
+  check("BAD LINK property: listing struck through, one Bad link chip in the header", (await listing.evaluate((e) => getComputedStyle(e).textDecorationLine)).includes("line-through") && (await panel(root).locator(".nh-chip--bad.nh-chip--outline", { hasText: "Bad link" }).count()) === 1);
   check("BAD LINK property: no Report button", (await panel(root).getByRole("button", { name: "Report bad link" }).count()) === 0);
+
+  await selectRow(s, 3009);
+  check("stale mirror: the list says BAD LINK, the detail does not: no Report button, listing struck through, one Bad link chip",
+    (await panel(root).getByRole("button", { name: "Report bad link" }).count()) === 0 &&
+      (await panel(root).getByRole("link", { name: "Listing" }).evaluate((e) => getComputedStyle(e).textDecorationLine)).includes("line-through") &&
+      (await panel(root).locator(".nh-chip", { hasText: "Bad link" }).count()) === 1);
 
   // ---- 6. report bad link ----
   await selectRow(s, 3001);
@@ -334,6 +364,32 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
       (await text(panel(root))).includes("Bad link"));
   check("report form: the reporter's name was remembered", (await p.evaluate(() => localStorage.getItem("nh-reporter-name"))) === "Lou");
   check("report form: the list row got the Bad link chip", (await text(row(3001))).includes("Bad link"));
+  check("report form: noted:true says the Monday note was added", (await text(panel(root))).includes("Reported. Thanks. A note was added to the property on Monday."));
+
+  const reportOn = async (id, setup) => {
+    await selectRow(s, id);
+    s.state.flag.status = 200; s.state.flag.noted = true; s.state.flag.error = undefined;
+    setup();
+    const btn = panel(root).getByRole("button", { name: "Report bad link" });
+    await btn.scrollIntoViewIfNeeded();
+    await btn.click();
+    const f = panel(root).getByRole("form", { name: "Report bad link" });
+    await f.getByRole("button", { name: "Send" }).click();
+    return f;
+  };
+  await reportOn(3004, () => { s.state.flag.noted = false; });
+  await panel(root).getByText("Reported. (The Monday note could not be added.)").waitFor();
+  check("report outcome: noted:false does not claim a Monday note", !(await text(panel(root))).includes("A note was added"));
+  const f409 = await reportOn(3005, () => { s.state.flag.status = 409; s.state.flag.error = "Already flagged"; });
+  await panel(root).getByText("Already reported.").waitFor();
+  check("report outcome: 409 flips to the flagged state with 'Already reported.'", (await panel(root).getByRole("button", { name: "Report bad link" }).count()) === 0 && (await panel(root).locator(".nh-chip", { hasText: "Bad link" }).count()) === 1);
+  const f400 = await reportOn(3008, () => { s.state.flag.status = 400; s.state.flag.error = "note must not contain links"; });
+  await f400.getByRole("alert").waitFor();
+  check("report outcome: 400 about links shows 'Links are not allowed in the note.'", (await text(f400.getByRole("alert"))).includes("Links are not allowed in the note."));
+  s.state.flag.status = 429;
+  await f400.getByRole("button", { name: "Send" }).click();
+  await f400.getByRole("alert").filter({ hasText: "Too many reports right now; try again in a few minutes." }).waitFor();
+  check("report outcome: 429 shows the retry copy", true);
   await p.screenshot({ path: `${OUT}/panel-reported.png` });
 
   check("no unexpected dialogs or page errors so far", errors.length === 0, errors.slice(0, 3).join(" | "));
@@ -348,7 +404,7 @@ const CASES = [
   { w: 1366, h: 650 },
   { w: 1280, h: 600 },
   { w: 390, h: 844 },
-  { w: 1280, h: 800, iframe: true }, // embed-test.html frames the app at 100% x 600px
+  { w: 1280, h: 800, iframe: true }, // fixtures/embed-test.html frames the app at 100% x 600px
 ];
 for (const c of CASES) {
   for (const brief of [false, true]) {
@@ -365,7 +421,7 @@ for (const c of CASES) {
     check(`scroll [${label}]: results list is tall enough to use and scrolls`, m.sh > m.ch && m.ch >= 150 && w.moved, `list ${m.ch}/${m.sh}, wheel ${w.before}->${w.after}`);
     check(`scroll [${label}]: page does not scroll or overflow`, pm.scrollHeight <= pm.innerHeight && pm.scrollWidth <= pm.innerWidth && pm.scrollY === 0, JSON.stringify(pm));
     if (brief) {
-      const rows = await root.locator("[data-pin-row]:visible").first().boundingBox();
+      const rows = await root.locator("button[id^='row-']:visible").first().boundingBox();
       check(`scroll [${label}]: first result row is on screen`, !!rows && rows.y + rows.height <= pm.innerHeight, JSON.stringify(rows));
       await p.screenshot({ path: `${OUT}/scroll-${c.w}x${c.h}${c.iframe ? "-iframe" : ""}-brief-open.png` });
     }

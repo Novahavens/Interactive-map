@@ -1,4 +1,4 @@
-import type { Chip } from "@/lib/status";
+import type { Chip } from "@/lib/chips";
 import { cn } from "@/lib/utils";
 
 /** One compact line of state chips; renders nothing when there are none. */

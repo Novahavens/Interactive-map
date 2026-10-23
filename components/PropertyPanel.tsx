@@ -1,64 +1,44 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { X, Plus, Check, ExternalLink, Images, Phone, Mail, Loader2, Ban, Sparkles, Flag } from "lucide-react";
-import type { PropertyDetail, ClaimNeeds, ClaimOption, ApiError, FlagLinkRequest, FlagLinkResponse, Pin } from "@/lib/types";
-import { STATUS_HELP, STATUS_LABEL, asMapStatus, isBadLink, otherClaimsOf, propertyChips, reasonText, type MapStatus } from "@/lib/status";
+import { useEffect, useState } from "react";
+import { X, ExternalLink, Images, Phone, Mail, Sparkles } from "lucide-react";
+import type { PropertyDetail, ClaimNeeds, ApiError, Pin } from "@/lib/types";
+import { BAD_LINK } from "@/lib/types";
+import { STATUS, asMapStatus, reasonText, type MapStatus } from "@/lib/status";
+import { chipsFor, mergeChipSource } from "@/lib/chips";
 import { StatusDot } from "./StatusDot";
 import StatusChips from "./StatusChips";
-import { cn, money, num, dateShort, miles, yesNo } from "@/lib/utils";
+import { computeFit, FitRow } from "./property/fit";
+import PanelFooter from "./property/PanelFooter";
+import { Fee, LinkChip, Row, Section, Tile } from "./property/parts";
+import { ReportBadLink, ReportedNote, type Reported } from "./property/ReportBadLink";
+import { MONDAY_BOARDS, mondayItemUrl, money, num, dateShort, miles, yesNo } from "@/lib/utils";
 
 interface Props {
   propertyId: string;
-  distanceMiles: number | null;
-  needs: ClaimNeeds | null;
-  claimId: string | null;
-  claimName: string | null;
-  accountManager: string | null;
-  /** The list's copy of this property: shows the chips before the detail has loaded, and covers an API that omits them. */
+  /** The list's copy of this property: shows the chips and distance before the detail has loaded, and covers an API that omits fields. */
   pin: Pin | null;
+  claim: { id: string; name: string; accountManager: string | null } | null;
+  needs: ClaimNeeds | null;
   attached: boolean;
   onAttached: (propertyId: string, subitemId: string) => void;
   onFlagged: (propertyId: string) => void;
   onClose: () => void;
 }
 
-type AddState = { kind: "idle" } | { kind: "adding" } | { kind: "done"; subitemId: string } | { kind: "error"; message: string };
-type FitState = "ok" | "warn" | "bad" | "unknown";
-
-const REPORTER_KEY = "nh-reporter-name";
-
-// One colour language for the status badge: the same ok / amber / bad tokens as the Fit rows.
 const STATUS_TOKEN: Record<MapStatus, { bg: string; ink: string; line: string }> = {
   green: { bg: "var(--ok-bg)", ink: "var(--ok-ink)", line: "var(--ok-line)" },
   yellow: { bg: "var(--surface-muted)", ink: "var(--ink)", line: "var(--line2)" },
   red: { bg: "var(--bad-bg)", ink: "var(--bad-ink)", line: "var(--bad-line)" },
 };
 
-export default function PropertyPanel({ propertyId, distanceMiles, needs, claimId, claimName, accountManager, pin, attached, onAttached, onFlagged, onClose }: Props) {
-  // The panel is keyed by claim + property, so a claim switch unmounts it; this stops a late
-  // add response from reporting into the next claim's state.
-  const alive = useRef(true);
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
+export default function PropertyPanel({ propertyId, pin, claim, needs, attached, onAttached, onFlagged, onClose }: Props) {
   const [detail, setDetail] = useState<PropertyDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [add, setAdd] = useState<AddState>({ kind: "idle" });
-  const [confirming, setConfirming] = useState(false);
-  const [flagged, setFlagged] = useState(false);
-  const cancelRef = useRef<HTMLButtonElement>(null);
+  const [reported, setReported] = useState<Reported | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setDetail(null);
-    setError(null);
-    setAdd({ kind: "idle" });
-    setConfirming(false);
-    setFlagged(false);
     (async () => {
       try {
         const res = await fetch(`/api/properties/${propertyId}`, { cache: "no-store" });
@@ -78,58 +58,8 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
   const statusToken = STATUS_TOKEN[status];
   const fitRows = detail && needs ? computeFit(detail, needs) : [];
 
-  // The detail is the fresher copy; the list's pin fills in while it loads and when the API has no such field.
-  const linkStatus = flagged ? "BAD LINK" : (detail?.link_status ?? pin?.link_status ?? null);
-  const otherClaims: ClaimOption[] = otherClaimsOf(detail?.other_claims ?? pin?.other_claims, claimId);
-  const chips = propertyChips(
-    {
-      availability: detail?.availability ?? pin?.availability,
-      link_status: linkStatus,
-      last_contact: detail?.last_contact ?? pin?.last_contact,
-      other_claims: detail?.other_claims ?? pin?.other_claims,
-    },
-    claimId,
-  );
-  const badLink = isBadLink(linkStatus);
-
-  useEffect(() => {
-    if (confirming) cancelRef.current?.focus();
-  }, [confirming]);
-
-  function requestAdd() {
-    if (otherClaims.length > 0) setConfirming(true);
-    else void handleAdd();
-  }
-
-  async function handleAdd() {
-    if (!claimId || !detail) return;
-    setConfirming(false);
-    setAdd({ kind: "adding" });
-    try {
-      const res = await fetch("/api/claim/add", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ claimId, propertyId }),
-      });
-      const json = (await res.json()) as { ok: true; subitemId: string; alreadyAttached: boolean } | ApiError;
-      if (!res.ok || !("ok" in json)) throw new Error((json as ApiError).error || `HTTP ${res.status}`);
-      if (!alive.current) return;
-      setAdd({ kind: "done", subitemId: json.subitemId });
-      onAttached(propertyId, json.subitemId);
-    } catch (e) {
-      if (!alive.current) return;
-      setAdd({ kind: "error", message: e instanceof Error ? e.message : "Add to claim failed" });
-    }
-  }
-
-  const isAttached = attached || add.kind === "done";
-  const addDisabledReason = !claimId
-    ? "Pick a claim from Claims (Ctrl/⌘ K) to attach properties"
-    : status === "red"
-      ? `${reasonText(detail?.map_reason)}, so it cannot be attached`
-      : isAttached
-        ? "Already on this claim"
-        : null;
+  const source = mergeChipSource(detail, pin);
+  const { chips, otherClaims, badLink } = chipsFor(reported ? { ...source, link_status: BAD_LINK } : source, claim?.id ?? null);
 
   return (
     <aside
@@ -145,12 +75,12 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
                 <span
                   className="inline-flex h-5 items-center gap-1.5 rounded px-1.5 text-[11px] font-medium"
                   style={{ background: statusToken.bg, color: statusToken.ink, border: `1px solid ${statusToken.line}` }}
-                  title={STATUS_HELP[status]}
+                  title={STATUS[status].help}
                 >
                   <StatusDot status={status} />
-                  {STATUS_LABEL[status]}
+                  {STATUS[status].label}
                 </span>
-                {distanceMiles != null && <span className="text-[13px] text-muted">{miles(distanceMiles)} from the loss</span>}
+                {pin && <span className="text-[13px] text-muted">{miles(pin.distance_miles)} from the loss</span>}
               </div>
               <StatusChips chips={chips} className="mt-1.5" />
               <h2 className="mt-1.5 truncate text-[17px] font-semibold leading-tight tracking-[-0.01em]">{detail.name ?? "Property"}</h2>
@@ -203,7 +133,7 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
               >
                 <StatusDot status={status} className="mt-1" />
                 <div className="min-w-0">
-                  <div className="font-medium">{STATUS_LABEL[status]}</div>
+                  <div className="font-medium">{STATUS[status].label}</div>
                   <div className="text-xs opacity-90">{reasonText(detail.map_reason)}</div>
                   {detail.landlord_approval_note && <p className="mt-1 break-words text-xs">{detail.landlord_approval_note}</p>}
                 </div>
@@ -244,7 +174,7 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
                 <p className="mt-2 text-xs text-muted">
                   Unknowns are gaps on the claim or the record, not judgements.{" "}
                   <a
-                    href={`https://novahavens.monday.com/boards/9030696652/pulses/${claimId ?? ""}`}
+                    href={mondayItemUrl(MONDAY_BOARDS.claim, claim?.id)}
                     target="_blank"
                     rel="noreferrer noopener"
                     className="font-medium no-underline"
@@ -336,7 +266,6 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
                     <span className="truncate">{detail.owner_email}</span>
                   </a>
                 )}
-                {detail.last_contact && <p className="text-xs text-muted">Last contact {dateShort(detail.last_contact)}</p>}
 
                 <div className="flex items-center justify-between gap-2 border-t border-line pt-2">
                   <span className="flex flex-col leading-tight">
@@ -374,14 +303,9 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
                     struck={badLink}
                   />
                 )}
-                {detail.property_link && badLink && (
-                  <span className="nh-chip nh-chip--bad nh-chip--outline" title="Reported as a broken listing link">
-                    <span>Bad link</span>
-                  </span>
-                )}
                 {detail.photo_folder_url && <LinkChip href={detail.photo_folder_url} icon={<Images className="h-3.5 w-3.5" />} label="Photos" />}
                 <LinkChip
-                  href={`https://novahavens.monday.com/boards/18415735059/pulses/${detail.monday_item_id}`}
+                  href={mondayItemUrl(MONDAY_BOARDS.property, detail.monday_item_id)}
                   icon={<ExternalLink className="h-3.5 w-3.5" />}
                   label="Open in Monday"
                 />
@@ -389,13 +313,13 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
               {detail.property_link && !badLink && (
                 <ReportBadLink
                   propertyId={detail.monday_item_id}
-                  onReported={() => {
-                    setFlagged(true);
+                  onReported={(r) => {
+                    setReported(r);
                     onFlagged(detail.monday_item_id);
                   }}
                 />
               )}
-              {flagged && <ReportedNote />}
+              {reported && <ReportedNote reported={reported} />}
               <p className="mt-3 text-xs text-muted">
                 Synced from Monday {detail.synced_at ? new Date(detail.synced_at).toLocaleString("en-US") : "—"} · Monday is the system of record.
               </p>
@@ -404,417 +328,15 @@ export default function PropertyPanel({ propertyId, distanceMiles, needs, claimI
         )}
       </div>
 
-      {/* Footer: primary action, then Phase 2 slots */}
-      <div className="flex flex-col gap-2 border-t border-line bg-surface px-4 py-3">
-        {add.kind === "error" && (
-          <div className="rounded-md border p-2 text-xs" style={{ borderColor: "var(--bad-line)", background: "var(--bad-bg)", color: "var(--bad-ink)" }}>
-            <span className="font-medium">Not added.</span> {add.message}
-          </div>
-        )}
-
-        {!isAttached ? (
-          <>
-            {claimId && (
-              <p className="truncate text-xs text-muted">
-                Adding to: <span className="font-medium text-ink">{claimName ?? `claim ${claimId}`}</span>
-                {accountManager && <span> · {accountManager}</span>}
-              </p>
-            )}
-            {confirming && (
-              <div
-                role="alert"
-                className="flex flex-col gap-2 rounded-md border p-2.5 text-[13px]"
-                style={{ borderColor: "var(--amber-line)", background: "var(--amber-bg)", color: "var(--amber-ink)" }}
-              >
-                <p>
-                  Already an option on{" "}
-                  {otherClaims.map((c, i) => (
-                    <span key={c.subitemId}>
-                      {i > 0 && ", "}
-                      <span className="font-medium">{c.claimName}</span>
-                      {c.status ? ` (${c.status})` : ""}
-                    </span>
-                  ))}
-                  . Add anyway?
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleAdd()}
-                    className="inline-flex h-9 items-center justify-center rounded-lg bg-ink text-[13px] font-medium text-bg hover:brightness-110"
-                  >
-                    Add anyway
-                  </button>
-                  <button
-                    ref={cancelRef}
-                    type="button"
-                    onClick={() => setConfirming(false)}
-                    className="inline-flex h-9 items-center justify-center rounded-lg border border-line bg-surface text-[13px] font-medium text-ink"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-            <button
-              type="button"
-              disabled={!detail || !!addDisabledReason || add.kind === "adding" || confirming}
-              onClick={requestAdd}
-              className={cn(
-                "flex h-10 w-full items-center justify-center gap-2 rounded-lg text-sm font-medium transition",
-                addDisabledReason ? "cursor-not-allowed bg-surface-muted text-muted" : "bg-ink text-bg hover:brightness-110 active:brightness-95",
-              )}
-            >
-              {add.kind === "adding" ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Adding to claim…
-                </>
-              ) : status === "red" ? (
-                <>
-                  <Ban className="h-3.5 w-3.5" /> DO NOT USE
-                </>
-              ) : (
-                <>
-                  <Plus className="h-3.5 w-3.5" /> Add to claim
-                </>
-              )}
-            </button>
-            <p className="text-center text-xs text-muted">
-              {addDisabledReason ?? "One sub-item, status “To Do”. One at a time is the quality gate."}
-            </p>
-          </>
-        ) : (
-          <>
-            <div
-              role="status"
-              className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium"
-              style={{ borderColor: "var(--ok-line)", background: "var(--ok-bg)", color: "var(--ok-ink)" }}
-            >
-              <Check className="h-3.5 w-3.5" /> On this claim
-            </div>
-            <p className="text-center text-xs text-muted">
-              Sub-item created · “To Do” ·{" "}
-              <a
-                href={`https://novahavens.monday.com/boards/9030696652/pulses/${claimId ?? ""}`}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="no-underline"
-              >
-                open on Monday →
-              </a>
-            </p>
-          </>
-        )}
-
-        <div className="mt-0.5 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title="Call the owner through Quo — Phase 2"
-            className="inline-flex h-9 cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-dashed border-line2 bg-transparent text-[13px] text-muted"
-          >
-            <Phone className="h-3 w-3" />
-            <span>Call via Quo</span>
-            <span className="rounded border border-line px-1 text-[10px] tracking-wide">P2</span>
-          </button>
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title="Text the owner through Quo — Phase 2"
-            className="inline-flex h-9 cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-dashed border-line2 bg-transparent text-[13px] text-muted"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            <span>Text via Quo</span>
-            <span className="rounded border border-line px-1 text-[10px] tracking-wide">P2</span>
-          </button>
-        </div>
-      </div>
+      <PanelFooter
+        propertyId={propertyId}
+        detail={detail}
+        status={status}
+        claim={claim}
+        otherClaims={otherClaims}
+        attached={attached}
+        onAttached={onAttached}
+      />
     </aside>
-  );
-}
-
-// ---------- fit computation ----------
-
-function computeFit(d: PropertyDetail, n: ClaimNeeds): { title: string; state: FitState; text: string }[] {
-  // Family fit — beds/baths together, since the claim rarely states one without the other.
-  let family: { state: FitState; text: string };
-  if (n.bedrooms == null && n.bathrooms == null) {
-    family = { state: "unknown", text: "Beds and baths are not on the claim yet." };
-  } else if (d.bedrooms == null && d.bathrooms == null) {
-    family = { state: "unknown", text: "Beds and baths are not on the record." };
-  } else {
-    const bedOk = n.bedrooms == null || d.bedrooms == null || Number(d.bedrooms) >= n.bedrooms;
-    const bathOk = n.bathrooms == null || d.bathrooms == null || Number(d.bathrooms) >= n.bathrooms;
-    if (bedOk && bathOk) {
-      family = { state: "ok", text: `${num(d.bedrooms)} bd / ${num(d.bathrooms)} ba meets the claim's ${num(n.bedrooms)} bd / ${num(n.bathrooms)} ba.` };
-    } else {
-      family = { state: "bad", text: `${num(d.bedrooms)} bd / ${num(d.bathrooms)} ba; the family needs ${num(n.bedrooms)} bd / ${num(n.bathrooms)} ba.` };
-    }
-  }
-
-  // Pets
-  let pets: { state: FitState; text: string };
-  if (n.pets == null || n.pets === 0) {
-    pets = { state: "unknown", text: "No pets on this claim." };
-  } else {
-    const ps = (d.pet_status ?? "").trim().toLowerCase();
-    if (ps === "yes" || ps === "y" || ps === "true") pets = { state: "ok", text: `Pets allowed; the family has ${n.pets}.` };
-    else if (ps === "no" || ps === "n" || ps === "false") pets = { state: "bad", text: `Pets not allowed; the family has ${n.pets}.` };
-    else pets = { state: "unknown", text: `Pet policy not stated; the family has ${n.pets}.` };
-  }
-
-  // Within FRV
-  let budget: { state: FitState; text: string };
-  if (d.monthly_rate == null) {
-    budget = { state: "unknown", text: "No rent on the record." };
-  } else if (n.frv == null) {
-    budget = { state: "unknown", text: `${money(d.monthly_rate)}/mo · FRV not on the claim yet.` };
-  } else if (Number(d.monthly_rate) <= n.frv) {
-    budget = { state: "ok", text: `${money(d.monthly_rate)}/mo is within the FRV of ${money(n.frv)}.` };
-  } else {
-    budget = { state: "bad", text: `${money(d.monthly_rate)}/mo is above the FRV of ${money(n.frv)}.` };
-  }
-
-  // Available by move-in
-  let timing: { state: FitState; text: string };
-  if (!d.next_availability) {
-    timing = { state: "unknown", text: n.moveIn ? `Availability not on the record; move-in is ${dateShort(n.moveIn)}.` : "Availability not on the record." };
-  } else if (!n.moveIn) {
-    timing = { state: "unknown", text: `Available ${dateShort(d.next_availability)}; move-in date not on the claim.` };
-  } else if (d.next_availability <= n.moveIn) {
-    timing = { state: "ok", text: `Available ${dateShort(d.next_availability)}, in time for move-in ${dateShort(n.moveIn)}.` };
-  } else {
-    timing = { state: "bad", text: `Available ${dateShort(d.next_availability)}; the family needs to move in by ${dateShort(n.moveIn)}.` };
-  }
-
-  return [
-    { title: "Family fit", ...family },
-    { title: "Pets", ...pets },
-    { title: "Within FRV", ...budget },
-    { title: "Available by move-in", ...timing },
-  ];
-}
-
-// ---------- small presentational pieces ----------
-
-const FIT_STYLE: Record<FitState, { glyph: string; bg: string; fg: string; label: string }> = {
-  ok: { glyph: "✓", bg: "var(--ok-bg)", fg: "var(--ok-ink)", label: "Meets" },
-  warn: { glyph: "!", bg: "var(--amber-bg)", fg: "var(--amber-ink)", label: "Falls short" },
-  bad: { glyph: "×", bg: "var(--bad-bg)", fg: "var(--bad-ink)", label: "Does not meet" },
-  unknown: { glyph: "?", bg: "var(--surface-muted)", fg: "var(--muted)", label: "Unknown" },
-};
-
-function FitRow({ title, state, text }: { title: string; state: FitState; text: string }) {
-  const s = FIT_STYLE[state];
-  return (
-    <li className="flex items-start gap-2">
-      <span
-        aria-label={s.label}
-        className="mt-px inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-        style={{ background: s.bg, color: s.fg }}
-      >
-        {s.glyph}
-      </span>
-      <span className="flex flex-col leading-snug">
-        <span className="font-medium">{title}</span>
-        <span className="text-[13px] text-muted">{text}</span>
-      </span>
-    </li>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="border-b border-line px-4 py-3">
-      <h3 className="nh-eyebrow mb-2">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
-function Fee({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  const empty = value === "—";
-  return (
-    <div className="flex items-baseline justify-between">
-      <span className="text-muted">{label}</span>
-      <span className={cn("font-mono", strong ? "font-semibold" : "font-normal", empty && "text-muted")}>{value}</span>
-    </div>
-  );
-}
-
-function Tile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-0.5 rounded-md bg-surface-muted p-2">
-      <span className="text-xs text-muted">{label}</span>
-      <span className="font-medium">{value}</span>
-    </div>
-  );
-}
-
-function Row({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex justify-between py-0.5">
-      <span className="text-muted">{k}</span>
-      <span>{v}</span>
-    </div>
-  );
-}
-
-function LinkChip({ href, icon, label, struck }: { href: string; icon: React.ReactNode; label: string; struck?: boolean }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer noopener"
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink no-underline hover:bg-surface-muted",
-        struck && "text-muted line-through",
-      )}
-    >
-      {icon}
-      {label}
-    </a>
-  );
-}
-
-// ---------- report a bad listing link ----------
-
-type ReportState = { kind: "closed" } | { kind: "open" } | { kind: "sending" } | { kind: "error"; message: string };
-
-function readReporterName(): string {
-  try {
-    return localStorage.getItem(REPORTER_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function ReportBadLink({ propertyId, onReported }: { propertyId: string; onReported: () => void }) {
-  const [state, setState] = useState<ReportState>({ kind: "closed" });
-  const [name, setName] = useState("");
-  const [note, setNote] = useState("");
-  const nameRef = useRef<HTMLInputElement>(null);
-  const noteRef = useRef<HTMLTextAreaElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const open = state.kind !== "closed";
-
-  function show() {
-    const saved = readReporterName();
-    setName(saved);
-    setState({ kind: "open" });
-    requestAnimationFrame(() => (saved ? noteRef : nameRef).current?.focus());
-  }
-
-  function cancel() {
-    setState({ kind: "closed" });
-    requestAnimationFrame(() => buttonRef.current?.focus());
-  }
-
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    if (state.kind === "sending") return;
-    setState({ kind: "sending" });
-    const body: FlagLinkRequest = {};
-    if (name.trim()) body.reportedBy = name.trim();
-    if (note.trim()) body.note = note.trim();
-    try {
-      const res = await fetch(`/api/properties/${propertyId}/flag-link`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = (await res.json()) as FlagLinkResponse | ApiError;
-      if (!res.ok || !("ok" in json)) throw new Error((json as ApiError).error || `HTTP ${res.status}`);
-      try {
-        if (name.trim()) localStorage.setItem(REPORTER_KEY, name.trim());
-      } catch {
-        // private window or blocked storage: the report still went through
-      }
-      onReported();
-    } catch (err) {
-      setState({ kind: "error", message: err instanceof Error ? err.message : "Could not send the report" });
-    }
-  }
-
-  if (!open) {
-    return (
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={show}
-        className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md border border-line bg-surface px-2 text-xs font-medium text-muted hover:text-ink"
-      >
-        <Flag className="h-3 w-3" aria-hidden="true" />
-        Report bad link
-      </button>
-    );
-  }
-
-  const sending = state.kind === "sending";
-  return (
-    <form
-      onSubmit={send}
-      onKeyDown={(e) => e.key === "Escape" && !sending && cancel()}
-      className="mt-2 flex flex-col gap-2 rounded-md border border-line bg-surface-muted p-2.5 text-[13px]"
-      aria-label="Report bad link"
-    >
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-muted">Your name</span>
-        <input
-          ref={nameRef}
-          value={name}
-          maxLength={80}
-          onChange={(e) => setName(e.target.value)}
-          autoComplete="name"
-          className="h-8 rounded-md border border-line2 bg-surface px-2 text-ink"
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-muted">What&apos;s wrong? (optional)</span>
-        <textarea
-          ref={noteRef}
-          value={note}
-          maxLength={300}
-          rows={2}
-          onChange={(e) => setNote(e.target.value)}
-          className="resize-none rounded-md border border-line2 bg-surface px-2 py-1.5 text-ink"
-        />
-      </label>
-      {state.kind === "error" && (
-        <p role="alert" className="text-xs" style={{ color: "var(--bad-ink)" }}>
-          <span className="font-medium">Not sent.</span> {state.message}
-        </p>
-      )}
-      <div className="flex items-center gap-2">
-        <button
-          type="submit"
-          disabled={sending}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ink px-3 text-xs font-medium text-bg hover:brightness-110 disabled:opacity-60"
-        >
-          {sending && <Loader2 className="h-3 w-3 animate-spin" />}
-          Send
-        </button>
-        <button
-          type="button"
-          onClick={cancel}
-          disabled={sending}
-          className="inline-flex h-8 items-center rounded-md border border-line bg-surface px-3 text-xs font-medium text-ink"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function ReportedNote() {
-  return (
-    <p role="status" className="mt-2 text-xs text-muted">
-      <span className="font-medium text-ink">Reported. Thanks.</span> A note was added to the property on Monday.
-    </p>
   );
 }
