@@ -59,13 +59,13 @@ async function open(browser, { w, h, theme = "light" }) {
   p.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource|favicon|net::ERR/i.test(m.text())) errors.push(`[${w}x${h}] ${m.text()}`); });
   p.on("dialog", (d) => { errors.push(`unexpected ${d.type()} dialog: ${d.message()}`); void d.dismiss(); });
   await p.goto(`${BASE}/?claimId=${CLAIM_ID}`, { waitUntil: "networkidle" });
-  await p.locator("[data-pin-row]:visible, button:has-text('within')").first().waitFor();
+  await p.locator("button[id^='row-']:visible, button:has-text('within')").first().waitFor();
   await p.waitForTimeout(4500);
   return { ctx, p, state, phone: w < 1024 };
 }
 const results = (p) => p.locator('ul[aria-label="Results"]:visible').first();
 const panel = (p) => p.locator('aside[aria-label="Property details"]:visible').first();
-const row = (p, id) => p.locator(`[data-pin-row="${id}"]:visible`).first();
+const row = (p, id) => p.locator(`[id="row-${id}"]:visible`).first();
 const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
 async function openList(s) {
   if (s.phone && !(await results(s.p).count())) {
@@ -89,7 +89,7 @@ async function rowGeometry(p) {
     const out = { rows: 0, dots: [], overlaps: [], escapes: [] };
     const box = (e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
     const hit = (a, b) => a.x < b.x + b.width - 0.5 && b.x < a.x + a.width - 0.5 && a.y < b.y + b.height - 0.5 && b.y < a.y + a.height - 0.5;
-    for (const r of document.querySelectorAll("[data-pin-row]")) {
+    for (const r of document.querySelectorAll("button[id^='row-']")) {
       if (r.offsetParent === null) continue;
       out.rows++;
       const id = r.dataset.pinRow;
@@ -126,14 +126,14 @@ async function wheelMoves(p, loc) {
 async function cornerCover(p) {
   return p.evaluate(() => {
     const hits = [];
-    const rows = [...document.querySelectorAll("[data-pin-row]")].filter((r) => r.offsetParent !== null);
+    const rows = [...document.querySelectorAll("button[id^='row-']")].filter((r) => r.offsetParent !== null);
     const list = document.querySelector('ul[aria-label="Results"]');
     const lb = list?.getBoundingClientRect();
     for (let x = 4; x < 90; x += 12) {
       for (let y = innerHeight - 90; y < innerHeight - 2; y += 12) {
         const el = document.elementFromPoint(x, y);
         if (!el) continue;
-        const inRow = el.closest("[data-pin-row]");
+        const inRow = el.closest("button[id^='row-']");
         if (inRow) continue;
         const r = rows.find((rw) => { const b = rw.getBoundingClientRect(); return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height; });
         if (r) hits.push(`${r.dataset.pinRow} covered at ${x},${y} by <${el.tagName.toLowerCase()} ${(el.getAttribute("aria-label") || el.id || el.className || "").toString().slice(0, 40)}>`);
@@ -231,6 +231,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   // A pin inside a cluster has no highlight by design, so use one the map draws on its own.
   const pinLabel = await p.locator(".nh-pin").first().getAttribute("aria-label");
   const first = pins.find((x) => pinLabel.startsWith(`${x.name},`)).monday_item_id;
+  await p.keyboard.press("Tab"); // a keyboard interaction first, so :focus-visible applies to the programmatic focus
   await row(p, first).focus();
   await p.waitForTimeout(300);
   check("a11y: keyboard focus on a row highlights its pin", (await p.locator(".nh-pin--hover").count()) === 1);
@@ -246,7 +247,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   check("a11y: every map pin has an aria-label", unnamedPins === 0, String(unnamedPins));
   const chipNoText = await p.evaluate(() => [...document.querySelectorAll(".nh-chip")].filter((e) => !e.textContent.trim()).length);
   check("a11y: every chip carries a text label (colour is not the only signal)", chipNoText === 0);
-  const dotNoLabel = await p.evaluate(() => [...document.querySelectorAll("[data-pin-row] .nh-dot")].filter((e) => !e.getAttribute("aria-label")).length);
+  const dotNoLabel = await p.evaluate(() => [...document.querySelectorAll("button[id^='row-'] .nh-dot")].filter((e) => !e.getAttribute("aria-label")).length);
   check("a11y: status dots have a name and a distinct shape class", dotNoLabel === 0 && (await p.evaluate(() => new Set([...document.querySelectorAll(".nh-dot")].map((e) => [...e.classList].find((c) => c.startsWith("nh-dot--")))).size)) >= 2);
 
   const cc = await cornerCover(p);
