@@ -10,6 +10,7 @@ import { StatusDot } from "./StatusDot";
 import StatusChips from "./StatusChips";
 import { computeFit, FitRow } from "./property/fit";
 import PanelFooter from "./property/PanelFooter";
+import ContactDigest from "./property/ContactDigest";
 import { Fee, LinkChip, Row, Section, Tile } from "./property/parts";
 import { ReportBadLink, ReportedNote, type Reported } from "./property/ReportBadLink";
 import { MONDAY_BOARDS, mondayItemUrl, money, num, dateShort, miles, yesNo } from "@/lib/utils";
@@ -288,6 +289,7 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
                   </a>
                 )}
                 {detail.landlord_approval_note && <p className="text-xs text-muted">{detail.landlord_approval_note}</p>}
+                {(detail.owner_phone || detail.landlord_phone) && <ContactDigest propertyId={detail.monday_item_id} />}
               </div>
             </Section>
 
