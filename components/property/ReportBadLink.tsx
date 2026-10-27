@@ -11,7 +11,8 @@ export type Reported = "noted" | "unnoted" | "already";
 
 type ReportState = { kind: "closed" } | { kind: "open" } | { kind: "sending" } | { kind: "error"; message: string };
 
-function readReporterName(): string {
+/** The name typed into "Report bad link" on this device, if any. Also signs the Quo text draft. */
+export function readReporterName(): string {
   try {
     return localStorage.getItem(REPORTER_KEY) ?? "";
   } catch {
