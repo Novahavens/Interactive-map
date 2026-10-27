@@ -8,7 +8,8 @@ import SearchBox from "./SearchBox";
 import ActiveClaimsDrawer from "./ActiveClaimsDrawer";
 import SummarySheet from "./SummarySheet";
 import { useTheme } from "@/lib/useTheme";
-import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse } from "@/lib/types";
+import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse, type PropertyDetail } from "@/lib/types";
+import { EDIT_FIELDS } from "@/lib/listing-edit";
 import { STATUS_ORDER, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
 import ClaimBrief, { claimGlance } from "./ClaimBrief";
 import ResultsSheet, { type SheetSnap } from "./ResultsSheet";
@@ -209,6 +210,21 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   // A bad-link report from the panel shows on the list straight away, without waiting for the sync.
   const handleFlagged = useCallback((propertyId: string) => {
     setPins((prev) => prev.map((p) => (p.monday_item_id === propertyId ? { ...p, link_status: BAD_LINK } : p)));
+  }, []);
+
+  // A saved listing edit: the list row, the map pin and the other panel mount take the new values at once.
+  const [editedDetail, setEditedDetail] = useState<PropertyDetail | null>(null);
+  const handleEdited = useCallback((d: PropertyDetail) => {
+    setEditedDetail(d);
+    const apply = <T extends object>(p: T): T => {
+      const next = { ...p } as Record<string, unknown>;
+      for (const { key } of EDIT_FIELDS) if (key in next && key in d) next[key] = d[key as keyof PropertyDetail];
+      // The list carries next_availability under its own name.
+      if ("available_from" in next && "next_availability" in d) next.available_from = d.next_availability;
+      return next as T;
+    };
+    setPins((prev) => prev.map((p) => (p.monday_item_id === d.monday_item_id ? apply(p) : p)));
+    setAttachedPins((prev) => prev.map((p) => (p.monday_item_id === d.monday_item_id ? apply(p) : p)));
   }, []);
 
   const visiblePins = useMemo(() => pins.filter((p) => passesFilters(p, filters)), [pins, filters]);
@@ -436,6 +452,8 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       attached={attachedIds.has(selectedId)}
       onAttached={handleAttached}
       onFlagged={handleFlagged}
+      edited={editedDetail}
+      onEdited={handleEdited}
       onClose={() => setSelectedId(null)}
     />
   ) : null;

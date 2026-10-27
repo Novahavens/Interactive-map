@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { X, ExternalLink, Images, Mail, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { X, ExternalLink, Images, Mail, Pencil, Sparkles } from "lucide-react";
 import type { PropertyDetail, ClaimNeeds, ApiError, Pin } from "@/lib/types";
 import { BAD_LINK } from "@/lib/types";
 import { STATUS, asMapStatus, reasonText, type MapStatus } from "@/lib/status";
@@ -15,7 +15,11 @@ import ContactDigest from "./property/ContactDigest";
 import ContactActions from "./property/ContactActions";
 import { Fee, LinkChip, Row, Section } from "./property/parts";
 import { ReportBadLink, ReportedNote, type Reported } from "./property/ReportBadLink";
-import { MONDAY_BOARDS, mondayItemUrl, money, num, dateShort, miles, yesNo } from "@/lib/utils";
+import AvailabilityPill from "./property/AvailabilityPill";
+import EditListing, { type SavedOutcome } from "./property/EditListing";
+import { editingEnabled } from "./property/health";
+import { availabilityPill, localToday } from "@/lib/availability";
+import { MONDAY_BOARDS, mondayItemUrl, money, num, miles, yesNo } from "@/lib/utils";
 
 interface Props {
   propertyId: string;
@@ -26,7 +30,17 @@ interface Props {
   attached: boolean;
   onAttached: (propertyId: string, subitemId: string) => void;
   onFlagged: (propertyId: string) => void;
+  /** The latest saved edit of any property (from either panel mount): this mount shows it when it is this property. */
+  edited: PropertyDetail | null;
+  onEdited: (detail: PropertyDetail) => void;
   onClose: () => void;
+}
+
+const SAVED_MS = 6000;
+
+function savedText(o: SavedOutcome): string {
+  if (o.dryRun) return "Dry run: nothing was written to Monday.";
+  return o.noted ? "Saved to Monday." : "Saved to Monday. The Monday note couldn't be posted.";
 }
 
 const STATUS_TOKEN: Record<MapStatus, { bg: string; ink: string; line: string }> = {
@@ -35,10 +49,54 @@ const STATUS_TOKEN: Record<MapStatus, { bg: string; ink: string; line: string }>
   red: { bg: "var(--bad-bg)", ink: "var(--bad-ink)", line: "var(--bad-line)" },
 };
 
-export default function PropertyPanel({ propertyId, pin, claim, needs, attached, onAttached, onFlagged, onClose }: Props) {
+export default function PropertyPanel({ propertyId, pin, claim, needs, attached, onAttached, onFlagged, edited, onEdited, onClose }: Props) {
   const [detail, setDetail] = useState<PropertyDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reported, setReported] = useState<Reported | null>(null);
+  const [canEdit, setCanEdit] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const editRef = useRef<HTMLButtonElement>(null);
+  const focusEdit = useRef(false);
+
+  useEffect(() => {
+    let live = true;
+    void editingEnabled().then((on) => live && setCanEdit(on));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // A save in the other mount (rail or sheet) lands here too, so the two never disagree.
+  useEffect(() => {
+    if (edited && edited.monday_item_id === propertyId) setDetail(edited);
+  }, [edited, propertyId]);
+
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(null), SAVED_MS);
+    return () => clearTimeout(t);
+  }, [saved]);
+
+  // Back on the Edit button once the form has gone (it is not rendered while editing).
+  useEffect(() => {
+    if (!editing && focusEdit.current) {
+      focusEdit.current = false;
+      editRef.current?.focus();
+    }
+  }, [editing]);
+
+  function closeEditor() {
+    focusEdit.current = true;
+    setEditing(false);
+  }
+
+  function handleSaved(next: PropertyDetail, outcome: SavedOutcome) {
+    setDetail(next);
+    setSaved(savedText(outcome));
+    closeEditor();
+    onEdited(next);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +120,18 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
   const fitRows = detail && needs ? computeFit(detail, needs) : [];
 
   const source = mergeChipSource(detail, pin);
-  const { chips, otherClaims, badLink } = chipsFor(reported ? { ...source, link_status: BAD_LINK } : source, claim?.id ?? null);
+  const { chips, otherClaims, badLink } = chipsFor(reported ? { ...source, link_status: BAD_LINK } : source, claim?.id ?? null, {
+    availability: false,
+  });
+  // Before the detail loads the list's copy shows it (pins carry next_availability as available_from).
+  const pill = availabilityPill(
+    {
+      availability: source.availability,
+      availability_checked: detail?.availability_checked ?? pin?.availability_checked,
+      next_availability: detail && detail.next_availability !== undefined ? detail.next_availability : pin?.available_from,
+    },
+    localToday(),
+  );
 
   return (
     <aside
@@ -72,6 +141,7 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
       {/* Header */}
       <div className="flex items-start gap-3 border-b border-line px-4 py-3.5">
         <div className="min-w-0 flex-1">
+          {pill && <AvailabilityPill pill={pill} className="mb-2.5" />}
           {detail ? (
             <>
               <div className="flex flex-wrap items-center gap-2">
@@ -100,16 +170,56 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
             <div className="nh-skeleton h-12" />
           )}
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close panel"
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line bg-surface text-muted hover:text-ink"
-        >
-          <X className="h-3 w-3" />
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {detail && canEdit && !editing && (
+            <button
+              ref={editRef}
+              type="button"
+              onClick={() => {
+                setSaved(null);
+                setEditing(true);
+              }}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-[13px] font-medium text-ink hover:bg-surface-muted [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3"
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+              Edit
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close panel"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line bg-surface text-muted hover:text-ink"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
       </div>
 
+      {/* What the last save did; always mounted so screen readers hear it. */}
+      <div aria-live="polite" className="empty:hidden">
+        {saved && !editing && (
+          <div
+            className="flex items-start justify-between gap-2 border-b px-4 py-2 text-[13px]"
+            style={{ background: "var(--ok-bg)", color: "var(--ok-ink)", borderColor: "var(--ok-line)" }}
+          >
+            <span className="min-w-0">{saved}</span>
+            <button
+              type="button"
+              onClick={() => setSaved(null)}
+              aria-label="Dismiss"
+              className="-my-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+            >
+              <X className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {editing && detail ? (
+        <EditListing propertyId={propertyId} detail={detail} onCancel={closeEditor} onSaved={handleSaved} />
+      ) : (
+      <>
       {/* Body */}
       <div className="nh-scroll min-h-0 flex-1 overflow-y-auto text-sm">
         {error && (
@@ -238,7 +348,6 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
                 <Row k="Type" v={detail.property_type && detail.property_type !== "N/D" ? detail.property_type : "—"} />
                 <Row k="Furnished" v={yesNo(detail.furnished)} />
                 <Row k="Fenced yard" v={yesNo(detail.fenced_yard)} />
-                <Row k="Available" v={dateShort(detail.next_availability)} />
               </div>
             </Section>
 
@@ -322,6 +431,8 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
         attached={attached}
         onAttached={onAttached}
       />
+      </>
+      )}
     </aside>
   );
 }
