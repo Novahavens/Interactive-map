@@ -10,8 +10,9 @@ import { StatusDot } from "./StatusDot";
 import StatusChips from "./StatusChips";
 import { computeFit, FitRow } from "./property/fit";
 import PanelFooter from "./property/PanelFooter";
+import KeyFacts from "./property/KeyFacts";
 import ContactDigest from "./property/ContactDigest";
-import { Fee, LinkChip, Row, Section, Tile } from "./property/parts";
+import { Fee, LinkChip, Row, Section } from "./property/parts";
 import { ReportBadLink, ReportedNote, type Reported } from "./property/ReportBadLink";
 import { MONDAY_BOARDS, mondayItemUrl, money, num, dateShort, miles, yesNo } from "@/lib/utils";
 
@@ -126,6 +127,30 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
 
         {detail && (
           <>
+            <KeyFacts detail={detail} />
+
+            {/* Fit against the claim */}
+            {needs && (
+              <Section title="Fit against this claim">
+                <ul className="flex flex-col gap-1.5">
+                  {fitRows.map((row) => (
+                    <FitRow key={row.title} {...row} />
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-muted">
+                  Unknowns are gaps on the claim or the record, not judgements.{" "}
+                  <a
+                    href={mondayItemUrl(MONDAY_BOARDS.claim, claim?.id)}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="font-medium no-underline"
+                  >
+                    Fill them on Monday →
+                  </a>
+                </p>
+              </Section>
+            )}
+
             {/* Why this colour, and what we have written down about the owner and the property */}
             <div className="border-b border-line px-4 py-3">
               <div
@@ -161,28 +186,6 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
                     </li>
                   ))}
                 </ul>
-              </Section>
-            )}
-
-            {/* Fit against the claim */}
-            {needs && (
-              <Section title="Fit against this claim">
-                <ul className="flex flex-col gap-1.5">
-                  {fitRows.map((row) => (
-                    <FitRow key={row.title} {...row} />
-                  ))}
-                </ul>
-                <p className="mt-2 text-xs text-muted">
-                  Unknowns are gaps on the claim or the record, not judgements.{" "}
-                  <a
-                    href={mondayItemUrl(MONDAY_BOARDS.claim, claim?.id)}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="font-medium no-underline"
-                  >
-                    Fill them on Monday →
-                  </a>
-                </p>
               </Section>
             )}
 
@@ -229,13 +232,8 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
 
             {/* Property */}
             <Section title="Property">
-              <div className="grid grid-cols-4 gap-2">
-                <Tile label="Beds" value={num(detail.bedrooms)} />
-                <Tile label="Baths" value={num(detail.bathrooms)} />
-                <Tile label="Pets" value={yesNo(detail.pet_status)} />
-                <Tile label="Sq ft" value={num(detail.sqft)} />
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-x-4 text-[13px]">
+              <div className="grid grid-cols-2 gap-x-4 text-[13px]">
+                <Row k="Sq ft" v={num(detail.sqft)} />
                 <Row k="Type" v={detail.property_type && detail.property_type !== "N/D" ? detail.property_type : "—"} />
                 <Row k="Furnished" v={yesNo(detail.furnished)} />
                 <Row k="Fenced yard" v={yesNo(detail.fenced_yard)} />

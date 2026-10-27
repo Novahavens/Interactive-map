@@ -1,17 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  RefreshCw,
-  Sun,
-  Moon,
-  PawPrint,
-  Images,
-  DollarSign,
-  Inbox,
-  Send,
-} from "lucide-react";
+import { AlertTriangle, ChevronDown, DollarSign, Images, Inbox, Moon, PawPrint, RefreshCw, Send, SlidersHorizontal, Sun } from "lucide-react";
 import MapCanvas from "./MapCanvas";
 import PropertyPanel from "./PropertyPanel";
 import SearchBox from "./SearchBox";
@@ -56,6 +46,8 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   const [center, setCenter] = useState<Center | null>(null);
   const [radius, setRadius] = useState<number>(DEFAULT_RADIUS);
   const [filters, setFilters] = useState<PinFilters>({ pets: false, photos: false, priced: false, hidden: NONE_HIDDEN });
+  // One open/closed state for the Filters drawer, shared by the rail and the phone sheet.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [pins, setPins] = useState<Pin[]>([]);
   const [coverage, setCoverage] = useState<Coverage | null>(null);
@@ -268,6 +260,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       }}
     />
   );
+  const activeFilters = (filters.pets ? 1 : 0) + (filters.photos ? 1 : 0) + (filters.priced ? 1 : 0) + STATUS_ORDER.filter((s) => filters.hidden[s]).length;
   const controlsBlock = (touch: boolean) => (
     <div className="flex flex-col gap-2.5 border-b border-line p-3">
       {searchBlock}
@@ -294,6 +287,19 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         </div>
       </div>
 
+      {/* Filters and the colour key fold away; the summary shows how many are on. */}
+      <details className="group rounded-lg border border-line bg-surface-muted" open={filtersOpen} onToggle={(e) => setFiltersOpen((e.currentTarget as HTMLDetailsElement).open)}>
+        <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 px-2.5 text-[11px] font-medium uppercase tracking-wide text-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <SlidersHorizontal className="h-3 w-3" aria-hidden="true" />
+            Filters
+            {activeFilters > 0 && (
+              <span className="rounded-full bg-ink px-1.5 py-px text-[10px] font-semibold normal-case tracking-normal text-bg">{activeFilters} on</span>
+            )}
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <div className="flex flex-col gap-2.5 border-t border-line px-2.5 py-2.5">
       <div className="flex flex-wrap gap-1.5" aria-label="Filters">
         <FilterPill
           touch={touch}
@@ -325,6 +331,8 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         hidden={filters.hidden}
         onToggle={(st) => setFilters((f) => ({ ...f, hidden: { ...f.hidden, [st]: !f.hidden[st] } }))}
       />
+        </div>
+      </details>
     </div>
   );
   const needsBlock = (touch: boolean) =>
@@ -394,7 +402,6 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     </>
   );
   const countLabel = center ? `${visiblePins.length.toLocaleString("en-US")} within ${radius} mi` : "—";
-  const activeFilters = (filters.pets ? 1 : 0) + (filters.photos ? 1 : 0) + (filters.priced ? 1 : 0) + STATUS_ORDER.filter((s) => filters.hidden[s]).length;
   const compactSummary = [center?.address || "Loss address", `${radius} mi`, activeFilters ? `${activeFilters} filter${activeFilters === 1 ? "" : "s"}` : "no filters"].join(" · ");
 
   // Desktop rail, two rows: the controls take what they need but shrink and scroll when the column is short, and the results
