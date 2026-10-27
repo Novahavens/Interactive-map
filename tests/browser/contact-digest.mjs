@@ -18,14 +18,13 @@ const claim = { id: CLAIM_ID, name: "Demo Family — Test #DEMO-2001", loss: LOS
 const claims = [{ id: CLAIM_ID, name: claim.name, lossAddress: LOSS.address, lat: LOSS.lat, lng: LOSS.lng, needs, createdAt: "2026-10-19T15:00:00Z", status: "Working on it", attachedCount: 0, group: "New Housing Request", isTest: false, accountManager: "Melissa C." }];
 
 const numbers = [{ label: "Owner", phone: "+19185550100" }];
-const digest = (o = {}) => ({
-  calls: { total: 3, outgoing: 3, incoming: 0, missed: 1, last: { at: "2026-10-24T16:00:00Z", direction: "outgoing", by: "William", answered: true, durationSec: 190 } },
-  texts: { sent: 4, received: 1, last: { at: "2026-10-25T09:00:00Z", direction: "incoming", by: null, preview: "Yes, it's free from Nov 1" } },
+const digest = (o = {}, truncated = false) => ({
+  calls: { total: 3, outgoing: 3, incoming: 0, missed: 1, last: { at: "2026-10-24T16:00:00Z", direction: "outgoing", by: "William", answered: true, durationSec: 190 }, truncated },
+  texts: { sent: 4, received: 1, last: { at: "2026-10-25T09:00:00Z", direction: "incoming", by: null, preview: "Yes, it's free from Nov 1" }, truncated },
   lastContactAt: "2026-10-25T09:00:00Z",
-  truncated: false,
   ...o,
 });
-const zero = digest({ calls: { total: 0, outgoing: 0, incoming: 0, missed: 0, last: null }, texts: { sent: 0, received: 0, last: null }, lastContactAt: null });
+const zero = digest({ calls: { total: 0, outgoing: 0, incoming: 0, missed: 0, last: null, truncated: false }, texts: { sent: 0, received: 0, last: null, truncated: false }, lastContactAt: null });
 
 const failures = [];
 const errors = [];
@@ -73,7 +72,7 @@ async function scenario(name, contact, { w = 1440, h = 900, theme = "light", del
   await panel.getByText("Contacts", { exact: true }).waitFor();
   return { ctx, p, panel, contactCalls: () => contactCalls };
 }
-const box = (panel) => panel.locator('[aria-label="Contact history from Quo"]');
+const box = (panel) => panel.getByRole("group", { name: "Contact history · Quo" });
 const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
 
 // 1. Full digest
@@ -85,7 +84,7 @@ const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
   check("digest: call count with unanswered", t.includes("3 calls · 1 unanswered"));
   check("digest: texts sent and replies", t.includes("4 sent · 1 reply"));
   check("digest: last message preview", t.includes("They texted Oct 25: “Yes, it's free from Nov 1”"));
-  check("digest: sits inside the Contacts section", (await s.panel.locator("section", { hasText: "Contacts" }).locator('[aria-label="Contact history from Quo"]').count()) === 1);
+  check("digest: sits inside the Contacts section", (await s.panel.locator("section", { hasText: "Contacts" }).getByRole("group", { name: "Contact history · Quo" }).count()) === 1);
   check("digest: one request per panel open", s.contactCalls() === 1);
   await box(s.panel).scrollIntoViewIfNeeded();
   await s.p.screenshot({ path: `${OUT}/digest-desktop-light.png` });
@@ -95,7 +94,7 @@ const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
 {
   const s = await scenario(
     "loading",
-    { json: { enabled: true, numbers, digest: digest({ calls: { total: 1, outgoing: 1, incoming: 0, missed: 1, last: { at: "2026-10-22T15:00:00Z", direction: "outgoing", by: "Virginia", answered: false, durationSec: 0 } }, texts: { sent: 0, received: 0, last: null } }) } },
+    { json: { enabled: true, numbers, digest: digest({ calls: { total: 1, outgoing: 1, incoming: 0, missed: 1, last: { at: "2026-10-22T15:00:00Z", direction: "outgoing", by: "Virginia", answered: false, durationSec: 0 }, truncated: false }, texts: { sent: 0, received: 0, last: null, truncated: false } }) } },
     { delay: 1500 },
   );
   check("loading: shows 'Checking Quo…' while waiting", (await box(s.panel).getByText("Checking Quo…").count()) === 1);
@@ -103,6 +102,17 @@ const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
   const t = await text(box(s.panel));
   check("missed call: 'Called Oct 22 · Virginia · no answer'", t.includes("Called Oct 22 · Virginia · no answer"), t);
   check("missed call: no text chip when nothing was texted", !t.includes("sent ·"));
+  await s.ctx.close();
+}
+// 2b. They texted first: "2 received", no "0 sent"
+{
+  const s = await scenario("received", { json: { enabled: true, numbers, digest: digest({ texts: { sent: 0, received: 2, last: { at: "2026-10-25T09:00:00Z", direction: "incoming", by: null, preview: "https://example.com/" + "x".repeat(70) }, truncated: false } }) } });
+  await box(s.panel).getByText("received").waitFor();
+  const t = await text(box(s.panel));
+  check("texts received only: '2 received', no '0 sent'", t.includes("2 received") && !t.includes("0 sent"), t);
+  const pre = box(s.panel).locator("p").last();
+  const [pb, gb] = [await pre.boundingBox(), await box(s.panel).boundingBox()];
+  check("a long unbroken preview wraps inside the card", pb.x + pb.width <= gb.x + gb.width + 1);
   await s.ctx.close();
 }
 // 3. No history
@@ -129,7 +139,7 @@ const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
 }
 // 6. Truncated counts, phone, dark
 {
-  const s = await scenario("phone", { json: { enabled: true, numbers, digest: digest({ truncated: true }) } }, { w: 390, h: 844, theme: "dark" });
+  const s = await scenario("phone", { json: { enabled: true, numbers, digest: digest({}, true) } }, { w: 390, h: 844, theme: "dark" });
   await box(s.panel).getByText("Last call").waitFor();
   const t = await text(box(s.panel));
   check("truncated: counts read as lower bounds", t.includes("3+ calls") && t.includes("4+ sent"), t);

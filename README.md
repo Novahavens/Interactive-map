@@ -113,6 +113,9 @@ Picking a claim fills the search box with its loss address, recentres the map, l
    - **Cost to place** — monthly rent, every deposit and fee, and the **move-in total** (recurring pet rent is shown but excluded).
    - **Property, contacts, notes & links** — beds, baths, sq ft, type, availability, owner and landlord, listing, photo folder, *Open in Monday*.
    - **Contact history (Quo)** — on the owner card: *Last call Oct 24 · William · 3 min*, *3 calls · 1 unanswered*, *4 sent · 1 reply*, and the last text (*They texted Oct 25: "Yes, it's free from Nov 1"*). It covers both the owner's and the landlord/PM's numbers and every Quo inbox. "No calls or texts in Quo yet" when there's nothing; counts end in **+** when Quo has more history than the map reads (200 calls or texts per number). It loads after the rest of the panel and is up to 10 minutes behind Quo.
+
+     <img alt="Contact history card from Quo: Last call Oct 24 · William · 3 min; 3 calls · 1 unanswered; 4 sent · 1 reply; They texted Oct 25: Yes, it's free from Nov 1" src="docs/screenshots/quo-digest.png" width="380">
+
    - **Report bad link** — next to the listing link. Type your name once (remembered on your device), optionally what's wrong, Send. The property gets *ZZ.Status = BAD LINK* and a note on Monday, the link is struck through on the map, and properties@ is told by the Monday automation on that status.
 
 | Dot | Meaning |
@@ -291,7 +294,7 @@ sequenceDiagram
 | `GET /api/health` | `{ ok, dryRun }` | env |
 | `GET /api/properties?lat=&lng=&miles=` | `{ pins, coverage }`, every pin has `map_status`, `availability`, `link_status`, `last_contact` and `other_claims` | `properties_within_radius_v4`, `database_coverage` |
 | `GET /api/properties/[id]` | Full property record plus `map_status`, `map_reason` and `other_claims` | `property_detail`, `property_map_status`, `property_claim_options` |
-| `GET /api/properties/[id]/contact` | `{ enabled, numbers, digest }`: calls and texts with the property's owner and landlord/PM phones. `enabled: false` with no Quo key; 502 `quo_error` if Quo can't be read; 30 per IP per minute; cached 10 min per phone | Quo `GET /v1/calls`, `/v1/messages`, `/v1/phone-numbers`, `/v1/users` |
+| `GET /api/properties/[id]/contact` | `{ enabled, numbers, digest }`: calls and texts with the property's owner and landlord/PM phones. `enabled: false` with no Quo key; 502 `quo_error` if Quo can't be read; 120 per IP per minute; cached 10 min per phone; a refused key shows nothing (logged) | Quo `GET /v1/calls`, `/v1/messages`, `/v1/phone-numbers`, `/v1/users` |
 | `POST /api/properties/[id]/flag-link` | `{ ok, alreadyFlagged, noted }`. Sets *ZZ.Status = BAD LINK* and posts an update on the property. 409 if reported in the last 24 h, 429 over 10 per IP per 10 min or 300 a day, 400 without a listing link | `flag_link_guard` / `flag_link_undo` + Monday `change_column_value`, `create_update` |
 | `GET /api/claims/active?q=&includeTest=&fresh=` | `{ claims, count }` with each claim's `accountManager` — cached 60 s per instance | Monday `items_page` / `next_items_page` per group |
 | `GET /api/claim/[claimId]` | Loss address, needs, claim brief, attached options + pins | Monday + `properties_by_ids_v2` |
