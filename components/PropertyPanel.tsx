@@ -78,7 +78,7 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
     return () => clearTimeout(t);
   }, [saved]);
 
-  // Back on the Edit button once the form has gone (it is not rendered while editing).
+  // Back on the Edit button once the form has gone (it is invisible while editing).
   useEffect(() => {
     if (!editing && focusEdit.current) {
       focusEdit.current = false;
@@ -171,15 +171,18 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {detail && canEdit && !editing && (
+          {detail && canEdit && (
+            // Kept in place (invisible) while editing so the header doesn't reflow.
             <button
               ref={editRef}
               type="button"
+              aria-hidden={editing || undefined}
+              tabIndex={editing ? -1 : undefined}
               onClick={() => {
                 setSaved(null);
                 setEditing(true);
               }}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-[13px] font-medium text-ink hover:bg-surface-muted [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:px-3"
+              className={`inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-[13px] font-medium text-ink hover:bg-surface-muted ${editing ? "invisible" : ""} [@media(pointer:coarse)]:h-[44px] [@media(pointer:coarse)]:px-3`}
             >
               <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
               Edit
@@ -208,7 +211,7 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
               type="button"
               onClick={() => setSaved(null)}
               aria-label="Dismiss"
-              className="-my-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+              className="-my-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded [@media(pointer:coarse)]:h-[44px] [@media(pointer:coarse)]:w-[44px]"
             >
               <X className="h-3 w-3" aria-hidden="true" />
             </button>

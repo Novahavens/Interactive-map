@@ -254,14 +254,14 @@ export default function EditListing({ propertyId, detail, onCancel, onSaved }: P
                 <button
                   type="button"
                   onClick={() => takeMondays(status.fields, status.current)}
-                  className="inline-flex h-8 items-center rounded-md border border-line bg-surface px-3 text-xs font-medium text-ink [@media(pointer:coarse)]:h-11"
+                  className="inline-flex h-8 items-center rounded-md border border-line bg-surface px-3 text-xs font-medium text-ink [@media(pointer:coarse)]:h-[44px]"
                 >
                   Use Monday&apos;s values
                 </button>
                 <button
                   type="button"
                   onClick={() => saveMine(status.fields, status.current)}
-                  className="inline-flex h-8 items-center rounded-md bg-ink px-3 text-xs font-medium text-bg hover:brightness-110 [@media(pointer:coarse)]:h-11"
+                  className="inline-flex h-8 items-center rounded-md bg-ink px-3 text-xs font-medium text-bg hover:brightness-110 [@media(pointer:coarse)]:h-[44px]"
                 >
                   Save mine anyway
                 </button>
@@ -360,8 +360,8 @@ export default function EditListing({ propertyId, detail, onCancel, onSaved }: P
 }
 
 const inputClass =
-  "h-9 w-full min-w-0 rounded-md border border-line2 bg-surface px-2 text-[13px] text-ink disabled:opacity-60 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base";
-const buttonClass = "inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-[13px] font-medium [@media(pointer:coarse)]:h-11";
+  "h-9 w-full min-w-0 rounded-md border border-line2 bg-surface px-2 text-[13px] text-ink disabled:opacity-60 [@media(pointer:coarse)]:h-[44px] [@media(pointer:coarse)]:text-base";
+const buttonClass = "inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-[13px] font-medium [@media(pointer:coarse)]:h-[44px]";
 
 interface FieldProps {
   id: string;
@@ -523,8 +523,8 @@ function Segmented({ id, labelId, value, describedBy, onChange }: { id: string; 
               e.preventDefault();
             }}
             className={cn(
-              "h-7 min-w-[3.25rem] rounded-[5px] px-2.5 text-[13px] font-medium [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-[4rem]",
-              on ? "bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.12)]" : "text-muted",
+              "h-7 min-w-[3.25rem] rounded-[5px] px-2.5 text-[13px] font-medium [@media(pointer:coarse)]:h-[44px] [@media(pointer:coarse)]:min-w-[4rem]",
+              on ? "bg-ink text-bg" : "text-muted hover:text-ink",
             )}
           >
             {c.label}
