@@ -250,6 +250,27 @@ export interface HealthResponse {
   dryRun: boolean;
   /** QUO_API_KEY is set: the owner card offers the Quo contact history. */
   quo: boolean;
+  /** Listing edits from the map are switched on (MAP_EDITING is not "off"). */
+  editing: boolean;
+}
+
+/** POST /api/properties/:id/edit → 200. `detail` is the property as the map now has it. */
+export interface EditListingResponse {
+  ok: true;
+  detail: PropertyDetail;
+  /** The change note was posted on the Monday item. */
+  noted: boolean;
+  /** The Supabase mirror took the new values at once (otherwise the Monday webhook brings them within seconds). */
+  mirrored: boolean;
+  dryRun?: boolean;
+}
+
+/** POST /api/properties/:id/edit → 409 code "conflict": someone changed these fields in Monday since the form opened. */
+export interface EditConflictResponse extends ApiError {
+  code: "conflict";
+  fields: string[];
+  /** Monday's values now, for the conflicting fields. */
+  current: Record<string, number | string | null>;
 }
 
 export interface ApiError {
