@@ -248,6 +248,8 @@ export interface FlagLinkResponse {
 export interface HealthResponse {
   ok: true;
   dryRun: boolean;
+  /** QUO_API_KEY is set: the owner card offers the Quo contact history. */
+  quo: boolean;
 }
 
 export interface ApiError {

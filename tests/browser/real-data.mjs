@@ -63,6 +63,12 @@ async function open(browser, { w, h, theme = "light" }) {
   await p.waitForTimeout(4500);
   return { ctx, p, state, phone: w < 1024 };
 }
+// The filter pills and colour key live in a closed "Filters" drawer; open it before touching them.
+async function openFilters(root) {
+  const d = root.locator("details", { has: root.locator("summary", { hasText: /^\s*Filters/ }) }).first();
+  if (!(await d.evaluate((e) => e.open))) await d.locator("summary").click();
+  return d;
+}
 const results = (p) => p.locator('ul[aria-label="Results"]:visible').first();
 const panel = (p) => p.locator('aside[aria-label="Property details"]:visible').first();
 const row = (p, id) => p.locator(`[id="row-${id}"]:visible`).first();
@@ -161,6 +167,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   // legend counts == API
   const expect = { green: 0, yellow: 0, red: 0 };
   for (const x of pins) expect[x.map_status]++;
+  await openFilters(p);
   const legendTxt = await text(p.locator('[aria-label="Dot colours"]'));
   const got = {};
   for (const [k, label] of [["green", "Used before"], ["yellow", "Neutral"], ["red", "Do not use"]]) {

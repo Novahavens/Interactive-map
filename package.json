@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON \"tests/unit/*.test.mts\""
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "2.1.1",

@@ -138,6 +138,12 @@ async function open(browser, { w, h, theme = "light", iframe = false, reporter =
   return { ctx, p, root, state, phone: w < 1024 };
 }
 
+// The filter pills and colour key live in a closed "Filters" drawer; open it before touching them.
+async function openFilters(root) {
+  const d = root.locator("details", { has: root.locator("summary", { hasText: /^\s*Filters/ }) }).first();
+  if (!(await d.evaluate((e) => e.open))) await d.locator("summary").click();
+  return d;
+}
 const results = (root) => root.locator('ul[aria-label="Results"]:visible').first();
 const panel = (root) => root.locator('aside[aria-label="Property details"]:visible').first();
 
@@ -196,6 +202,9 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   check("row: a pin without the new fields (older API) renders with no chips", (await row(3010).count()) === 1 && (await row(3010).locator(".nh-chip").count()) === 0);
 
   // ---- 2. legend ----
+  check("filters drawer: closed by default, pills hidden", !(await root.locator('[aria-label="Filters"]').first().isVisible()));
+  await openFilters(root);
+  check("filters drawer: opens to the pills and the colour key", await root.locator('[aria-label="Filters"]').first().isVisible());
   const legend = await text(root.locator('[aria-label="Dot colours"]'));
   check("filter legend: On this claim and 'Nearby grouped · zoom in to split' with a 7", legend.includes("On this claim") && legend.includes("Nearby grouped · zoom in to split") && legend.includes("7"), legend);
   check("filter legend: the three colour chips are still toggle buttons", (await root.locator('[aria-label="Dot colours"] button[aria-pressed]').count()) === 3);
@@ -287,7 +296,9 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   await row(3004).hover();
   await p.waitForTimeout(250);
   check("precondition: 3004 is hovered", (await hovered()) === 1);
+  await openFilters(root);
   await root.locator('[aria-label="Dot colours"] button', { hasText: "Neutral" }).click();
+  check("filters drawer: the summary counts what's on", (await text(root.locator("summary", { hasText: /^\s*Filters/ }).first())).includes("1 on"));
   await p.waitForTimeout(400);
   check("hiding the hovered pin's colour clears the hover", (await hovered()) === 0);
   await root.locator('[aria-label="Dot colours"] button', { hasText: "Neutral" }).click();

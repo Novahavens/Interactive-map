@@ -70,10 +70,11 @@ Nova Havens places families displaced by insurance claims into temporary housing
 | 🚦 | **Green, yellow and red dots.** Every one of the 16,384 properties is exactly one colour, decided in one place (the database). Green is an owner we've placed a tenant with (read from claims), or Preferred / Approved on the owner board; red is do not use by group or by owner and always wins. Each colour has its own shape, there's a legend that also filters, and green is listed first. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
 | 📋 | **Claim information card** and an owner-status banner with the reason and notes at the top of the property panel. Tenant phone and email are deliberately left out: the map URL has no login. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
 | 🔔 | **Owner changes reach the map in seconds.** A webhook on the owner board re-reads every property an owner has, so changing someone to Preferred or DO NOT USE changes their dots straight away. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
-| 🟢 | **Live status on every property.** *Available now / soon / unverified / unavailable / listing removed* from the availability monitor, **"On claim …"** when the property is already an option on another active claim (with the status), **Last contact** date, and **Bad link**. Add to claim warns before adding a property that is an option elsewhere. | this PR |
-| 🔗 | **Report bad link** from the property panel: one click sets *ZZ.Status = BAD LINK* on the property, posts a note on it saying who reported it, and the map shows it straight away. Rate-limited and once per property per day. | this PR |
-| 🖱️ | **Hover a result, see its pin.** The pin grows and the map pans to it; hovering a pin highlights the row. The legend now explains the ⚫ check and the numbered clusters. The account manager shows on the claims list and the panel. | this PR |
-| 📱 | **Phone results sheet** with collapsed / half / expanded states: the list gets most of the screen, search and filters fold into one row, and the sheet and the list no longer fight over scrolling. The desktop rail no longer squeezes the list to a few pixels at short windows (Lou's scroll bug). | this PR |
+| 🟢 | **Live status on every property.** *Available now / soon / unverified / unavailable / listing removed* from the availability monitor, **"On claim …"** when the property is already an option on another active claim (with the status), **Last contact** date, and **Bad link**. Add to claim warns before adding a property that is an option elsewhere. | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
+| 🔗 | **Report bad link** from the property panel: one click sets *ZZ.Status = BAD LINK* on the property, posts a note on it saying who reported it, and the map shows it straight away. Rate-limited and once per property per day. | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
+| 🖱️ | **Hover a result, see its pin.** The pin grows and the map pans to it; hovering a pin highlights the row. The legend now explains the ⚫ check and the numbered clusters. The account manager shows on the claims list and the panel. | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
+| 📞 | **Contact history from Quo on the owner card.** Last call (date, who, length or no answer), how many calls and how many went unanswered, texts sent and replies, and the last text, across the owner's and landlord/PM's numbers and every Quo inbox. Read-only; appears once `QUO_API_KEY` is set. | this PR |
+| 📱 | **Phone results sheet** with collapsed / half / expanded states: the list gets most of the screen, search and filters fold into one row, and the sheet and the list no longer fight over scrolling. The desktop rail no longer squeezes the list to a few pixels at short windows (Lou's scroll bug). | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
 | 🛠️ | **Fixes:** new options now arrive as **To Do** (not *Ready to Submit*); the claim's bedroom and bathroom needs were read from each other's columns; "% of database mappable" counted only the search circle; red properties can't be added to a claim whether the group *or* the owner says do not use. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
 
 ---
@@ -111,6 +112,10 @@ Picking a claim fills the search box with its loss address, recentres the map, l
    - **Fit against this claim** — family size, pets, FRV and move-in date, each ticked, flagged or marked unknown.
    - **Cost to place** — monthly rent, every deposit and fee, and the **move-in total** (recurring pet rent is shown but excluded).
    - **Property, contacts, notes & links** — beds, baths, sq ft, type, availability, owner and landlord, listing, photo folder, *Open in Monday*.
+   - **Contact history (Quo)** — a drawer on the owner card, closed until you tap it (Quo is only asked when it's opened). Inside: *Last call Oct 24 · William · 3 min*, *3 calls · 1 unanswered*, *4 sent · 1 reply*, and the last text (*They texted Oct 25: "Yes, it's free from Nov 1"*). It covers both the owner's and the landlord/PM's numbers and every Quo inbox. "No calls or texts in Quo yet" when there's nothing; counts end in **+** when Quo has more history than the map reads (200 calls or texts per number). Once loaded it stays loaded while the panel is open, and it is up to 10 minutes behind Quo. Without a Quo key there's no drawer.
+
+     <img alt="Contact history card from Quo: Last call Oct 24 · William · 3 min; 3 calls · 1 unanswered; 4 sent · 1 reply; They texted Oct 25: Yes, it's free from Nov 1" src="docs/screenshots/quo-digest.png" width="380">
+
    - **Report bad link** — next to the listing link. Type your name once (remembered on your device), optionally what's wrong, Send. The property gets *ZZ.Status = BAD LINK* and a note on Monday, the link is struck through on the map, and properties@ is told by the Monday automation on that status.
 
 | Dot | Meaning |
@@ -286,9 +291,10 @@ sequenceDiagram
 
 | Route | Returns | Backed by |
 |---|---|---|
-| `GET /api/health` | `{ ok, dryRun }` | env |
+| `GET /api/health` | `{ ok, dryRun, quo }`: `quo` is whether `QUO_API_KEY` is set (the panel shows the Quo drawer only then) | env |
 | `GET /api/properties?lat=&lng=&miles=` | `{ pins, coverage }`, every pin has `map_status`, `availability`, `link_status`, `last_contact` and `other_claims` | `properties_within_radius_v4`, `database_coverage` |
 | `GET /api/properties/[id]` | Full property record plus `map_status`, `map_reason` and `other_claims` | `property_detail`, `property_map_status`, `property_claim_options` |
+| `GET /api/properties/[id]/contact` | `{ enabled, numbers, digest }`: calls and texts with the property's owner and landlord/PM phones. `enabled: false` with no Quo key; 502 `quo_error` if Quo can't be read; 120 per IP per minute; cached 10 min per phone; a refused key shows nothing (logged) | Quo `GET /v1/calls`, `/v1/messages`, `/v1/phone-numbers`, `/v1/users` |
 | `POST /api/properties/[id]/flag-link` | `{ ok, alreadyFlagged, noted }`. Sets *ZZ.Status = BAD LINK* and posts an update on the property. 409 if reported in the last 24 h, 429 over 10 per IP per 10 min or 300 a day, 400 without a listing link | `flag_link_guard` / `flag_link_undo` + Monday `change_column_value`, `create_update` |
 | `GET /api/claims/active?q=&includeTest=&fresh=` | `{ claims, count }` with each claim's `accountManager` — cached 60 s per instance | Monday `items_page` / `next_items_page` per group |
 | `GET /api/claim/[claimId]` | Loss address, needs, claim brief, attached options + pins | Monday + `properties_by_ids_v2` |
@@ -360,6 +366,15 @@ npm run dev                  # http://localhost:3000
 | `npm run build` | Production build (also type-checks) |
 | `npm run start` | Serve the production build |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm run test:unit` | Pure rules (`tests/unit`: phone parsing and the contact digest) |
+
+Browser and API checks run against a server on `BASE` (default `http://localhost:3012`); they mock Monday and write nothing:
+
+| Check | Runs |
+|---|---|
+| `node tests/browser/live-status.mjs` · `real-data.mjs` | The map end to end, on fixtures and on the real database |
+| `node tests/browser/contact-digest.mjs` | The Quo digest in every state (Quo mocked) |
+| `node tests/api/contact-route.mjs` | The contact route against a mock Quo: start `node tests/api/contact-route.mjs serve` and the app with `QUO_API_KEY=test-key QUO_API_BASE=http://127.0.0.1:3099/v1` first |
 
 ### Environment variables
 
@@ -371,6 +386,7 @@ npm run dev                  # http://localhost:3000
 | `MONDAY_API_TOKEN` | Server | Sub-items and updates are created **as the token's owner**. |
 | `MONDAY_PROPERTY_BOARD_ID` · `MONDAY_CLAIM_BOARD_ID` · `MONDAY_CLAIM_SUBITEM_BOARD_ID` | Server | `18415735059` · `9030696652` · `9205253360` |
 | `MONDAY_DRY_RUN` | Server | `1` = never write to Monday. **Local only — never set in Production.** |
+| `QUO_API_KEY` | Server | Optional. Quo → *Settings → API*. Read-only use: the contact history on the owner card. Without it the card shows nothing extra. |
 | `MONDAY_ACTIVE_CLAIM_GROUPS` | Server | Optional. Groups that count as active. Default `topics,group_mkvngrgz`. |
 | `MONDAY_TEST_CLAIM_GROUP` | Server | Optional. The testing group for *Show test claims*. Default `group_mm1jnpwf`. |
 
@@ -476,6 +492,9 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 | An owner was marked Preferred / DO NOT USE but the dots haven't changed | The owner has no properties linked, or the owner-board webhook is missing | Link the properties; check *Webhooks* on the landlord board for the `landlord-webhook` URL |
 | No green dots appear for claims we placed | `used-before-sync` is failing | `select * from used_before_log order by id desc limit 5` shows the last runs and any error |
 | "On claim" shows a claim that was closed | The claim is still in a working group, or the sync hasn't run | Move the claim to Lost / Moved Out; `select * from claim_options_log order by id desc limit 5` |
+| No contact history on the owner card | `QUO_API_KEY` not set, or the property has no owner / landlord phone | Add the key in Vercel → *Redeploy*; add the phone in Monday |
+| "Couldn't reach Quo right now" | Quo down, or the key was revoked (Vercel logs show `Quo /calls returned 401`) | Try again; replace the key |
+| The history misses a call we made | It came from a number outside Quo, or within the last 10 minutes | Calls from personal phones aren't in Quo; reopen after 10 minutes |
 | Report bad link says "Too many reports" | 10 per person per 10 minutes, or 300 a day | Wait, or flag it on the board (ZZ.Status) |
 | A reported link isn't BAD LINK on Monday | The Monday write failed and was rolled back (the map said so) | Try again; check `MONDAY_API_TOKEN` |
 | The phone list is tiny | Sheet is at the peek or half height | Drag the handle up, or tap the count |
@@ -498,7 +517,8 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 **Next**
 - [ ] **Coverage badge** — the header mixes in-radius and table-wide counts; switch it to `database_coverage()`.
 - [ ] **Grey out claims that already have options sent** in the drawer.
-- [ ] **Call / Text via Quo** and a one-line option summary (placeholders already in the property panel).
+- [x] **Contact history from Quo** on the owner card.
+- [ ] **Call / Text via Quo** from the panel, and an AI one-line summary of the conversation (placeholders already in the property panel).
 - [ ] **Availability** and **last-used date** on the property card.
 - [ ] **Search agent** embed.
 - [ ] Real Google **Map ID**; optional server-only Supabase access.
