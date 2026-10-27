@@ -27,6 +27,7 @@ const REPORTER_KEY = "nh-reporter-name";
 const FIELDS = EDIT_FIELDS as readonly EditField[];
 const GROUPS = Object.keys(EDIT_GROUPS) as EditGroup[];
 const NETWORK_ERROR = "Couldn't reach the map server. Try again.";
+const EDITING_OFF = "Editing from the map is switched off right now.";
 
 /** What the server said about a save that went through. */
 export interface SavedOutcome {
@@ -67,10 +68,12 @@ interface Props {
   onDiscardDecision: (discard: boolean) => void;
   onCancel: () => void;
   onSaved: (detail: PropertyDetail, outcome: SavedOutcome) => void;
+  /** The route answered editing_off: the panel hides Edit once this form closes. */
+  onEditingOff: () => void;
 }
 
 /** Edit the listing details of one property; the server writes Monday, then the Supabase mirror. */
-export default function EditListing({ propertyId, detail, discardAsk, onDirty, onDiscardDecision, onCancel, onSaved }: Props) {
+export default function EditListing({ propertyId, detail, discardAsk, onDirty, onDiscardDecision, onCancel, onSaved, onEditingOff }: Props) {
   const uid = useId();
   const [base, setBase] = useState<Values>(() => {
     const row = detail as unknown as Record<string, unknown>;
@@ -216,6 +219,13 @@ export default function EditListing({ propertyId, detail, discardAsk, onDirty, o
         setStatus({ kind: "conflict", fields, current: (c.current ?? {}) as EditChanges });
         return;
       }
+    }
+    // Everything else (busy, too_large, rate_limited, monday_error, …) is the route's own words; the edits stay.
+    const code = json && "code" in json ? json.code : undefined;
+    if (code === "editing_off") {
+      onEditingOff();
+      setStatus({ kind: "error", message: EDITING_OFF });
+      return;
     }
     const err = json && "error" in json && json.error ? json.error : `Couldn't save (HTTP ${res.status}).`;
     setStatus({ kind: "error", message: err });

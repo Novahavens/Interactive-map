@@ -34,17 +34,17 @@ The list of fields, their limits and their Monday formats live in one place, `li
 
 | # | Step | On failure |
 |---|---|---|
-| 1 | `MAP_EDITING=off` | 403 `editing_off` |
-| 2 | Id and body (≤ 32 KB) checked; `parseEditRequest` validates every value and needs a name | 400 with the reason |
-| 3 | `listing_edit_guard` (Postgres) logs the attempt and enforces limits: 30 per IP per 10 min, 20 per property per hour, 500 a day | 404 / 429 |
+| 1 | Editing is on only when `MAP_EDIT_SECRET` is set and `MAP_EDITING` isn't `off` | 403 `editing_off` |
+| 2 | Content-Length over 32 KB is refused before reading; then id and body are checked; `parseEditRequest` validates every value and needs a name | 413 / 400 with the reason |
+| 3 | `listing_edit_guard` (Postgres) checks the secret and re-validates every value in SQL, then logs the attempt and enforces limits: 30 attempts per IP per 10 min (a missing IP is its own bucket), 20 **saved** edits per property per hour, 500 saved edits a day, and one save at a time per property | 503 `editing_off` / 400 / 404 / 429 / 409 `busy` |
 | 4 | `readColumns` reads the changed columns from Monday now | 502 `monday_error`, nothing written |
 | 5 | Each field's Monday value is compared with `base` | 409 `conflict` with Monday's current values |
 | 6 | Fields already equal to Monday are dropped; if none are left | 200, nothing written (`noop`) |
 | 7 | `changeColumns` → Monday `change_multiple_column_values` (one mutation, labels never created) | 502 `monday_error`, nothing mirrored |
 | 8 | Dry run (`MONDAY_DRY_RUN=1`) stops here: the response shows the values but nothing is stored | — |
-| 9 | `listing_edit_mirror` copies the values into `properties` (the generated `move_in_total` recalculates) | `mirrored: false`; the Monday webhook brings them in seconds |
+| 9 | The log row is marked `monday_ok`; `listing_edit_mirror` copies **that row's logged values** into `properties` (the generated `move_in_total` recalculates) | `mirrored: false`; the Monday webhook brings them in seconds |
 | 10 | `createUpdate` posts "✏️ Edited on the map by Will on 2026-10-28: • Monthly rent: $2,200 → $2,400 …" (HTML-escaped) | `noted: false`; the edit stands |
-| 11 | The log row is marked `applied` with Monday's before-values | — |
+| 11 | The log row is marked `applied` with Monday's before-values. Every other path also closes its row (`conflict`, `noop`, `failed`, `dry_run`), so none stays pending | — |
 
 The response is the property as the map now has it, built by the same code as `GET /api/properties/[id]` (`lib/property-detail.ts`).
 
@@ -70,9 +70,23 @@ The map has no login: it is embedded in Monday and anyone with the URL can open 
 - Only the 18 fields, only valid values; everything else is a 400.
 - Rate limits in Postgres (above), per IP and per property, plus a daily cap.
 - The editor's name is required and appears in the Monday note and the log, so every change is attributable. It is remembered on the device, shared with *Report bad link*.
-- `listing_edit_mirror` is callable with the publishable key (like `flag_link_guard`), so it only applies the fields of that property's newest unfinished guarded edit from the last five minutes. Calling it directly can't rewrite arbitrary properties.
+- All three edit functions in Postgres need a **server-only secret** (`MAP_EDIT_SECRET` in Vercel, matching the `MAP_EDIT_KEY` row in `sync_config`, which is not readable with the publishable key). Without it they refuse, so holding the publishable key isn't enough to change anything.
+- `listing_edit_mirror` takes a log id and applies only the values logged for that request, only after Monday accepted them, within five minutes, and re-checks them. It can't be used to write arbitrary values to the map.
+- `listing_edit_finish` only moves a log row forward (pending → outcome, `monday_ok` → `applied`), so finished history can't be rewritten.
+- Two saves on the same property can't overlap: the second gets *Someone else is saving this property* and tries again a moment later.
 - Every attempt, refused or applied, is in `listing_edit_log` with its before and after values.
-- **Kill switch:** set `MAP_EDITING=off` in Vercel and redeploy. The Edit button disappears (via `/api/health`) and the route refuses.
+- **Kill switch:** set `MAP_EDITING=off` in Vercel and redeploy, or remove `MAP_EDIT_SECRET`. The Edit button disappears (via `/api/health`) and the route refuses.
+
+### Turning it on
+
+1. Apply `supabase/migrations/20261027_listing_edit.sql` (statement by statement).
+2. Generate a long random secret and store it: `insert into public.sync_config (key, value) values ('MAP_EDIT_KEY', '<secret>') on conflict (key) do update set value = excluded.value;`
+3. Set `MAP_EDIT_SECRET` to the same value in Vercel (Production, and Preview if wanted) and redeploy.
+4. `GET /api/health` now says `editing: true` and the *Edit* button appears.
+
+Rotate by changing both values and redeploying. Until both are set, editing stays off.
+
+The SQL was also run against an embedded Postgres during development (wrong and missing secrets, invalid values, the mirror only after Monday, caps on saved edits only, busy); those checks aren't in the repo.
 
 Undoing an edit: edit the field back on the map or in Monday. The Monday note lists the old values.
 
@@ -89,13 +103,14 @@ Undoing an edit: edit the field back on the map or in Monday. The Monday note li
 | Listing Removed | ~~Listing removed~~ (no glow) | dark |
 | Check Failed, blank | Availability unknown · from Nov 1 | grey |
 
-If *Next availability* is in the past and the status isn't Available now, Unavailable or Listing removed, the pill says **date passed (Mar 1, 2025)**: the signal for Lou's stale-date clean-up. The pill is the first row of the panel header and renders from the list's copy before the detail loads. The availability chip no longer appears in the panel header (list rows keep theirs), and the duplicate "Available" row is gone from the Property section. Styles are `.nh-avail` and `.nh-avail--{tone}` in `app/globals.css`, built on the theme tokens so dark mode stays subtle.
+If *Next availability* is in the past and the status isn't Available now, Unavailable or Listing removed, the pill says **date passed (Mar 1, 2025)**: the signal for Lou's stale-date clean-up. For those three settled statuses a past date still shows, as plain information: "next availability was Sep 1". The pill is the first row of the panel header and renders from the list's copy before the detail loads. The availability chip no longer appears in the panel header (list rows keep theirs), and the duplicate "Available" row is gone from the Property section. Styles are `.nh-avail` and `.nh-avail--{tone}` in `app/globals.css`, built on the theme tokens so dark mode stays subtle.
 
 ## 6. Files
 
 | File | Role |
 |---|---|
 | `lib/listing-edit.ts` | Fields, validation, Monday formats, conflicts, note lines (pure) |
+| `lib/edit-config.ts` | Whether editing is on (secret set, kill switch not thrown) |
 | `lib/edit-overlay.ts` | Lays an edit over a record and recomputes the move-in total (pure) |
 | `lib/property-detail.ts` | The detail the GET and edit routes both return |
 | `lib/monday.ts` | `readColumns`, `changeColumns`, `MONDAY_API_URL` (tests) |
@@ -110,7 +125,7 @@ If *Next availability* is in the past and the status isn't Available now, Unavai
 | Command | Covers |
 |---|---|
 | `npm run test:unit` | `listing-edit`, `edit-overlay`, `availability` rules |
-| `node tests/api/edit-route.mjs serve`, then the app with `SUPABASE_URL=http://127.0.0.1:3098 SUPABASE_KEY=test MONDAY_API_URL=http://127.0.0.1:3098/v2 MONDAY_API_TOKEN=test`, then `BASE=… node tests/api/edit-route.mjs` | The route against one mock of Monday and Supabase: exact Monday JSON, mirror patch, note, conflict, no-op, every refusal, Monday read and write failures, note failure, dry run, kill switch, the GET route unchanged |
-| `BASE=… node tests/browser/edit-listing.mjs` | The pill in every state (light, dark, desktop, phone) and the form: validation, exact request body, success, conflict, errors, keyboard use, both panel mounts agreeing |
+| `node tests/api/edit-route.mjs serve`, then the app with `SUPABASE_URL=http://127.0.0.1:3098 SUPABASE_KEY=test MONDAY_API_URL=http://127.0.0.1:3098/v2 MONDAY_API_TOKEN=test MAP_EDIT_SECRET=test`, then `BASE=… node tests/api/edit-route.mjs` | The route against one mock of Monday and Supabase: exact Monday JSON, the secret on every call, mirror by log id, the log state sequence, note, conflict, busy, no-op, every refusal, Monday read and write failures, note failure, dry run, kill switch and missing secret, body size, the GET route unchanged |
+| `BASE=… node tests/browser/edit-listing.mjs` | The pill in every state (light, dark, desktop, phone, at most two lines at 390 px) and the form: validation, exact request body, success, conflict, busy, errors, discard prompts on close / another property / claim switch, keyboard use, both panel mounts agreeing, one health request per page |
 
 The route test never touches the live database or Monday.

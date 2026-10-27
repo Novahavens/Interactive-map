@@ -251,10 +251,16 @@ for (const dev of [
       check(`pill [${L}]: raised and glowing (layered shadow)`, shadow !== "none" && shadow.split(/,\s(?=rgba?\(|color\()/).length >= 3, shadow.slice(0, 80));
     }
     if (st.stale) check(`pill [${L}]: a passed date says so`, t.includes("date passed (Mar 1, 2025)"));
+    // text line boxes only (not the spans' own boxes), grouped by their top edge
     const lines = await pill.evaluate((el) => {
-      const r = document.createRange();
-      r.selectNodeContents(el);
-      return new Set([...r.getClientRects()].filter((b) => b.width > 1).map((b) => Math.round(b.top))).size;
+      const tops = [];
+      const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        const r = document.createRange();
+        r.selectNodeContents(n);
+        for (const b of r.getClientRects()) if (b.width > 1 && !tops.some((t) => Math.abs(t - b.top) < 4)) tops.push(b.top);
+      }
+      return tops.length;
     });
     const pw = await pill.evaluate((el) => ({ pill: el.getBoundingClientRect().width, header: el.parentElement.clientWidth }));
     check(`pill [${L}]: at most two lines (${lines}), and it has the header's width to itself`, lines >= 1 && lines <= 2 && pw.pill <= pw.header, JSON.stringify(pw));
@@ -491,6 +497,7 @@ for (const dev of [
     [{ status: 429, json: { error: "Too many edits right now; try again in a few minutes.", code: "rate_limited" } }, "Too many edits right now; try again in a few minutes."],
     [{ abort: true }, "Couldn't reach the map server. Try again."],
     [{ status: 409, json: { code: "busy", error: "Someone else is saving this property; try again in a moment" } }, "Someone else is saving this property; try again in a moment"],
+    [{ status: 413, json: { code: "too_large", error: "That's more than the map can send in one save; shorten the notes." } }, "That's more than the map can send in one save; shorten the notes."],
   ]) {
     state.replies.push(reply);
     await form().getByRole("button", { name: /^Save/ }).click();
@@ -529,12 +536,14 @@ for (const dev of [
   const keep = () => form().getByRole("button", { name: "Keep editing" });
   const discard = () => form().getByRole("button", { name: "Discard" });
   await P.getByRole("button", { name: "Close panel" }).click();
+  await ask.waitFor({ timeout: 3000 }).catch(() => undefined);
   check("discard [close]: X asks 'Discard 1 change?' and the panel stays", (await ask.count()) === 1 && (await P.count()) === 1);
   check("discard [close]: Keep editing has focus", await keep().evaluate((e) => e === document.activeElement));
   await p.screenshot({ path: `${OUT}/discard-prompt-desktop.png` });
   await keep().click();
   check("discard [close]: Keep editing cancels the close and keeps the edit", (await P.count()) === 1 && (await field("Bedrooms").inputValue()) === "5");
   await row(p, "4002").click();
+  await ask.waitFor({ timeout: 3000 }).catch(() => undefined);
   check("discard [other row]: picking another property asks", (await ask.count()) === 1 && (await P.getByRole("heading", { name: "Fixture 4001" }).count()) === 1);
   await keep().click();
   check("discard [other row]: Keep editing stays on this property", (await P.getByRole("heading", { name: "Fixture 4001" }).count()) === 1 && (await field("Bedrooms").inputValue()) === "5");
@@ -565,10 +574,39 @@ for (const dev of [
   await discard().click();
   await p.waitForTimeout(500);
   check("discard [claim]: Discard switches the claim and closes the panel", new URL(p.url()).searchParams.get("claimId") === "100000002" && (await P.count()) === 0);
-  state.dialogs.length = 0;
-  await p.close({ runBeforeUnload: true });
-  await new Promise((r) => setTimeout(r, 800));
-  check("beforeunload: no question once nothing is unsaved", state.dialogs.length === 0 && p.isClosed(), state.dialogs.join(","));
+  // (a second real close can't be asked for once one was refused, so the handler is checked directly)
+  const blocked = await p.evaluate(() => {
+    const e = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(e);
+    return e.defaultPrevented;
+  });
+  check("beforeunload: no question once nothing is unsaved", !blocked);
+  await s.ctx.close();
+}
+
+// ===================================================================================================
+// 3b. The route says editing is off (503 editing_off): message, edits kept, Edit gone once the form closes
+// ===================================================================================================
+{
+  const s = await open(browser, { reporter: "Pat Tester" });
+  const { p, state } = s;
+  await selectRow(s, "4003");
+  const P = panel(p);
+  await P.getByRole("button", { name: "Edit", exact: true }).click();
+  const form = P.getByRole("form", { name: "Edit listing details" });
+  await form.getByLabel("Square feet", { exact: true }).fill("2100");
+  state.replies.push({ status: 503, json: { code: "editing_off", error: "MAP_EDIT_SECRET is not set" } });
+  await form.getByRole("button", { name: /^Save/ }).click();
+  const msg = form.getByRole("alert").filter({ hasText: "Editing from the map is switched off right now." });
+  await msg.waitFor();
+  check("503 editing_off: 'Editing from the map is switched off right now.' and the edit is kept", (await form.getByLabel("Square feet", { exact: true }).inputValue()) === "2100");
+  await form.getByRole("button", { name: "Cancel" }).click();
+  await form.getByRole("button", { name: "Discard" }).click();
+  await form.waitFor({ state: "detached" });
+  check("503 editing_off: Edit is gone once the form closes; focus on Close", (await P.getByRole("button", { name: "Edit", exact: true }).count()) === 0 && (await P.getByRole("button", { name: "Close panel" }).evaluate((e) => e === document.activeElement)));
+  await selectRow(s, "4002");
+  await p.waitForTimeout(400);
+  check("503 editing_off: other properties opened afterwards offer no Edit either", (await P.getByRole("button", { name: "Edit", exact: true }).count()) === 0);
   await s.ctx.close();
 }
 

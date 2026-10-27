@@ -75,6 +75,8 @@ Nova Havens places families displaced by insurance claims into temporary housing
 | 🖱️ | **Hover a result, see its pin.** The pin grows and the map pans to it; hovering a pin highlights the row. The legend now explains the ⚫ check and the numbered clusters. The account manager shows on the claims list and the panel. | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
 | 📞 | **Contact history from Quo on the owner card.** Last call (date, who, length or no answer), how many calls and how many went unanswered, texts sent and replies, and the last text, across the owner's and landlord/PM's numbers and every Quo inbox. Read-only; appears once `QUO_API_KEY` is set. Also: a **Filters** drawer, and beds / baths / rent / pets first in the panel. | [#15](https://github.com/Novahavens/Interactive-map/pull/15) |
 | ☎️ | **Call and Text from the panel, through your own Quo.** Each owner and landlord/PM number has a **Call** and a **Text** button that open Quo on *your* laptop or phone, so the call or text goes from your Quo account and lands in the contact history. The text comes pre-written ("Hi Jane, it's Will from Nova Havens about 12 Elm St."). Tap the number to copy it. No set-up in the map: the device you're on is who you are. | [#16](https://github.com/Novahavens/Interactive-map/pull/16) |
+| ✏️ | **Edit listing details from the map.** *Edit* on the property panel opens a form for next availability, beds, baths, square feet, pets / furnished / fenced yard, rent and every fee, the listing link and notes. *Save* writes Monday (the source of truth) and the map at once, and posts "✏️ Edited on the map by Will: Monthly rent $2,200 → $2,400" on the Monday item. If someone changed the same field in Monday meanwhile, the map asks before overwriting. | this PR |
+| 🟢 | **Availability on top.** A raised, softly glowing pill at the top of the property panel: *Available soon · from Nov 1 · checked Oct 22*, in the status colour, with a **date passed** warning when the next-availability date is out of date. | this PR |
 | 📱 | **Phone results sheet** with collapsed / half / expanded states: the list gets most of the screen, search and filters fold into one row, and the sheet and the list no longer fight over scrolling. The desktop rail no longer squeezes the list to a few pixels at short windows (Lou's scroll bug). | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
 | 🛠️ | **Fixes:** new options now arrive as **To Do** (not *Ready to Submit*); the claim's bedroom and bathroom needs were read from each other's columns; "% of database mappable" counted only the search circle; red properties can't be added to a claim whether the group *or* the owner says do not use. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
 
@@ -109,10 +111,11 @@ Picking a claim fills the search box with its loss address, recentres the map, l
    | **Bad link** | The listing link is dead (reported from the map, or by the monitor) |
    | Last contact Oct 5 | *Last Contact Date* on the property |
 4. **Tap a property** to open its panel:
+   - **Availability pill** — first thing in the panel: the availability monitor's answer (*Available now*, *Available soon*, *Unverified*, *Unavailable*, ~~*Listing removed*~~), "from Nov 1" from *Next availability*, and when the monitor last checked. **date passed (Mar 1, 2025)** means the next-availability date is out of date and worth a call.
    - **Status banner** — the dot colour and *why*, with the same chips as the list and an **Other claims** list ("The owner is marked Preferred", "We have placed a tenant with this owner before", "In the DO NOT USE group"), plus the owner's approval note and the property's notes.
    - **Fit against this claim** — family size, pets, FRV and move-in date, each ticked, flagged or marked unknown.
    - **Cost to place** — monthly rent, every deposit and fee, and the **move-in total** (recurring pet rent is shown but excluded).
-   - **Property, contacts, notes & links** — beds, baths, sq ft, type, availability, owner and landlord, listing, photo folder, *Open in Monday*.
+   - **Property, contacts, notes & links** — beds, baths, sq ft, type, owner and landlord, listing, photo folder, *Open in Monday*.
    - **Contact history (Quo)** — a drawer on the owner card, closed until you tap it (Quo is only asked when it's opened). Inside: *Last call Oct 24 · William · 3 min*, *3 calls · 1 unanswered*, *4 sent · 1 reply*, and the last text (*They texted Oct 25: "Yes, it's free from Nov 1"*). It covers both the owner's and the landlord/PM's numbers and every Quo inbox. "No calls or texts in Quo yet" when there's nothing; counts end in **+** when Quo has more history than the map reads (200 calls or texts per number). Once loaded it stays loaded while the panel is open, and it is up to 10 minutes behind Quo. Without a Quo key there's no drawer.
 
      <img alt="Contact history card from Quo: Last call Oct 24 · William · 3 min; 3 calls · 1 unanswered; 4 sent · 1 reply; They texted Oct 25: Yes, it's free from Nov 1" src="docs/screenshots/quo-digest.png" width="380">
@@ -128,6 +131,17 @@ Picking a claim fills the search box with its loss address, recentres the map, l
        <img alt="The same card on a phone in dark mode, with 44px Call and Text buttons" src="docs/screenshots/quo-call-text-phone.png" width="200">
      </p>
 
+   - **Edit** — top right of the panel. Change any of: next availability, bedrooms, bathrooms, square feet, pets allowed, furnished, fenced yard, monthly rent, security deposit, cleaning, admin, application and move-in fees, pet deposit, pet fee, monthly pet rent, the listing link, and terms and notes. Changed fields show what they were. Type your name once (shared with *Report bad link*) and **Save N changes**:
+     - Monday is updated, the map shows the new values straight away (pins and the list too), and the Monday item gets a note listing every change and who made it.
+     - If someone changed one of those fields in Monday since you opened the form, the map shows **Monday now** next to **You entered** and lets you keep theirs or save yours anyway.
+     - Closing the panel or picking another property with unsaved changes asks *Discard N changes?* first.
+     - Not editable here, on purpose: the availability status (the monitor sets it), owner and landlord contacts (they decide the dot colour), and the name and address (they decide the pin). Change those in Monday.
+
+     <p>
+       <img alt="Availability pill at the top of the panel: Available soon, from Nov 1, checked Oct 22" src="docs/screenshots/availability-pill.png" width="380">
+       &nbsp;
+       <img alt="Edit form: next availability, beds and baths, rent and fees, with a changed field showing its old value" src="docs/screenshots/edit-listing.png" width="380">
+     </p>
    - **Report bad link** — next to the listing link. Type your name once (remembered on your device), optionally what's wrong, Send. The property gets *ZZ.Status = BAD LINK* and a note on Monday, the link is struck through on the map, and properties@ is told by the Monday automation on that status.
 
 | Dot | Meaning |
@@ -295,7 +309,7 @@ sequenceDiagram
 │   ├── status.ts                 # green / yellow / red: names, colours, shapes, reasons (the rule is in the database)
 │   ├── supabase.ts · google.ts · types.ts · utils.ts · useTheme.ts
 ├── supabase/                     # edge functions (property-locate, used-before-sync, landlord-webhook) + migrations
-├── docs/                         # PRD, build plan, QUO-INTEGRATION.md (contact history + Call / Text, PR #16), screenshots
+├── docs/                         # PRD, build plan, QUO-INTEGRATION.md (Quo), LISTING-EDITS.md (edits + availability pill), screenshots
 ├── legacy/                       # retired AI Studio prototype (reference only)
 ├── components.json               # shadcn/ui config
 └── vercel.json · next.config.ts · .env.example
@@ -305,10 +319,11 @@ sequenceDiagram
 
 | Route | Returns | Backed by |
 |---|---|---|
-| `GET /api/health` | `{ ok, dryRun, quo }`: `quo` is whether `QUO_API_KEY` is set (the panel shows the Quo drawer only then) | env |
+| `GET /api/health` | `{ ok, dryRun, quo, editing }`: `quo` is whether `QUO_API_KEY` is set (the panel shows the Quo drawer only then); `editing` is whether listing edits are on (`MAP_EDIT_SECRET` set and `MAP_EDITING` not `off`) | env |
 | `GET /api/properties?lat=&lng=&miles=` | `{ pins, coverage }`, every pin has `map_status`, `availability`, `link_status`, `last_contact` and `other_claims` | `properties_within_radius_v4`, `database_coverage` |
 | `GET /api/properties/[id]` | Full property record plus `map_status`, `map_reason` and `other_claims` | `property_detail`, `property_map_status`, `property_claim_options` |
 | `GET /api/properties/[id]/contact` | `{ enabled, numbers, digest }`: calls and texts with the property's owner and landlord/PM phones. `enabled: false` with no Quo key; 502 `quo_error` if Quo can't be read; 120 per IP per minute; cached 10 min per phone; a refused key shows nothing (logged) | Quo `GET /v1/calls`, `/v1/messages`, `/v1/phone-numbers`, `/v1/users` — see [docs/QUO-INTEGRATION.md](docs/QUO-INTEGRATION.md) |
+| `POST /api/properties/[id]/edit` | `{ ok, detail, noted, mirrored }`. Body `{ editor, changes, base }`. Validates, rate-limits (30 per IP per 10 min, 20 saved edits per property per hour, 500 a day), re-reads Monday and answers 409 `conflict` with Monday's values if they changed, writes Monday, mirrors Supabase, posts the change note. 409 `busy`, 413, 429, 502 `monday_error`, 403/503 `editing_off`. See [docs/LISTING-EDITS.md](docs/LISTING-EDITS.md) | `listing_edit_guard` / `_mirror` / `_finish` + Monday `change_multiple_column_values`, `create_update` |
 | `POST /api/properties/[id]/flag-link` | `{ ok, alreadyFlagged, noted }`. Sets *ZZ.Status = BAD LINK* and posts an update on the property. 409 if reported in the last 24 h, 429 over 10 per IP per 10 min or 300 a day, 400 without a listing link | `flag_link_guard` / `flag_link_undo` + Monday `change_column_value`, `create_update` |
 | `GET /api/claims/active?q=&includeTest=&fresh=` | `{ claims, count }` with each claim's `accountManager` — cached 60 s per instance | Monday `items_page` / `next_items_page` per group |
 | `GET /api/claim/[claimId]` | Loss address, needs, claim brief, attached options + pins | Monday + `properties_by_ids_v2` |
@@ -380,7 +395,7 @@ npm run dev                  # http://localhost:3000
 | `npm run build` | Production build (also type-checks) |
 | `npm run start` | Serve the production build |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run test:unit` | Pure rules (`tests/unit`: phone parsing, the contact digest, the Quo links and text draft) |
+| `npm run test:unit` | Pure rules (`tests/unit`: phone parsing, the contact digest, the Quo links and text draft, listing-edit validation and Monday formats, the availability pill) |
 
 Browser and API checks run against a server on `BASE` (default `http://localhost:3012`); they mock Monday and write nothing:
 
@@ -388,6 +403,8 @@ Browser and API checks run against a server on `BASE` (default `http://localhost
 |---|---|
 | `node tests/browser/live-status.mjs` · `real-data.mjs` | The map end to end, on fixtures and on the real database |
 | `node tests/browser/contact-digest.mjs` | The Quo digest in every state (Quo mocked) |
+| `node tests/browser/edit-listing.mjs` | The availability pill in every state (light, dark, desktop, phone) and the edit form: validation, the exact request, success, conflicts, errors, discard prompts, keyboard use |
+| `node tests/api/edit-route.mjs` | The edit route against one mock of Monday and Supabase: start `node tests/api/edit-route.mjs serve` and the app with `SUPABASE_URL=http://127.0.0.1:3098 SUPABASE_KEY=test MONDAY_API_URL=http://127.0.0.1:3098/v2 MONDAY_API_TOKEN=test MAP_EDIT_SECRET=test` first |
 | `node tests/browser/contact-actions.mjs` | The Call / Text buttons on a laptop and on an iPhone: links, clipboard, draft text, the "Quo didn't open" hints |
 | `node tests/api/contact-route.mjs` | The contact route against a mock Quo: start `node tests/api/contact-route.mjs serve` and the app with `QUO_API_KEY=test-key QUO_API_BASE=http://127.0.0.1:3099/v1` first |
 
@@ -400,6 +417,8 @@ Browser and API checks run against a server on `BASE` (default `http://localhost
 | `SUPABASE_URL` · `SUPABASE_KEY` | Server | Project URL and publishable key. |
 | `MONDAY_API_TOKEN` | Server | Sub-items and updates are created **as the token's owner**. |
 | `MONDAY_PROPERTY_BOARD_ID` · `MONDAY_CLAIM_BOARD_ID` · `MONDAY_CLAIM_SUBITEM_BOARD_ID` | Server | `18415735059` · `9030696652` · `9205253360` |
+| `MAP_EDIT_SECRET` | Server | Turns on listing edits. Must equal the `MAP_EDIT_KEY` row in Supabase `sync_config`; without it the *Edit* button doesn't show. |
+| `MAP_EDITING` | Server | Optional kill switch: `off` hides *Edit* and refuses saves, without touching the secret. |
 | `MONDAY_DRY_RUN` | Server | `1` = never write to Monday. **Local only — never set in Production.** |
 | `QUO_API_KEY` | Server | Optional. Quo → *Settings → API*. Read-only use: the contact history on the owner card. Without it the card shows nothing extra. The Call / Text buttons need no key: they open the Quo app on the user's own device. |
 | `MONDAY_ACTIVE_CLAIM_GROUPS` | Server | Optional. Groups that count as active. Default `topics,group_mkvngrgz`. |
@@ -514,6 +533,11 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 | **Text** on a laptop opens Quo with an empty composer, or nothing | Quo's deep links are documented for its phone apps only; the desktop app may ignore the link | The number is already on your clipboard: paste it into *To* in the Quo app, or in the *open Quo* link the panel shows |
 | **Call** / **Text** on a phone opens the App Store / Play Store | The Quo app isn't installed on that phone | Install it and sign in; the buttons then open it directly |
 | The call or text went from the wrong Quo number | Quo uses the number currently selected in your app | Switch the number in Quo (top left) before calling |
+| No *Edit* button on the panel | `MAP_EDIT_SECRET` isn't set, or `MAP_EDITING=off` | Set the secret in Vercel (it must match `sync_config` `MAP_EDIT_KEY`) and redeploy |
+| Saving says "Someone changed this in Monday" | A field you edited was changed in Monday after you opened the form | Pick *Use Monday's values* or *Save mine anyway* |
+| Saving says "Someone else is saving this property" | Another save on the same property is in progress (or crashed in the last 30 s) | Wait a moment and save again |
+| An edit saved but the map still shows the old value | The mirror step failed; Monday has the new value | It arrives within seconds through the Monday webhook; reopen the property |
+| I want to undo an edit | — | Edit it back on the map or in Monday; the Monday note on the item lists the old values |
 | Report bad link says "Too many reports" | 10 per person per 10 minutes, or 300 a day | Wait, or flag it on the board (ZZ.Status) |
 | A reported link isn't BAD LINK on Monday | The Monday write failed and was rolled back (the map said so) | Try again; check `MONDAY_API_TOKEN` |
 | The phone list is tiny | Sheet is at the peek or half height | Drag the handle up, or tap the count |
@@ -532,6 +556,8 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 - [x] Active claims drawer + claim-scoped Add to claim ([#6](https://github.com/Novahavens/Interactive-map/pull/6))
 - [x] Summary to the relocation specialist ([#7](https://github.com/Novahavens/Interactive-map/pull/7))
 - [x] Coordinates for the rest of the database, and new items on the map within a minute
+- [x] **Edit listing details** from the map, synced to Monday and Supabase.
+- [x] **Availability pill** at the top of the property panel.
 
 **Next**
 - [ ] **Coverage badge** — the header mixes in-radius and table-wide counts; switch it to `database_coverage()`.

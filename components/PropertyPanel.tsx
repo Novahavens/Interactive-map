@@ -17,7 +17,7 @@ import { Fee, LinkChip, Row, Section } from "./property/parts";
 import { ReportBadLink, ReportedNote, type Reported } from "./property/ReportBadLink";
 import AvailabilityPill from "./property/AvailabilityPill";
 import EditListing, { type SavedOutcome } from "./property/EditListing";
-import { editingEnabled } from "./property/health";
+import { editingEnabled, markEditingOff } from "./property/health";
 import { availabilityPill, localToday } from "@/lib/availability";
 import { MONDAY_BOARDS, mondayItemUrl, money, num, miles, yesNo } from "@/lib/utils";
 
@@ -81,6 +81,7 @@ export default function PropertyPanel({
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const editRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const focusEdit = useRef(false);
 
   useEffect(() => {
@@ -109,7 +110,7 @@ export default function PropertyPanel({
   useEffect(() => {
     if (!editing && focusEdit.current) {
       focusEdit.current = false;
-      editRef.current?.focus();
+      (editRef.current ?? closeRef.current)?.focus(); // Close when Edit has gone (editing switched off)
     }
   }, [editing]);
 
@@ -204,7 +205,7 @@ export default function PropertyPanel({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {detail && canEdit && (
+          {detail && (canEdit || editing) && (
             // Kept in place (invisible) while editing so the header doesn't reflow.
             <button
               ref={editRef}
@@ -224,6 +225,7 @@ export default function PropertyPanel({
             </button>
           )}
           <button
+            ref={closeRef}
             type="button"
             onClick={onClose}
             aria-label="Close panel"
@@ -264,6 +266,10 @@ export default function PropertyPanel({
           onDiscardDecision={onDiscardDecision}
           onCancel={closeEditor}
           onSaved={handleSaved}
+          onEditingOff={() => {
+            markEditingOff();
+            setCanEdit(false);
+          }}
         />
       ) : (
       <>
