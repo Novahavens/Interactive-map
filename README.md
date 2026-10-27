@@ -73,7 +73,8 @@ Nova Havens places families displaced by insurance claims into temporary housing
 | 🟢 | **Live status on every property.** *Available now / soon / unverified / unavailable / listing removed* from the availability monitor, **"On claim …"** when the property is already an option on another active claim (with the status), **Last contact** date, and **Bad link**. Add to claim warns before adding a property that is an option elsewhere. | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
 | 🔗 | **Report bad link** from the property panel: one click sets *ZZ.Status = BAD LINK* on the property, posts a note on it saying who reported it, and the map shows it straight away. Rate-limited and once per property per day. | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
 | 🖱️ | **Hover a result, see its pin.** The pin grows and the map pans to it; hovering a pin highlights the row. The legend now explains the ⚫ check and the numbered clusters. The account manager shows on the claims list and the panel. | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
-| 📞 | **Contact history from Quo on the owner card.** Last call (date, who, length or no answer), how many calls and how many went unanswered, texts sent and replies, and the last text, across the owner's and landlord/PM's numbers and every Quo inbox. Read-only; appears once `QUO_API_KEY` is set. | this PR |
+| 📞 | **Contact history from Quo on the owner card.** Last call (date, who, length or no answer), how many calls and how many went unanswered, texts sent and replies, and the last text, across the owner's and landlord/PM's numbers and every Quo inbox. Read-only; appears once `QUO_API_KEY` is set. Also: a **Filters** drawer, and beds / baths / rent / pets first in the panel. | [#15](https://github.com/Novahavens/Interactive-map/pull/15) |
+| ☎️ | **Call and Text from the panel, through your own Quo.** Each owner and landlord/PM number has a **Call** and a **Text** button that open Quo on *your* laptop or phone, so the call or text goes from your Quo account and lands in the contact history. The text comes pre-written ("Hi Jane, it's Will from Nova Havens about 12 Elm St."). Tap the number to copy it. No set-up in the map: the device you're on is who you are. | [#16](https://github.com/Novahavens/Interactive-map/pull/16) |
 | 📱 | **Phone results sheet** with collapsed / half / expanded states: the list gets most of the screen, search and filters fold into one row, and the sheet and the list no longer fight over scrolling. The desktop rail no longer squeezes the list to a few pixels at short windows (Lou's scroll bug). | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
 | 🛠️ | **Fixes:** new options now arrive as **To Do** (not *Ready to Submit*); the claim's bedroom and bathroom needs were read from each other's columns; "% of database mappable" counted only the search circle; red properties can't be added to a claim whether the group *or* the owner says do not use. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
 
@@ -115,6 +116,17 @@ Picking a claim fills the search box with its loss address, recentres the map, l
    - **Contact history (Quo)** — a drawer on the owner card, closed until you tap it (Quo is only asked when it's opened). Inside: *Last call Oct 24 · William · 3 min*, *3 calls · 1 unanswered*, *4 sent · 1 reply*, and the last text (*They texted Oct 25: "Yes, it's free from Nov 1"*). It covers both the owner's and the landlord/PM's numbers and every Quo inbox. "No calls or texts in Quo yet" when there's nothing; counts end in **+** when Quo has more history than the map reads (200 calls or texts per number). Once loaded it stays loaded while the panel is open, and it is up to 10 minutes behind Quo. Without a Quo key there's no drawer.
 
      <img alt="Contact history card from Quo: Last call Oct 24 · William · 3 min; 3 calls · 1 unanswered; 4 sent · 1 reply; They texted Oct 25: Yes, it's free from Nov 1" src="docs/screenshots/quo-digest.png" width="380">
+
+   - **Call · Text** — next to each owner and landlord/PM number. They open **Quo on the device you're using**, signed in as you, so the call or text goes from your own Quo number and shows up in the contact history above. *Text* opens Quo's composer with a first line already typed: *Hi Jane, it's Will from Nova Havens about 12 Elm St.* (your name comes from the one you typed into *Report bad link*; without it, "this is Nova Havens"). Tap the number itself to copy it.
+     - **On a phone** (iPhone or Android with the Quo app): both buttons open Quo straight to the dialer or the composer. Without the app, the store opens.
+     - **On a laptop**: *Call* uses Quo's click-to-call, so [make Quo your default calling app](https://support.quo.com/core-concepts/calling/click-to-call) once (Mac: FaceTime → Settings → *Default for calls* → Quo; Windows: Settings → Default apps → TEL → Quo). *Text* copies the number and tries to open the Quo desktop app; Quo only promises the pre-filled draft on phones, so if the app opens empty, paste. When nothing opens within a couple of seconds the panel says so, with a link to the fix (or to Quo on the web for texting). If another app took the call instead (FaceTime, Skype), make Quo the default and try again.
+     - A number the map can't read as a phone number (a foreign one typed without +, or digits missing) keeps a plain *Call* and the copy button, with no *Text*.
+
+     <p>
+       <img alt="Owner card with (918) 555-0100 and (918) 555-0199, each with Call and Text buttons" src="docs/screenshots/quo-call-text.png" width="380">
+       &nbsp;
+       <img alt="The same card on a phone in dark mode, with 44px Call and Text buttons" src="docs/screenshots/quo-call-text-phone.png" width="200">
+     </p>
 
    - **Report bad link** — next to the listing link. Type your name once (remembered on your device), optionally what's wrong, Send. The property gets *ZZ.Status = BAD LINK* and a note on Monday, the link is struck through on the map, and properties@ is told by the Monday automation on that status.
 
@@ -278,10 +290,12 @@ sequenceDiagram
 ├── lib/
 │   ├── monday.ts                 # server-only Monday client, columns, dry-run guard
 │   ├── summary.ts                # pure buildSummary() + parseEmails()
+│   ├── contact.ts · quo.ts       # Quo contact history: pure digest rules, server-only client (docs/QUO-INTEGRATION.md)
+│   ├── quo-links.ts              # openphone:// and tel: links for the Call / Text buttons, the text draft
 │   ├── status.ts                 # green / yellow / red: names, colours, shapes, reasons (the rule is in the database)
 │   ├── supabase.ts · google.ts · types.ts · utils.ts · useTheme.ts
 ├── supabase/                     # edge functions (property-locate, used-before-sync, landlord-webhook) + migrations
-├── docs/                         # PRD, build plan, screenshots
+├── docs/                         # PRD, build plan, QUO-INTEGRATION.md (contact history + Call / Text, PR #16), screenshots
 ├── legacy/                       # retired AI Studio prototype (reference only)
 ├── components.json               # shadcn/ui config
 └── vercel.json · next.config.ts · .env.example
@@ -294,7 +308,7 @@ sequenceDiagram
 | `GET /api/health` | `{ ok, dryRun, quo }`: `quo` is whether `QUO_API_KEY` is set (the panel shows the Quo drawer only then) | env |
 | `GET /api/properties?lat=&lng=&miles=` | `{ pins, coverage }`, every pin has `map_status`, `availability`, `link_status`, `last_contact` and `other_claims` | `properties_within_radius_v4`, `database_coverage` |
 | `GET /api/properties/[id]` | Full property record plus `map_status`, `map_reason` and `other_claims` | `property_detail`, `property_map_status`, `property_claim_options` |
-| `GET /api/properties/[id]/contact` | `{ enabled, numbers, digest }`: calls and texts with the property's owner and landlord/PM phones. `enabled: false` with no Quo key; 502 `quo_error` if Quo can't be read; 120 per IP per minute; cached 10 min per phone; a refused key shows nothing (logged) | Quo `GET /v1/calls`, `/v1/messages`, `/v1/phone-numbers`, `/v1/users` |
+| `GET /api/properties/[id]/contact` | `{ enabled, numbers, digest }`: calls and texts with the property's owner and landlord/PM phones. `enabled: false` with no Quo key; 502 `quo_error` if Quo can't be read; 120 per IP per minute; cached 10 min per phone; a refused key shows nothing (logged) | Quo `GET /v1/calls`, `/v1/messages`, `/v1/phone-numbers`, `/v1/users` — see [docs/QUO-INTEGRATION.md](docs/QUO-INTEGRATION.md) |
 | `POST /api/properties/[id]/flag-link` | `{ ok, alreadyFlagged, noted }`. Sets *ZZ.Status = BAD LINK* and posts an update on the property. 409 if reported in the last 24 h, 429 over 10 per IP per 10 min or 300 a day, 400 without a listing link | `flag_link_guard` / `flag_link_undo` + Monday `change_column_value`, `create_update` |
 | `GET /api/claims/active?q=&includeTest=&fresh=` | `{ claims, count }` with each claim's `accountManager` — cached 60 s per instance | Monday `items_page` / `next_items_page` per group |
 | `GET /api/claim/[claimId]` | Loss address, needs, claim brief, attached options + pins | Monday + `properties_by_ids_v2` |
@@ -366,7 +380,7 @@ npm run dev                  # http://localhost:3000
 | `npm run build` | Production build (also type-checks) |
 | `npm run start` | Serve the production build |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run test:unit` | Pure rules (`tests/unit`: phone parsing and the contact digest) |
+| `npm run test:unit` | Pure rules (`tests/unit`: phone parsing, the contact digest, the Quo links and text draft) |
 
 Browser and API checks run against a server on `BASE` (default `http://localhost:3012`); they mock Monday and write nothing:
 
@@ -374,6 +388,7 @@ Browser and API checks run against a server on `BASE` (default `http://localhost
 |---|---|
 | `node tests/browser/live-status.mjs` · `real-data.mjs` | The map end to end, on fixtures and on the real database |
 | `node tests/browser/contact-digest.mjs` | The Quo digest in every state (Quo mocked) |
+| `node tests/browser/contact-actions.mjs` | The Call / Text buttons on a laptop and on an iPhone: links, clipboard, draft text, the "Quo didn't open" hints |
 | `node tests/api/contact-route.mjs` | The contact route against a mock Quo: start `node tests/api/contact-route.mjs serve` and the app with `QUO_API_KEY=test-key QUO_API_BASE=http://127.0.0.1:3099/v1` first |
 
 ### Environment variables
@@ -386,7 +401,7 @@ Browser and API checks run against a server on `BASE` (default `http://localhost
 | `MONDAY_API_TOKEN` | Server | Sub-items and updates are created **as the token's owner**. |
 | `MONDAY_PROPERTY_BOARD_ID` · `MONDAY_CLAIM_BOARD_ID` · `MONDAY_CLAIM_SUBITEM_BOARD_ID` | Server | `18415735059` · `9030696652` · `9205253360` |
 | `MONDAY_DRY_RUN` | Server | `1` = never write to Monday. **Local only — never set in Production.** |
-| `QUO_API_KEY` | Server | Optional. Quo → *Settings → API*. Read-only use: the contact history on the owner card. Without it the card shows nothing extra. |
+| `QUO_API_KEY` | Server | Optional. Quo → *Settings → API*. Read-only use: the contact history on the owner card. Without it the card shows nothing extra. The Call / Text buttons need no key: they open the Quo app on the user's own device. |
 | `MONDAY_ACTIVE_CLAIM_GROUPS` | Server | Optional. Groups that count as active. Default `topics,group_mkvngrgz`. |
 | `MONDAY_TEST_CLAIM_GROUP` | Server | Optional. The testing group for *Show test claims*. Default `group_mm1jnpwf`. |
 
@@ -495,6 +510,10 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 | No contact history on the owner card | `QUO_API_KEY` not set, or the property has no owner / landlord phone | Add the key in Vercel → *Redeploy*; add the phone in Monday |
 | "Couldn't reach Quo right now" | Quo down, or the key was revoked (Vercel logs show `Quo /calls returned 401`) | Try again; replace the key |
 | The history misses a call we made | It came from a number outside Quo, or within the last 10 minutes | Calls from personal phones aren't in Quo; reopen after 10 minutes |
+| **Call** opens FaceTime / Skype / nothing on a laptop | Quo isn't the default calling app on that computer | [Make Quo the default](https://support.quo.com/core-concepts/calling/click-to-call): Mac → FaceTime → Settings → *Default for calls*; Windows → Default apps → TEL. The panel links to this when Quo doesn't answer |
+| **Text** on a laptop opens Quo with an empty composer, or nothing | Quo's deep links are documented for its phone apps only; the desktop app may ignore the link | The number is already on your clipboard: paste it into *To* in the Quo app, or in the *open Quo* link the panel shows |
+| **Call** / **Text** on a phone opens the App Store / Play Store | The Quo app isn't installed on that phone | Install it and sign in; the buttons then open it directly |
+| The call or text went from the wrong Quo number | Quo uses the number currently selected in your app | Switch the number in Quo (top left) before calling |
 | Report bad link says "Too many reports" | 10 per person per 10 minutes, or 300 a day | Wait, or flag it on the board (ZZ.Status) |
 | A reported link isn't BAD LINK on Monday | The Monday write failed and was rolled back (the map said so) | Try again; check `MONDAY_API_TOKEN` |
 | The phone list is tiny | Sheet is at the peek or half height | Drag the handle up, or tap the count |
@@ -518,7 +537,8 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 - [ ] **Coverage badge** — the header mixes in-radius and table-wide counts; switch it to `database_coverage()`.
 - [ ] **Grey out claims that already have options sent** in the drawer.
 - [x] **Contact history from Quo** on the owner card.
-- [ ] **Call / Text via Quo** from the panel, and an AI one-line summary of the conversation (placeholders already in the property panel).
+- [x] **Call / Text via Quo** from the panel.
+- [ ] An AI one-line summary of the conversation with the owner (placeholder already in the property panel).
 - [ ] **Availability** and **last-used date** on the property card.
 - [ ] **Search agent** embed.
 - [ ] Real Google **Map ID**; optional server-only Supabase access.

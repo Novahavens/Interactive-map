@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, ExternalLink, Images, Phone, Mail, Sparkles } from "lucide-react";
+import { X, ExternalLink, Images, Mail, Sparkles } from "lucide-react";
 import type { PropertyDetail, ClaimNeeds, ApiError, Pin } from "@/lib/types";
 import { BAD_LINK } from "@/lib/types";
 import { STATUS, asMapStatus, reasonText, type MapStatus } from "@/lib/status";
@@ -12,6 +12,7 @@ import { computeFit, FitRow } from "./property/fit";
 import PanelFooter from "./property/PanelFooter";
 import KeyFacts from "./property/KeyFacts";
 import ContactDigest from "./property/ContactDigest";
+import ContactActions from "./property/ContactActions";
 import { Fee, LinkChip, Row, Section } from "./property/parts";
 import { ReportBadLink, ReportedNote, type Reported } from "./property/ReportBadLink";
 import { MONDAY_BOARDS, mondayItemUrl, money, num, dateShort, miles, yesNo } from "@/lib/utils";
@@ -249,16 +250,8 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
                     <span className="text-xs text-muted">Owner</span>
                     <span className="font-medium">{detail.owner_name ?? "—"}</span>
                   </span>
-                  {detail.owner_phone && (
-                    <a
-                      href={`tel:${detail.owner_phone.replace(/[^+\d]/g, "")}`}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line px-3 font-mono text-[13px] text-ink no-underline"
-                    >
-                      <Phone className="h-3 w-3" />
-                      {detail.owner_phone}
-                    </a>
-                  )}
                 </div>
+                {detail.owner_phone && <ContactActions phone={detail.owner_phone} name={detail.owner_name} address={detail.address} />}
                 {detail.owner_email && (
                   <a href={`mailto:${detail.owner_email}`} className="flex items-center gap-2 text-brand text-[13px] no-underline hover:underline">
                     <Mail className="h-3.5 w-3.5" />
@@ -277,15 +270,7 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
                     {detail.landlord_approval ? detail.landlord_approval : "approval unknown"}
                   </span>
                 </div>
-                {detail.landlord_phone && (
-                  <a
-                    href={`tel:${detail.landlord_phone.replace(/[^+\d]/g, "")}`}
-                    className="inline-flex h-8 w-fit items-center gap-1.5 rounded-md border border-line px-3 font-mono text-[13px] text-ink no-underline"
-                  >
-                    <Phone className="h-3 w-3" />
-                    {detail.landlord_phone}
-                  </a>
-                )}
+                {detail.landlord_phone && <ContactActions phone={detail.landlord_phone} name={detail.landlord_name} address={detail.address} />}
                 {detail.landlord_approval_note && <p className="text-xs text-muted">{detail.landlord_approval_note}</p>}
                 {(detail.owner_phone || detail.landlord_phone) && <ContactDigest propertyId={detail.monday_item_id} />}
               </div>
