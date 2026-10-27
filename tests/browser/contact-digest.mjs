@@ -44,11 +44,12 @@ check("precondition: a nearby, addable property with an owner phone", !!target, 
 
 const browser = await chromium.launch({ executablePath: CHROME });
 
-async function scenario(name, contact, { w = 1440, h = 900, theme = "light", delay = 0 } = {}) {
+async function scenario(name, contact, { w = 1440, h = 900, theme = "light", delay = 0, quo = true, open = true } = {}) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h } });
   await ctx.addInitScript((t) => { try { localStorage.setItem("nh-theme", t); } catch {} }, theme);
   await ctx.route("**/api/claims/active**", (r) => r.fulfill({ json: { claims, count: 1 } }));
   await ctx.route(/\/api\/claim\/\d+$/, (r) => r.fulfill({ json: claim }));
+  await ctx.route("**/api/health", (r) => r.fulfill({ json: { ok: true, dryRun: true, quo } }));
   let contactCalls = 0;
   await ctx.route(/\/api\/properties\/\d+\/contact$/, async (r) => {
     contactCalls++;
@@ -70,11 +71,34 @@ async function scenario(name, contact, { w = 1440, h = 900, theme = "light", del
   const panel = p.locator('aside[aria-label="Property details"]:visible').first();
   await panel.waitFor();
   await panel.getByText("Contacts", { exact: true }).waitFor();
+  if (open && quo) await drawer(panel).locator("summary").click();
   return { ctx, p, panel, contactCalls: () => contactCalls };
 }
-const box = (panel) => panel.getByRole("group", { name: "Contact history · Quo" });
+const drawer = (panel) => panel.locator("details", { hasText: "Contact history · Quo" });
+const box = drawer;
 const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
 
+// 0. Closed by default: a heading only, and Quo isn't asked until it's opened
+{
+  const s = await scenario("closed", { json: { enabled: true, numbers, digest: digest() } }, { open: false });
+  await drawer(s.panel).waitFor();
+  await s.p.waitForTimeout(800);
+  check("drawer: closed by default", !(await drawer(s.panel).evaluate((d) => d.open)));
+  check("drawer: nothing asked of Quo while closed", s.contactCalls() === 0);
+  check("drawer: the history isn't visible while closed", !(await drawer(s.panel).getByText("Last call").isVisible()));
+  const sum = await drawer(s.panel).locator("summary").boundingBox();
+  check("drawer: header is a 44px touch target", sum.height >= 44, String(sum.height));
+  await drawer(s.panel).scrollIntoViewIfNeeded();
+  await s.p.screenshot({ path: `${OUT}/drawer-closed.png` });
+  await drawer(s.panel).locator("summary").click();
+  await drawer(s.panel).getByText("Last call").waitFor();
+  check("drawer: opening it loads the history (one request)", s.contactCalls() === 1);
+  await drawer(s.panel).locator("summary").click();
+  await drawer(s.panel).locator("summary").click();
+  await s.p.waitForTimeout(400);
+  check("drawer: closing and reopening doesn't ask Quo again", s.contactCalls() === 1);
+  await s.ctx.close();
+}
 // 1. Full digest
 {
   const s = await scenario("full", { json: { enabled: true, numbers, digest: digest() } });
@@ -84,7 +108,7 @@ const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
   check("digest: call count with unanswered", t.includes("3 calls · 1 unanswered"));
   check("digest: texts sent and replies", t.includes("4 sent · 1 reply"));
   check("digest: last message preview", t.includes("They texted Oct 25: “Yes, it's free from Nov 1”"));
-  check("digest: sits inside the Contacts section", (await s.panel.locator("section", { hasText: "Contacts" }).getByRole("group", { name: "Contact history · Quo" }).count()) === 1);
+  check("digest: sits inside the Contacts section", (await s.panel.locator("section", { hasText: "Contacts" }).locator("details", { hasText: "Contact history · Quo" }).count()) === 1);
   check("digest: one request per panel open", s.contactCalls() === 1);
   await box(s.panel).scrollIntoViewIfNeeded();
   await s.p.screenshot({ path: `${OUT}/digest-desktop-light.png` });
@@ -124,9 +148,10 @@ const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
 }
 // 4. No Quo key: nothing at all
 {
-  const s = await scenario("disabled", { json: { enabled: false, numbers: [], digest: null } });
+  const s = await scenario("disabled", { json: { enabled: false, numbers: [], digest: null } }, { quo: false });
   await s.p.waitForTimeout(800);
-  check("no Quo key: the digest is not rendered", (await box(s.panel).count()) === 0);
+  check("no Quo key: no drawer at all", (await drawer(s.panel).count()) === 0);
+  check("no Quo key: Quo never asked", s.contactCalls() === 0);
   await s.ctx.close();
 }
 // 5. Quo down: a quiet line, the rest of the panel unaffected

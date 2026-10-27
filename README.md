@@ -112,7 +112,7 @@ Picking a claim fills the search box with its loss address, recentres the map, l
    - **Fit against this claim** — family size, pets, FRV and move-in date, each ticked, flagged or marked unknown.
    - **Cost to place** — monthly rent, every deposit and fee, and the **move-in total** (recurring pet rent is shown but excluded).
    - **Property, contacts, notes & links** — beds, baths, sq ft, type, availability, owner and landlord, listing, photo folder, *Open in Monday*.
-   - **Contact history (Quo)** — on the owner card: *Last call Oct 24 · William · 3 min*, *3 calls · 1 unanswered*, *4 sent · 1 reply*, and the last text (*They texted Oct 25: "Yes, it's free from Nov 1"*). It covers both the owner's and the landlord/PM's numbers and every Quo inbox. "No calls or texts in Quo yet" when there's nothing; counts end in **+** when Quo has more history than the map reads (200 calls or texts per number). It loads after the rest of the panel and is up to 10 minutes behind Quo.
+   - **Contact history (Quo)** — a drawer on the owner card, closed until you tap it (Quo is only asked when it's opened). Inside: *Last call Oct 24 · William · 3 min*, *3 calls · 1 unanswered*, *4 sent · 1 reply*, and the last text (*They texted Oct 25: "Yes, it's free from Nov 1"*). It covers both the owner's and the landlord/PM's numbers and every Quo inbox. "No calls or texts in Quo yet" when there's nothing; counts end in **+** when Quo has more history than the map reads (200 calls or texts per number). Once loaded it stays loaded while the panel is open, and it is up to 10 minutes behind Quo. Without a Quo key there's no drawer.
 
      <img alt="Contact history card from Quo: Last call Oct 24 · William · 3 min; 3 calls · 1 unanswered; 4 sent · 1 reply; They texted Oct 25: Yes, it's free from Nov 1" src="docs/screenshots/quo-digest.png" width="380">
 
@@ -291,7 +291,7 @@ sequenceDiagram
 
 | Route | Returns | Backed by |
 |---|---|---|
-| `GET /api/health` | `{ ok, dryRun }` | env |
+| `GET /api/health` | `{ ok, dryRun, quo }`: `quo` is whether `QUO_API_KEY` is set (the panel shows the Quo drawer only then) | env |
 | `GET /api/properties?lat=&lng=&miles=` | `{ pins, coverage }`, every pin has `map_status`, `availability`, `link_status`, `last_contact` and `other_claims` | `properties_within_radius_v4`, `database_coverage` |
 | `GET /api/properties/[id]` | Full property record plus `map_status`, `map_reason` and `other_claims` | `property_detail`, `property_map_status`, `property_claim_options` |
 | `GET /api/properties/[id]/contact` | `{ enabled, numbers, digest }`: calls and texts with the property's owner and landlord/PM phones. `enabled: false` with no Quo key; 502 `quo_error` if Quo can't be read; 120 per IP per minute; cached 10 min per phone; a refused key shows nothing (logged) | Quo `GET /v1/calls`, `/v1/messages`, `/v1/phone-numbers`, `/v1/users` |

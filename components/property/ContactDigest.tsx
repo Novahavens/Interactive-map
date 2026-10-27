@@ -1,11 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageSquare, Phone, PhoneMissed } from "lucide-react";
+import { ChevronDown, MessageSquare, Phone, PhoneMissed } from "lucide-react";
 import { callLength, type ContactDigest as Digest, type ContactResponse, type LastCall } from "@/lib/contact";
+import type { HealthResponse } from "@/lib/types";
 import { dayMonth } from "@/lib/utils";
 
-type State = { kind: "loading" } | { kind: "done"; res: ContactResponse } | { kind: "error" };
+type State = { kind: "closed" } | { kind: "loading" } | { kind: "done"; res: ContactResponse } | { kind: "error" };
+
+// Whether the map has a Quo key, asked once per page. Without one the drawer isn't shown at all.
+let quoOn: Promise<boolean> | null = null;
+function quoEnabled(): Promise<boolean> {
+  quoOn ??= fetch("/api/health", { cache: "no-store" })
+    .then((r) => (r.ok ? (r.json() as Promise<HealthResponse>) : null))
+    .then((h) => !!h?.quo)
+    .catch(() => false);
+  return quoOn;
+}
 
 // The panel is mounted twice (desktop rail and phone sheet, one hidden), so both share one request
 // per property. Kept for a minute, then the next open asks again.
@@ -77,11 +88,22 @@ function DigestView({ d, numbers }: { d: Digest; numbers: number }) {
   );
 }
 
-/** Calls and texts with the owner and landlord/PM from Quo. Renders nothing when the map has no Quo key. */
+/** Calls and texts with the owner and landlord/PM from Quo, in a drawer that asks Quo only when opened.
+ *  Renders nothing when the map has no Quo key. */
 export default function ContactDigest({ propertyId }: { propertyId: string }) {
-  const [state, setState] = useState<State>({ kind: "loading" });
+  const [enabled, setEnabled] = useState(false);
+  const [state, setState] = useState<State>({ kind: "closed" });
 
   useEffect(() => {
+    let live = true;
+    void quoEnabled().then((on) => live && setEnabled(on));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (state.kind !== "loading") return;
     let live = true;
     load(propertyId).then(
       (res) => live && setState({ kind: "done", res }),
@@ -90,21 +112,33 @@ export default function ContactDigest({ propertyId }: { propertyId: string }) {
     return () => {
       live = false;
     };
-  }, [propertyId]);
+  }, [propertyId, state.kind]);
 
-  if (state.kind === "done" && (!state.res.enabled || !state.res.numbers.length)) return null;
+  if (!enabled) return null;
 
-  const titleId = `quo-history-${propertyId}`;
   return (
-    <div role="group" aria-labelledby={titleId} className="flex flex-col gap-1 rounded-lg border border-line bg-surface-muted px-2.5 py-2">
-      <span id={titleId} className="text-[11px] font-medium uppercase tracking-wide text-muted">
-        Contact history · Quo
-      </span>
-      {state.kind === "loading" && <p className="text-xs text-muted">Checking Quo…</p>}
-      <div aria-live="polite">
+    <details
+      className="group rounded-lg border border-line bg-surface-muted"
+      onToggle={(e) => {
+        if ((e.currentTarget as HTMLDetailsElement).open && state.kind === "closed") setState({ kind: "loading" });
+      }}
+    >
+      <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 px-2.5 text-[11px] font-medium uppercase tracking-wide text-muted">
+        <span className="inline-flex items-center gap-1.5">
+          <Phone className="h-3 w-3" aria-hidden="true" />
+          Contact history · Quo
+        </span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="border-t border-line px-2.5 py-2" aria-live="polite">
+        {state.kind === "loading" && <p className="text-xs text-muted">Checking Quo…</p>}
         {state.kind === "error" && <p className="text-xs text-muted">Couldn't reach Quo right now.</p>}
+        {state.kind === "done" && !state.res.enabled && <p className="text-xs text-muted">Quo isn't connected right now.</p>}
+        {state.kind === "done" && state.res.enabled && !state.res.numbers.length && (
+          <p className="text-xs text-muted">No phone number Quo can look up on this property.</p>
+        )}
         {state.kind === "done" && state.res.digest && <DigestView d={state.res.digest} numbers={state.res.numbers.length} />}
       </div>
-    </div>
+    </details>
   );
 }
