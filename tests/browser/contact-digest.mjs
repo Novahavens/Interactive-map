@@ -139,6 +139,16 @@ const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
   check("a long unbroken preview wraps inside the card", pb.x + pb.width <= gb.x + gb.width + 1);
   await s.ctx.close();
 }
+// 2c. Two numbers, one unreadable, the other quiet: say so, don't claim "no history"
+{
+  const two = [numbers[0], { label: "Landlord / PM", phone: "+19185550200" }];
+  const s = await scenario("unread", { json: { enabled: true, numbers: two, digest: { ...zero, unread: 1, calls: { ...zero.calls, truncated: true }, texts: { ...zero.texts, truncated: true } } } });
+  await box(s.panel).getByText("Couldn't read").waitFor();
+  const t = await text(box(s.panel));
+  check("unread number: 'Couldn't read 1 of the 2 numbers'", t.includes("Couldn't read 1 of the 2 numbers from Quo right now."), t);
+  check("unread number: no false 'No calls or texts'", !t.includes("No calls or texts"));
+  await s.ctx.close();
+}
 // 3. No history
 {
   const s = await scenario("none", { json: { enabled: true, numbers, digest: zero } });

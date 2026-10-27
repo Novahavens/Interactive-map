@@ -91,6 +91,7 @@ test("no history is a digest of zeros, not null", () => {
   assert.equal(d.calls.last, null);
   assert.equal(d.texts.last, null);
   assert.equal(d.lastContactAt, null);
+  assert.equal(d.unread, 0);
 });
 
 test("preview trims, shortens and names a photo", () => {

@@ -89,6 +89,8 @@ const history = new Map<string, { at: number; value: Promise<History> }>();
 
 async function readDirectory(signal: AbortSignal): Promise<Directory> {
   const numbers = quo<{ data: { id: string }[] }>("/phone-numbers", {}, signal);
+  // Observed now, so a failure while /users is still paging isn't an unhandled rejection; rethrown below.
+  numbers.catch(() => undefined);
   const names: Record<string, string> = {};
   let ttl = DIRECTORY_TTL_MS;
   try {
@@ -176,11 +178,14 @@ export async function contactDigest(phones: string[], signal: AbortSignal): Prom
   const refused = settled.find((s) => s.status === "rejected" && s.reason instanceof QuoError && (s.reason.status === 401 || s.reason.status === 403));
   if (refused) throw (refused as PromiseRejectedResult).reason;
   if (!read.length) throw (settled[0] as PromiseRejectedResult).reason;
-  const partial = read.length < phones.length;
-  return summarise(
-    read.flatMap((h) => h.calls),
-    read.flatMap((h) => h.messages),
-    names,
-    { calls: partial || read.some((h) => h.callsTruncated), texts: partial || read.some((h) => h.textsTruncated) },
-  );
+  const unread = phones.length - read.length;
+  return {
+    ...summarise(
+      read.flatMap((h) => h.calls),
+      read.flatMap((h) => h.messages),
+      names,
+      { calls: unread > 0 || read.some((h) => h.callsTruncated), texts: unread > 0 || read.some((h) => h.textsTruncated) },
+    ),
+    unread,
+  };
 }

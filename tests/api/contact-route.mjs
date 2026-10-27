@@ -17,10 +17,13 @@ const BUSY = "+17034074378"; // answers 429 once, then works: the client must re
 const BUSY_ID = process.env.BUSY_ID ?? "12236087634";
 const REVOKED = "+15712056958"; // answers 401: a refused key must hide the digest, not show an error
 const REVOKED_ID = process.env.REVOKED_ID ?? "12236087635";
+const TWO_ID = process.env.TWO_ID ?? "12787901248"; // owner (509) 252-5051, landlord (509) 995-7235
+const TWO_FAILS = "+15099957235"; // the landlord number fails; the owner number has no history
 
 if (process.argv[2] === "serve") {
   const seen = [];
   const busy = {};
+  let directoryReads = 0;
   http
     .createServer((req, res) => {
       const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
@@ -31,10 +34,17 @@ if (process.argv[2] === "serve") {
       if (url.pathname === "/__seen") return send(200, seen);
       seen.push({ path: url.pathname, query: url.search, auth: req.headers.authorization ?? null });
       if (req.headers.authorization !== "test-key") return send(401, { message: "bad key" });
-      if (url.pathname === "/v1/phone-numbers") return send(200, { data: [{ id: "PNmock1" }, { id: "PNmock2" }] });
-      if (url.pathname === "/v1/users") return send(200, { data: [{ id: "USwill", firstName: "William", email: "william@x" }] });
+      // The first directory read fails fast while /users is still in flight: the route must answer 502,
+      // not crash on an unhandled rejection, and the next request must read the directory again.
+      if (url.pathname === "/v1/phone-numbers") {
+        if (++directoryReads === 1) return send(500, { message: "directory down" });
+        return send(200, { data: [{ id: "PNmock1" }, { id: "PNmock2" }] });
+      }
+      if (url.pathname === "/v1/users") {
+        return setTimeout(() => send(200, { data: [{ id: "USwill", firstName: "William", email: "william@x" }] }), 300);
+      }
       const participants = url.searchParams.getAll("participants");
-      if (participants[0] === FAILING) return send(500, { message: "boom" });
+      if (participants[0] === FAILING || participants[0] === TWO_FAILS) return send(500, { message: "boom" });
       if (participants[0] === REVOKED) return send(401, { message: "revoked" });
       if (participants[0] === BUSY) {
         const key = `${url.pathname}${url.searchParams.get("phoneNumberId")}`;
@@ -90,6 +100,11 @@ if (process.argv[2] === "serve") {
     return { status: r.status, body: await r.json().catch(() => null) };
   };
 
+  const down = await get(WITH_PHONE);
+  check("Quo directory down: 502, not a crash", down.status === 502 && down.body?.code === "quo_error");
+  const alive = await fetch(`${BASE}/api/health`).then((r) => r.ok).catch(() => false);
+  check("server still up after the directory failure", alive);
+
   const a = await get(WITH_PHONE);
   const d = a.body?.digest;
   check("200 with a digest for a property with an owner phone", a.status === 200 && a.body?.enabled === true && !!d, JSON.stringify(a.body).slice(0, 200));
@@ -99,7 +114,7 @@ if (process.argv[2] === "serve") {
   check("texts across both inboxes: 2 sent, 1 reply", d?.texts.sent === 2 && d?.texts.received === 1);
   check("last text is the reply with its preview", d?.texts.last?.direction === "incoming" && d?.texts.last?.preview === "Yes, it's free from Nov 1");
   check("lastContactAt is the newest call or text", d?.lastContactAt === "2026-10-25T09:00:00Z");
-  check("not truncated", d?.calls.truncated === false && d?.texts.truncated === false);
+  check("not truncated, nothing unread", d?.calls.truncated === false && d?.texts.truncated === false && d?.unread === 0);
 
   const seen = await (await fetch(`http://127.0.0.1:${PORT}/__seen`)).json();
   const quoCalls = seen.filter((s) => s.path === "/v1/calls" || s.path === "/v1/messages");
@@ -120,6 +135,13 @@ if (process.argv[2] === "serve") {
   check("no phone on the record: enabled, no numbers, no digest", none.status === 200 && none.body?.numbers?.length === 0 && none.body?.digest === null);
 
   const bad = await get(FAILING_ID);
+  const two = await get(TWO_ID);
+  check(
+    "two numbers, one unreadable, the other quiet: 200 with unread 1 and zero counts (not 'no history')",
+    two.status === 200 && two.body?.numbers?.length === 2 && two.body?.digest?.unread === 1 && two.body?.digest?.calls.total === 0,
+    JSON.stringify(two.body).slice(0, 220),
+  );
+
   check("Quo failure is a 502 with a fixed message", bad.status === 502 && bad.body?.code === "quo_error" && bad.body?.error === "Couldn't reach Quo");
 
   const b = await get(BUSY_ID);

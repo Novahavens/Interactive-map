@@ -51,12 +51,20 @@ function textLine(t: Digest["texts"]): string {
 
 function DigestView({ d, numbers }: { d: Digest; numbers: number }) {
   const { calls, texts } = d;
+  const unread = d.unread ? (
+    <p className="text-xs text-muted">
+      Couldn't read {d.unread} of the {numbers} numbers from Quo right now{calls.total || texts.sent || texts.received ? "; the counts cover the others." : "."}
+    </p>
+  ) : null;
   if (!calls.total && !texts.sent && !texts.received) {
-    return <p className="text-xs text-muted">No calls or texts in Quo yet{numbers > 1 ? ` with these ${numbers} numbers` : ""}.</p>;
+    return (
+      unread ?? <p className="text-xs text-muted">No calls or texts in Quo yet{numbers > 1 ? ` with these ${numbers} numbers` : ""}.</p>
+    );
   }
   const last = texts.last;
   return (
     <div className="flex flex-col gap-1.5">
+      {unread}
       <div className="flex flex-wrap gap-1.5">
         {calls.last && (
           <span className="nh-digest">

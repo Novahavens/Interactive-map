@@ -45,6 +45,8 @@ export interface ContactDigest {
   calls: { total: number; outgoing: number; incoming: number; missed: number; last: LastCall | null; truncated: boolean };
   texts: { sent: number; received: number; last: LastText | null; truncated: boolean };
   lastContactAt: string | null;
+  /** Numbers Quo couldn't read this time; the counts cover the others only. */
+  unread: number;
 }
 
 export interface ContactNumber {
@@ -140,6 +142,7 @@ export function summarise(
       truncated: truncated.texts,
     },
     lastContactAt: times.length ? times.reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a)) : null,
+    unread: 0,
   };
 }
 
