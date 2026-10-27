@@ -11,6 +11,7 @@ const QUO_WEB = "https://my.quo.com";
 /** How long we give Quo to take focus before assuming it didn't open. */
 const OPEN_GRACE_MS = 1500;
 const HINT_MS = 9000;
+const COPIED_MS = 1500;
 
 type Hint = { text: string; link?: { href: string; label: string } } | null;
 
@@ -42,101 +43,112 @@ async function copy(text: string): Promise<boolean> {
   }
 }
 
-// 28px tall with a mouse, 44px on a touch screen.
-const btn =
-  "inline-flex h-8 min-w-[44px] items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink no-underline hover:bg-surface-muted [@media(pointer:coarse)]:h-[44px]";
+/** The numbers to act on: E.164 when the cell parses; else the digits as typed, so Call still works (no draft then). */
+function numbersIn(phone: string): { numbers: string[]; parsed: boolean } {
+  const parsed = toE164List(phone);
+  if (parsed.length) return { numbers: parsed, parsed: true };
+  const raw = phone.replace(/[^+\d]/g, "");
+  return { numbers: raw.replace(/\D/g, "").length >= 7 ? [raw] : [], parsed: false };
+}
+
+// 28px tall with a mouse (root font is 14px), 44px on a touch screen.
+const touch = "[@media(pointer:coarse)]:h-[44px]";
+const btn = `inline-flex h-8 min-w-[44px] items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink no-underline hover:bg-surface-muted ${touch}`;
 
 /**
  * The number with Call and Text buttons that open Quo on this device, so the call or text goes from
  * the user's own Quo account. One row per number when a Monday cell holds two.
  */
 export default function ContactActions({ phone, name, address }: { phone: string; name: string | null; address: string | null }) {
-  const numbers = toE164List(phone);
+  const { numbers, parsed } = numbersIn(phone);
+  // The platform and the sender name are read after mount, so the server render and the first client
+  // render agree; an iPad reports itself as a Mac with touch.
   const [platform, setPlatform] = useState<Platform>("desktop");
+  const [from, setFrom] = useState("");
   const [hint, setHint] = useState<Hint>(null);
   const [copied, setCopied] = useState<string | null>(null);
-  // Who's texting, from the name saved by "Report bad link". Read after mount so the server and the first
-  // client render agree.
-  const [from, setFrom] = useState("");
-  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const alive = useRef(true);
+  const timers = useRef<{ hint?: ReturnType<typeof setTimeout>; copied?: ReturnType<typeof setTimeout> }>({});
 
   useEffect(() => {
+    alive.current = true;
     setPlatform(detectPlatform(navigator.userAgent, navigator.maxTouchPoints));
     setFrom(readReporterName());
-  }, []);
-
-  useEffect(() => {
+    const t = timers.current;
     return () => {
-      if (hintTimer.current) clearTimeout(hintTimer.current);
+      alive.current = false;
+      clearTimeout(t.hint);
+      clearTimeout(t.copied);
     };
   }, []);
 
   function showHint(h: Hint) {
-    if (hintTimer.current) clearTimeout(hintTimer.current);
+    if (!alive.current) return;
+    clearTimeout(timers.current.hint);
     setHint(h);
-    if (h) hintTimer.current = setTimeout(() => setHint(null), HINT_MS);
+    if (h) timers.current.hint = setTimeout(() => alive.current && setHint(null), HINT_MS);
   }
 
   if (!numbers.length) return <span className="font-mono text-[13px] text-ink">{phone}</span>;
 
   const mobile = platform !== "desktop";
+  const draft = draftText({ to: name, address, from });
 
   async function onCall() {
     if (mobile) return; // the openphone:// link does the work; the store opens if Quo isn't installed
     if (!(await quoTookOver())) {
-      showHint({
-        text: "Quo didn't open?",
-        link: { href: CLICK_TO_CALL_HELP, label: "Make Quo your default calling app" },
-      });
+      showHint({ text: "Quo didn't open?", link: { href: CLICK_TO_CALL_HELP, label: "Make Quo your default calling app" } });
     }
   }
 
-  async function onText(e164: string) {
+  async function onText(number: string) {
     if (mobile) return; // the openphone:// link does the work
-    // The desktop app has no sms: handler. The link asks the OS for Quo's own scheme; the number is also
-    // held on the clipboard in case the app opens without filling it in, or isn't installed.
-    const held = await copy(e164);
+    // Quo documents its deep links for the mobile apps only. On a laptop the link is still tried (the
+    // desktop app registers the scheme), the number is held on the clipboard for pasting, and Quo on
+    // the web is offered when nothing takes over.
+    const took = quoTookOver();
+    const held = await copy(number);
     showHint({ text: held ? "Opening Quo · number copied" : "Opening Quo…" });
-    if (!(await quoTookOver())) {
-      showHint({
-        text: held ? "Quo didn't open. Paste the number into Quo:" : "Quo didn't open:",
-        link: { href: QUO_WEB, label: "open Quo" },
-      });
-    }
+    if (await took) showHint(null);
+    else showHint({ text: held ? "Quo didn't open. Paste the number into Quo:" : "Quo didn't open:", link: { href: QUO_WEB, label: "open Quo" } });
   }
 
-  async function onCopy(e164: string) {
-    if (await copy(e164)) {
-      setCopied(e164);
-      setTimeout(() => setCopied((c) => (c === e164 ? null : c)), 1500);
-    }
+  async function onCopy(number: string) {
+    if (!(await copy(number)) || !alive.current) return;
+    setCopied(number);
+    clearTimeout(timers.current.copied);
+    timers.current.copied = setTimeout(() => alive.current && setCopied((c) => (c === number ? null : c)), COPIED_MS);
   }
 
   return (
     <div className="flex flex-col gap-1.5">
-      {numbers.map((e164) => {
-        const draft = draftText({ to: name, address, from });
+      {numbers.map((number) => {
+        const shown = parsed ? pretty(number) : phone;
         return (
-          <div key={e164} className="flex flex-wrap items-center gap-1.5">
+          <div key={number} className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
-              onClick={() => onCopy(e164)}
+              onClick={() => onCopy(number)}
               title="Copy number"
-              className="inline-flex h-8 items-center gap-1.5 rounded-md px-1.5 font-mono text-[13px] text-ink hover:bg-surface-muted [@media(pointer:coarse)]:h-[44px]"
+              className={`inline-flex h-8 items-center gap-1.5 rounded-md px-1.5 font-mono text-[13px] text-ink hover:bg-surface-muted ${touch}`}
             >
-              {pretty(e164)}
-              {copied === e164 ? <Check className="h-3 w-3 text-ok-ink" aria-hidden="true" /> : <Copy className="h-3 w-3 text-muted" aria-hidden="true" />}
-              <span className="sr-only">{copied === e164 ? "Copied" : "Copy number"}</span>
+              {shown}
+              {copied === number ? <Check className="h-3 w-3 text-ok-ink" aria-hidden="true" /> : <Copy className="h-3 w-3 text-muted" aria-hidden="true" />}
+              <span className="sr-only" role="status">
+                {copied === number ? "Copied" : "Copy number"}
+              </span>
             </button>
             <span className="ml-auto inline-flex gap-1.5">
-              <a href={callHref(e164, platform)} onClick={onCall} className={btn} data-quo="call" aria-label={`Call ${pretty(e164)} with Quo`}>
+              <a href={callHref(number, platform)} onClick={onCall} className={btn} data-quo="call" aria-label={`Call ${shown} with Quo`}>
                 <Phone className="h-3.5 w-3.5" aria-hidden="true" />
                 Call
               </a>
-              <a href={quoMessageUrl(e164, draft)} onClick={() => onText(e164)} className={btn} data-quo="text" aria-label={`Text ${pretty(e164)} with Quo`}>
-                <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
-                Text
-              </a>
+              {parsed && (
+                <a href={quoMessageUrl(number, draft)} onClick={() => onText(number)} className={btn} data-quo="text" aria-label={`Text ${shown} with Quo`}>
+                  <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
+                  Text
+                </a>
+              )}
             </span>
           </div>
         );

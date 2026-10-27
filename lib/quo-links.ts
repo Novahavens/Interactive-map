@@ -48,12 +48,23 @@ export function streetOf(address: string | null | undefined): string {
   return (address ?? "").split(",")[0].trim();
 }
 
-/** First name of a contact: "Jane Doe" → "Jane"; a company name is kept whole up to 3 words. */
+const HONORIFIC = /^(mr|mrs|ms|mx|dr|prof|rev|sir)\.?$/i;
+const INITIAL = /^[a-z]\.?$/i;
+const COMPANY = /^(llc|l\.l\.c\.|inc\.?|corp\.?|co\.?|ltd\.?|lp|llp|pllc|properties|property|rentals|rental|homes|housing|group|realty|real|estate|estates|management|mgmt|trust|family|holdings|investments|partners|enterprises|associates|apartments|lodging|hospitality|services|solutions)$/i;
+const PLAIN_NAME = /^[a-z][a-z'’-]+$/i;
+
+/**
+ * The first name to greet a contact by, or "" when the cell doesn't hold a person: "Jane Doe" → "Jane",
+ * "Dr. Jane Doe" → "Jane", "Doe, Jane" → "Jane"; a company ("Acme Properties LLC", "The Smith Family Trust")
+ * or a cell that starts with something that isn't a name gives "" so the draft says "Hi, this is…".
+ */
 export function firstNameOf(name: string | null | undefined): string {
-  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return "";
-  if (words.some((w) => /^(LLC|Inc\.?|Properties|Rentals|Homes|Group|Realty|Management)$/i.test(w))) return words.slice(0, 3).join(" ");
-  return words[0];
+  let raw = (name ?? "").trim();
+  if (raw.includes(",")) raw = raw.split(",")[1] ?? ""; // "Last, First"
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (!words.length || words.some((w) => COMPANY.test(w))) return "";
+  const first = words.find((w) => !HONORIFIC.test(w) && !INITIAL.test(w)) ?? "";
+  return PLAIN_NAME.test(first) ? first : "";
 }
 
 /**

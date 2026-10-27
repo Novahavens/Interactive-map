@@ -38,14 +38,24 @@ test("street and first name are trimmed sensibly", () => {
   assert.equal(streetOf(null), "");
   assert.equal(firstNameOf("Jane Doe"), "Jane");
   assert.equal(firstNameOf("  Jane "), "Jane");
-  assert.equal(firstNameOf("Acme Properties LLC"), "Acme Properties LLC");
-  assert.equal(firstNameOf("Tulsa Homes Group Inc Extra"), "Tulsa Homes Group");
+  assert.equal(firstNameOf("Dr. Jane Doe"), "Jane");
+  assert.equal(firstNameOf("Mr Smith"), "Smith");
+  assert.equal(firstNameOf("J. R. Smith"), "Smith");
+  assert.equal(firstNameOf("Doe, Jane"), "Jane");
+  assert.equal(firstNameOf("Mary-Jane O'Neil"), "Mary-Jane");
   assert.equal(firstNameOf(null), "");
+});
+
+test("a company or an unreadable cell gets no name in the greeting", () => {
+  for (const n of ["Acme Properties LLC", "Tulsa Homes Group Inc", "The Smith Family Trust", "Smith Holdings", "918-555-0100", "?", "Dr.", "J."]) {
+    assert.equal(firstNameOf(n), "", n);
+  }
 });
 
 test("draft text: names the person, the sender when known, and the street; never empty", () => {
   assert.equal(draftText({ to: "Jane Doe", address: "12 Elm St, Tulsa, OK", from: "Will" }), "Hi Jane, it's Will from Nova Havens about 12 Elm St. ");
   assert.equal(draftText({ to: null, address: "12 Elm St, Tulsa, OK", from: "" }), "Hi, this is Nova Havens about 12 Elm St. ");
   assert.equal(draftText({ to: "Jane", address: null, from: null }), "Hi Jane, this is Nova Havens. ");
+  assert.equal(draftText({ to: "Acme Properties LLC", address: "12 Elm St, Tulsa", from: "Will" }), "Hi, it's Will from Nova Havens about 12 Elm St. ");
   assert.equal(draftText({}), "Hi, this is Nova Havens. ");
 });

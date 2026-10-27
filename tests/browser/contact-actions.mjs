@@ -9,8 +9,9 @@ import fs from "node:fs";
 const BASE = process.env.BASE ?? "http://localhost:3012";
 const OUT = process.argv[2] ?? "test-results/contact-actions";
 const CHROME = process.env.CHROME ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
-const PW_CORE = process.env.PW_CORE ?? "/tmp/claude-0/-home-user-Interactive-map/519172db-2710-58fd-844f-0ffa565c5e27/scratchpad/pw/node_modules/playwright-core/index.mjs";
-const { chromium } = await import("playwright-core").catch(() => import(PW_CORE));
+const { chromium } = await import("playwright-core").catch(() =>
+  process.env.PW_CORE ? import(process.env.PW_CORE) : Promise.reject(new Error("playwright-core isn't installed; set PW_CORE to its index.mjs")),
+);
 fs.mkdirSync(OUT, { recursive: true });
 
 const LOSS = { lat: 36.0865, lng: -95.8593, address: "100 Demo Street, Tulsa, OK 74133, USA" };
@@ -129,13 +130,26 @@ const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
   await contacts.getByTitle("Copy number").nth(1).click();
   await p.waitForTimeout(100);
   check("tapping the number copies it", (await p.evaluate(() => navigator.clipboard.readText())) === E2);
-  check("…and says Copied", (await contacts.getByText("Copied", { exact: true }).count()) === 1);
+  check("…and says Copied in a status region", (await contacts.locator('[role="status"]', { hasText: /^Copied$/ }).count()) === 1);
   await p.waitForTimeout(1700);
   check("…then the tick goes away", (await contacts.getByText("Copied", { exact: true }).count()) === 0);
 
   // Keyboard: the buttons are reachable and 44px tall targets on touch, 32px here.
   const h = await calls.nth(0).evaluate((e) => e.getBoundingClientRect().height);
   check("buttons are 28px tall with a mouse (root font 14px)", h === 28, String(h));
+  await ctx.close();
+}
+
+// ---------- a number the parser can't read keeps a working Call (the old tel: behaviour) ----------
+{
+  const saved = detail.owner_phone;
+  detail.owner_phone = "011 44 20 7946 0958";
+  const { ctx, contacts } = await open("unparsed");
+  const calls = contacts.locator('[data-quo="call"]');
+  check("unparsed owner number still gets Call (digits only, tel:)", (await calls.nth(0).getAttribute("href")) === "tel:011442079460958", await calls.nth(0).getAttribute("href"));
+  check("…and is shown as typed", (await text(contacts)).includes("011 44 20 7946 0958"));
+  check("…with no Text button (Quo needs a real number for a draft)", (await contacts.locator('[data-quo="text"]').count()) === 1);
+  detail.owner_phone = saved;
   await ctx.close();
 }
 
@@ -152,8 +166,8 @@ const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
     await texts.nth(0).getAttribute("href"),
   );
   check(
-    "landlord draft keeps a company name whole",
-    (await texts.nth(2).getAttribute("href")) === `openphone://message?number=%2B14055550123&selectedAsFallback=true&text=${encodeURIComponent("Hi Acme Properties LLC, this is Nova Havens about 12 Elm St. ")}`,
+    "landlord draft greets a company without a name",
+    (await texts.nth(2).getAttribute("href")) === `openphone://message?number=%2B14055550123&selectedAsFallback=true&text=${encodeURIComponent("Hi, this is Nova Havens about 12 Elm St. ")}`,
   );
   const h = await calls.nth(0).evaluate((e) => e.getBoundingClientRect().height);
   check("touch targets are 44px tall and at least 44px wide", h === 44 && (await calls.nth(0).evaluate((e) => e.getBoundingClientRect().width)) >= 44, String(h));

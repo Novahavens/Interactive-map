@@ -119,9 +119,14 @@ Picking a claim fills the search box with its loss address, recentres the map, l
 
    - **Call · Text** — next to each owner and landlord/PM number. They open **Quo on the device you're using**, signed in as you, so the call or text goes from your own Quo number and shows up in the contact history above. *Text* opens Quo's composer with a first line already typed: *Hi Jane, it's Will from Nova Havens about 12 Elm St.* (your name comes from the one you typed into *Report bad link*; without it, "this is Nova Havens"). Tap the number itself to copy it.
      - **On a phone** (iPhone or Android with the Quo app): both buttons open Quo straight to the dialer or the composer. Without the app, the store opens.
-     - **On a laptop**: *Call* uses Quo's click-to-call, so [make Quo your default calling app](https://support.quo.com/core-concepts/calling/click-to-call) once (Mac: FaceTime → Settings → *Default for calls* → Quo; Windows: Settings → Default apps → TEL → Quo). *Text* opens the Quo desktop app and also copies the number, so if the composer comes up empty, paste. If Quo doesn't take over within a couple of seconds the panel says so with a link to the fix.
+     - **On a laptop**: *Call* uses Quo's click-to-call, so [make Quo your default calling app](https://support.quo.com/core-concepts/calling/click-to-call) once (Mac: FaceTime → Settings → *Default for calls* → Quo; Windows: Settings → Default apps → TEL → Quo). *Text* copies the number and tries to open the Quo desktop app; Quo only promises the pre-filled draft on phones, so if the app opens empty, paste. When nothing opens within a couple of seconds the panel says so, with a link to the fix (or to Quo on the web for texting). If another app took the call instead (FaceTime, Skype), make Quo the default and try again.
+     - A number the map can't read as a phone number (a foreign one typed without +, or digits missing) keeps a plain *Call* and the copy button, with no *Text*.
 
-     <img alt="Owner card with (918) 555-0100 and (918) 555-0199, each with Call and Text buttons" src="docs/screenshots/quo-call-text.png" width="380">
+     <p>
+       <img alt="Owner card with (918) 555-0100 and (918) 555-0199, each with Call and Text buttons" src="docs/screenshots/quo-call-text.png" width="380">
+       &nbsp;
+       <img alt="The same card on a phone in dark mode, with 44px Call and Text buttons" src="docs/screenshots/quo-call-text-phone.png" width="200">
+     </p>
 
    - **Report bad link** — next to the listing link. Type your name once (remembered on your device), optionally what's wrong, Send. The property gets *ZZ.Status = BAD LINK* and a note on Monday, the link is struck through on the map, and properties@ is told by the Monday automation on that status.
 
@@ -506,7 +511,7 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 | "Couldn't reach Quo right now" | Quo down, or the key was revoked (Vercel logs show `Quo /calls returned 401`) | Try again; replace the key |
 | The history misses a call we made | It came from a number outside Quo, or within the last 10 minutes | Calls from personal phones aren't in Quo; reopen after 10 minutes |
 | **Call** opens FaceTime / Skype / nothing on a laptop | Quo isn't the default calling app on that computer | [Make Quo the default](https://support.quo.com/core-concepts/calling/click-to-call): Mac → FaceTime → Settings → *Default for calls*; Windows → Default apps → TEL. The panel links to this when Quo doesn't answer |
-| **Text** opens Quo but the composer is empty | The desktop app opened without reading the link | The number is already on your clipboard: paste it into *To* |
+| **Text** on a laptop opens Quo with an empty composer, or nothing | Quo's deep links are documented for its phone apps only; the desktop app may ignore the link | The number is already on your clipboard: paste it into *To* in the Quo app, or in the *open Quo* link the panel shows |
 | **Call** / **Text** on a phone opens the App Store / Play Store | The Quo app isn't installed on that phone | Install it and sign in; the buttons then open it directly |
 | The call or text went from the wrong Quo number | Quo uses the number currently selected in your app | Switch the number in Quo (top left) before calling |
 | Report bad link says "Too many reports" | 10 per person per 10 minutes, or 300 a day | Wait, or flag it on the board (ZZ.Status) |
