@@ -46,11 +46,16 @@ export function mergeChipSource(detail: PropertyDetail | null, pin: Pin | null):
 /**
  * The compact chip line shared by list rows and the panel header, in the order availability, claims, link,
  * contact. "Check Failed", blank and unrecognised availability give no chip: the monitor said nothing useful.
- * `otherClaims` is the claims holding the property without the one being worked.
+ * `otherClaims` is the claims holding the property without the one being worked. The panel header passes
+ * `{ availability: false }`: it shows availability as its own pill (components/property/AvailabilityPill.tsx).
  */
-export function chipsFor(src: ChipSource, claimId: string | null): { chips: Chip[]; otherClaims: ClaimOption[]; badLink: boolean } {
+export function chipsFor(
+  src: ChipSource,
+  claimId: string | null,
+  opts: { availability?: boolean } = {},
+): { chips: Chip[]; otherClaims: ClaimOption[]; badLink: boolean } {
   const chips: Chip[] = [];
-  const avail = AVAILABILITY_CHIP[(src.availability ?? "").trim().toLowerCase()];
+  const avail = opts.availability === false ? undefined : AVAILABILITY_CHIP[(src.availability ?? "").trim().toLowerCase()];
   if (avail) chips.push({ key: "availability", ...avail });
 
   const otherClaims = (src.other_claims ?? []).filter((c) => c.claimId !== claimId);

@@ -156,9 +156,11 @@ export function parseEditRequest(body: unknown): ParsedEdit {
     const v = normaliseValue(field, raw);
     if (!v.ok) return v;
     changes[field.key] = v.value;
-    // The base is what the form showed; it only has to be comparable, so a bad base is treated as unknown.
-    const b0 = normaliseValue(field, (rawBase as Record<string, unknown>)[key]);
-    base[field.key] = b0.ok ? b0.value : null;
+    // The base is what the form showed; it only has to be comparable with what Monday holds now, so it is read
+    // the way currentValue/fromMondayText read Monday: a value that wouldn't pass validation (pets "N/D") stays
+    // as its text. Turning it into null would make such a field conflict on every save, for ever.
+    const rb = (rawBase as Record<string, unknown>)[key];
+    base[field.key] = typeof rb === "number" || typeof rb === "string" ? currentValue(field, { [field.key]: rb }) : null;
   }
   if (Object.keys(changes).length === 0) return { ok: false, error: "Nothing to change" };
   return { ok: true, editor, changes, base };
@@ -194,29 +196,37 @@ export function fromMondayText(field: EditField, text: string | null | undefined
 
 /**
  * The `column_values` JSON for Monday's change_multiple_column_values. Numbers and text are strings; a date
- * is {date}; Yes/No is a dropdown label; long text is {text}. A null clears the column. Labels are never
- * created: the dropdowns already hold exactly Yes and No.
+ * is {date}; Yes/No is a dropdown label; long text is {text}. Labels are never created: the dropdowns
+ * already hold exactly Yes and No.
+ *
+ * A null clears the column, and every kind is cleared with a JSON null. Monday's column reference: in
+ * change_multiple_column_values an empty string on a numbers column sets it to 0 instead of clearing it;
+ * null is the documented clear for numbers, text, long text, date and dropdown alike.
  */
 export function mondayColumnValues(changes: EditChanges): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(changes)) {
     const field = FIELD_BY_KEY.get(key);
     if (!field || value === undefined) continue;
+    if (value === null) {
+      out[field.column] = null;
+      continue;
+    }
     switch (field.kind) {
       case "int":
       case "decimal":
       case "money":
       case "url":
-        out[field.column] = value === null ? "" : String(value);
+        out[field.column] = String(value);
         break;
       case "date":
-        out[field.column] = value === null ? null : { date: value };
+        out[field.column] = { date: value };
         break;
       case "yesno":
-        out[field.column] = value === null ? null : { labels: [value] };
+        out[field.column] = { labels: [value] };
         break;
       case "longtext":
-        out[field.column] = { text: value ?? "" };
+        out[field.column] = { text: value };
         break;
     }
   }

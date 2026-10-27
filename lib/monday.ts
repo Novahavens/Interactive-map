@@ -38,7 +38,7 @@ export const COLS = {
 
 export const SUBITEM_START_STATUS = "To Do"; // Gaby, 15 Oct / Lou, 20 Oct: a new option is not yet vetted, so never "Ready to Submit"
 
-const MONDAY_API = "https://api.monday.com/v2";
+const MONDAY_API = process.env.MONDAY_API_URL ?? "https://api.monday.com/v2"; // tests point it at a mock
 
 /** Local safety: with MONDAY_DRY_RUN=1, reads still hit Monday but no mutation is ever sent. */
 export const DRY_RUN = process.env.MONDAY_DRY_RUN === "1";
@@ -437,4 +437,34 @@ export async function setStatusLabel(boardId: string, itemId: string, columnId: 
 
 export async function deleteItem(itemId: string): Promise<void> {
   await monday(`mutation ($id: ID!) { delete_item(item_id: $id) { id } }`, { id: itemId });
+}
+
+// ---------- Listing edits ----------
+
+/** Column id → its `text` on one item, fresh from Monday. A column the item doesn't return reads as null. */
+export async function readColumns(itemId: string, columnIds: string[]): Promise<Record<string, string | null>> {
+  const data = await monday<{ items: Array<{ id: string; column_values: Array<{ id: string; text: string | null }> }> }>(
+    `query ($ids: [ID!], $cols: [String!]) { items(ids: $ids) { id column_values(ids: $cols) { id text } } }`,
+    { ids: [itemId], cols: columnIds },
+  );
+  const item = data.items?.[0];
+  if (!item) throw new MondayError("Item not found in Monday");
+  const out: Record<string, string | null> = {};
+  for (const id of columnIds) out[id] = item.column_values.find((c) => c.id === id)?.text ?? null;
+  return out;
+}
+
+/** Writes several columns of one item in one change_multiple_column_values. Never creates labels. Not retried. */
+export async function changeColumns(boardId: string, itemId: string, values: Record<string, unknown>): Promise<void> {
+  if (DRY_RUN) {
+    console.info("[monday dry-run] change_multiple_column_values", { boardId, itemId, columns: Object.keys(values) });
+    return;
+  }
+  const data = await monday<{ change_multiple_column_values: { id: string } | null }>(
+    `mutation ($board: ID!, $item: ID!, $values: JSON!) {
+      change_multiple_column_values(board_id: $board, item_id: $item, column_values: $values, create_labels_if_missing: false) { id }
+    }`,
+    { board: boardId, item: itemId, values: JSON.stringify(values) },
+  );
+  if (!data.change_multiple_column_values?.id) throw new MondayError("change_multiple_column_values returned no id");
 }

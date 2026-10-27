@@ -72,12 +72,35 @@ test("Monday column values: the formats change_multiple_column_values takes", ()
       dropdown_mm3ywgac: { labels: ["Yes"] },
       long_text_mm4jpg99: { text: "Hi" },
       text_mm3ykmnv: "https://a.b",
-      numeric_mm44r6x9: "",
+      numeric_mm44r6x9: null,
     },
   );
   assert.deepEqual(mondayColumnValues({ next_availability: null, pet_status: null, notes: null }), {
-    date_mm4416ne: null, dropdown_mm3ywgac: null, long_text_mm4jpg99: { text: "" },
+    date_mm4416ne: null, dropdown_mm3ywgac: null, long_text_mm4jpg99: null,
   });
+});
+
+test("Monday column values: every clear is a JSON null (an empty string sets a numbers column to 0)", () => {
+  const all = Object.fromEntries(EDIT_FIELDS.map((x) => [x.key, null]));
+  const out = mondayColumnValues(all);
+  assert.equal(Object.keys(out).length, EDIT_FIELDS.length);
+  for (const x of EDIT_FIELDS) assert.equal(out[x.column], null, `${x.key} must clear with null`);
+  assert.equal(mondayColumnValues({ bedrooms: 0 }).numeric_mm44r6x9, "0", "a real zero is still sent as 0");
+});
+
+test("base: a value Monday holds that would not validate stays comparable, so it is not a conflict for ever", () => {
+  const p = parseEditRequest({ editor: "Will", changes: { pet_status: "Yes", bedrooms: 3, next_availability: "2026-11-01" }, base: { pet_status: "N/D", bedrooms: 3.5, next_availability: "2019-05-01" } });
+  assert.equal(p.ok, true);
+  if (!p.ok) return;
+  assert.deepEqual(p.base, { pet_status: "N/D", bedrooms: "3.5", next_availability: "2019-05-01" });
+  const current = {
+    pet_status: fromMondayText(f("pet_status"), "N/D"),
+    bedrooms: fromMondayText(f("bedrooms"), "3.5"),
+    next_availability: fromMondayText(f("next_availability"), "2019-05-01"),
+  };
+  assert.deepEqual(conflicts(p.base, current), []);
+  const odd = parseEditRequest({ editor: "Will", changes: { pet_status: "Yes" }, base: { pet_status: { x: 1 } } });
+  assert.deepEqual(odd.ok && odd.base, { pet_status: null });
 });
 
 test("current values from the mirror and from Monday's text compare equal to an edit", () => {
