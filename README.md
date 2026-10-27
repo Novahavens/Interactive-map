@@ -74,7 +74,7 @@ Nova Havens places families displaced by insurance claims into temporary housing
 | 🔗 | **Report bad link** from the property panel: one click sets *ZZ.Status = BAD LINK* on the property, posts a note on it saying who reported it, and the map shows it straight away. Rate-limited and once per property per day. | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
 | 🖱️ | **Hover a result, see its pin.** The pin grows and the map pans to it; hovering a pin highlights the row. The legend now explains the ⚫ check and the numbered clusters. The account manager shows on the claims list and the panel. | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
 | 📞 | **Contact history from Quo on the owner card.** Last call (date, who, length or no answer), how many calls and how many went unanswered, texts sent and replies, and the last text, across the owner's and landlord/PM's numbers and every Quo inbox. Read-only; appears once `QUO_API_KEY` is set. Also: a **Filters** drawer, and beds / baths / rent / pets first in the panel. | [#15](https://github.com/Novahavens/Interactive-map/pull/15) |
-| ☎️ | **Call and Text from the panel, through your own Quo.** Each owner and landlord/PM number has a **Call** and a **Text** button that open Quo on *your* laptop or phone, so the call or text goes from your Quo account and lands in the contact history. The text comes pre-written ("Hi Jane, it's Will from Nova Havens about 12 Elm St."). Tap the number to copy it. No set-up in the map: the device you're on is who you are. | this PR |
+| ☎️ | **Call and Text from the panel, through your own Quo.** Each owner and landlord/PM number has a **Call** and a **Text** button that open Quo on *your* laptop or phone, so the call or text goes from your Quo account and lands in the contact history. The text comes pre-written ("Hi Jane, it's Will from Nova Havens about 12 Elm St."). Tap the number to copy it. No set-up in the map: the device you're on is who you are. | [#16](https://github.com/Novahavens/Interactive-map/pull/16) |
 | 📱 | **Phone results sheet** with collapsed / half / expanded states: the list gets most of the screen, search and filters fold into one row, and the sheet and the list no longer fight over scrolling. The desktop rail no longer squeezes the list to a few pixels at short windows (Lou's scroll bug). | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
 | 🛠️ | **Fixes:** new options now arrive as **To Do** (not *Ready to Submit*); the claim's bedroom and bathroom needs were read from each other's columns; "% of database mappable" counted only the search circle; red properties can't be added to a claim whether the group *or* the owner says do not use. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
 
@@ -290,7 +290,7 @@ sequenceDiagram
 │   ├── status.ts                 # green / yellow / red: names, colours, shapes, reasons (the rule is in the database)
 │   ├── supabase.ts · google.ts · types.ts · utils.ts · useTheme.ts
 ├── supabase/                     # edge functions (property-locate, used-before-sync, landlord-webhook) + migrations
-├── docs/                         # PRD, build plan, QUO-INTEGRATION.md (contact history + Call / Text), screenshots
+├── docs/                         # PRD, build plan, QUO-INTEGRATION.md (contact history + Call / Text, PR #16), screenshots
 ├── legacy/                       # retired AI Studio prototype (reference only)
 ├── components.json               # shadcn/ui config
 └── vercel.json · next.config.ts · .env.example
