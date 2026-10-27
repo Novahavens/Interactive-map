@@ -50,11 +50,11 @@ The response is the property as the map now has it, built by the same code as `G
 
 ### Monday value formats
 
-Checked against Monday's developer docs and the board's column settings (read-only):
+Checked against Monday's developer docs and the board's column settings, then confirmed live on 28 Oct 2026 on a throwaway private board (since deleted) with one column of each kind: every set format stored as expected, and `null` cleared all five.
 
 | Kind | Set | Clear |
 |---|---|---|
-| Numbers, text | `"2400"` | `null` (an empty string sets a number to 0) |
+| Numbers, text | `"2400"` | `null` (an empty string leaves a stored empty value instead of clearing) |
 | Date | `{ "date": "2026-11-01" }` | `null` |
 | Yes/No dropdown | `{ "labels": ["Yes"] }` | `null` |
 | Long text | `{ "text": "…" }` | `null` |
@@ -73,8 +73,8 @@ The map has no login: it is embedded in Monday and anyone with the URL can open 
 - All three edit functions in Postgres need a **server-only secret** (`MAP_EDIT_SECRET` in Vercel, matching the `MAP_EDIT_KEY` row in `sync_config`, which is not readable with the publishable key). Without it they refuse, so holding the publishable key isn't enough to change anything.
 - `listing_edit_mirror` takes a log id and applies only the values logged for that request, only after Monday accepted them, within five minutes, and re-checks them. It can't be used to write arbitrary values to the map.
 - `listing_edit_finish` only moves a log row forward (pending → outcome, `monday_ok` → `applied`), so finished history can't be rewritten.
-- Two saves on the same property can't overlap: the second gets *Someone else is saving this property* and tries again a moment later.
-- Every attempt, refused or applied, is in `listing_edit_log` with its before and after values.
+- Two saves on the same property can't overlap: the second gets *Someone else is saving this property* and the person saves again a moment later (there is no automatic retry).
+- Every attempt that passes the guard is in `listing_edit_log` with its requested values and outcome; Monday's before-values are added once Monday has been written. Attempts refused earlier (bad secret, invalid values, rate limits, busy, and the route's own 400s) are not logged.
 - **Kill switch:** set `MAP_EDITING=off` in Vercel and redeploy, or remove `MAP_EDIT_SECRET`. The Edit button disappears (via `/api/health`) and the route refuses.
 
 ### Turning it on

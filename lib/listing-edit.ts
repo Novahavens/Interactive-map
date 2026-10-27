@@ -123,8 +123,11 @@ export function normaliseValue(field: EditField, raw: unknown): { ok: true; valu
       } catch {
         return { ok: false, error: `${field.label} must be a full link starting with https://` };
       }
-      if (u.protocol !== "https:" && u.protocol !== "http:") return { ok: false, error: `${field.label} must start with https://` };
-      return { ok: true, value: s };
+      if ((u.protocol !== "https:" && u.protocol !== "http:") || !/^https?:\/\//i.test(s)) {
+        return { ok: false, error: `${field.label} must start with https://` };
+      }
+      // The scheme lower-cased ("HTTPS://x" → "https://x"), the rest as typed: the database checks ^https?://.
+      return { ok: true, value: s.replace(/^https?:/i, (m) => m.toLowerCase()) };
     }
     case "longtext": {
       if (typeof raw !== "string") return { ok: false, error: `${field.label} must be text` };

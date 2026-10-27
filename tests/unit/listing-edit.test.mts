@@ -43,6 +43,8 @@ test("yes/no, links and notes", () => {
   assert.deepEqual(normaliseValue(f("property_link"), " https://example.com/x "), { ok: true, value: "https://example.com/x" });
   assert.equal(normaliseValue(f("property_link"), "javascript:alert(1)").ok, false);
   assert.equal(normaliseValue(f("property_link"), "example.com").ok, false);
+  assert.deepEqual(normaliseValue(f("property_link"), "HTTPS://Example.com/A"), { ok: true, value: "https://Example.com/A" });
+  assert.equal(normaliseValue(f("property_link"), "http:example.com").ok, false);
   assert.deepEqual(normaliseValue(f("notes"), "Line one\r\nLine two​"), { ok: true, value: "Line one\nLine two" });
   assert.equal(normaliseValue(f("notes"), "x".repeat(2001)).ok, false);
   assert.deepEqual(normaliseValue(f("notes"), "   "), { ok: true, value: null });
