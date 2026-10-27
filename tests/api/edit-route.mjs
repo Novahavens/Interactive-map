@@ -4,9 +4,11 @@
 //   1. node tests/api/edit-route.mjs serve                                   (mock on 127.0.0.1:3098)
 //   2. NEXT_DIST_DIR=.next-api npx next build
 //   3. ENV="SUPABASE_URL=http://127.0.0.1:3098 SUPABASE_KEY=test MONDAY_API_URL=http://127.0.0.1:3098/v2 MONDAY_API_TOKEN=test"
-//      env $ENV NEXT_DIST_DIR=.next-api npx next start -p 3031              → BASE=http://localhost:3031 node tests/api/edit-route.mjs
-//      env $ENV MONDAY_DRY_RUN=1 NEXT_DIST_DIR=.next-api npx next start -p 3031 → MODE=dry node tests/api/edit-route.mjs
-//      env $ENV MAP_EDITING=off NEXT_DIST_DIR=.next-api npx next start -p 3031  → MODE=off node tests/api/edit-route.mjs
+//      env $ENV MAP_EDIT_SECRET=test-secret NEXT_DIST_DIR=.next-api npx next start -p 3031 → node tests/api/edit-route.mjs
+//      ... MAP_EDIT_SECRET=test-secret MONDAY_DRY_RUN=1  → MODE=dry
+//      ... MAP_EDIT_SECRET=test-secret MAP_EDITING=off   → MODE=off
+//      ... (no MAP_EDIT_SECRET)                           → MODE=nosecret
+//      ... MAP_EDIT_SECRET=wrong-secret                   → MODE=forbidden
 //   MODE=get OUT=file.json node tests/api/edit-route.mjs  snapshots GET /api/properties/:id (compare two builds).
 import http from "node:http";
 import { writeFileSync } from "node:fs";
@@ -33,7 +35,8 @@ const SEED_ROW = {
 };
 
 const OK = ["1001", "1002", "1003", "1004", "1005", "5021", "5022", "5023", "5024", "5030"];
-const GUARD_SAYS = { "429001": "ip_limit", "429002": "property_limit", "429003": "daily_cap" };
+const SECRET = "test-secret"; // the mock's sync_config MAP_EDIT_KEY
+const GUARD_SAYS = { "429001": "ip_limit", "429002": "property_limit", "429003": "daily_cap", "400400": "invalid", "409409": "busy" };
 const GUARD_ERRORS = "500500";
 const MONDAY_READ_FAILS = "5021";
 const MONDAY_WRITE_FAILS = "5022";
@@ -122,6 +125,7 @@ if (process.argv[2] === "serve") {
         switch (fn) {
           case "listing_edit_guard": {
             const id = a.p_property_item_id;
+            if (a.p_secret !== SECRET) return send(200, "forbidden");
             if (id === GUARD_ERRORS) return pgError("guard exploded");
             if (GUARD_SAYS[id]) return send(200, GUARD_SAYS[id]);
             if (!rows[id]) return send(200, "not_found");
@@ -129,18 +133,23 @@ if (process.argv[2] === "serve") {
             return send(200, `ok:${log.length}`);
           }
           case "listing_edit_finish": {
+            // Same rules as the SQL: secret, then only forward moves (pending → any outcome, monday_ok → applied).
             const entry = log.find((l) => l.id === a.p_log_id);
-            if (entry) {
+            if (a.p_secret === SECRET && entry && ((entry.status === "pending" && a.p_status !== "pending") || (entry.status === "monday_ok" && a.p_status === "applied"))) {
               entry.status = a.p_status;
+              entry.finishes = [...(entry.finishes ?? []), a.p_status];
               if (a.p_before !== undefined && a.p_before !== null) entry.before = a.p_before;
             }
             return send(204);
           }
           case "listing_edit_mirror": {
+            // Applies the logged row's own changes, only after monday_ok, then marks it applied.
             const id = a.p_property_item_id;
             if (id === MIRROR_FAILS) return pgError("mirror exploded");
-            if (!rows[id]) return send(200, false);
-            Object.assign(rows[id], a.p_patch);
+            const entry = log.find((l) => l.id === a.p_log_id);
+            if (a.p_secret !== SECRET || !entry || entry.property_item_id !== id || entry.status !== "monday_ok" || !rows[id]) return send(200, false);
+            Object.assign(rows[id], entry.changes);
+            entry.status = "applied";
             return send(200, true);
           }
           case "property_detail":
@@ -200,13 +209,21 @@ if (process.argv[2] === "serve") {
     process.exit(0);
   }
 
-  if (MODE === "off") {
+  if (MODE === "off" || MODE === "nosecret") {
+    const why = MODE === "off" ? "MAP_EDITING=off" : "no MAP_EDIT_SECRET";
     const m0 = await mark();
     const r = await edit("1001", HAPPY);
-    check("MAP_EDITING=off: 403 editing_off", r.status === 403 && r.body?.code === "editing_off", JSON.stringify(r.body));
-    check("MAP_EDITING=off: nothing reached Monday or Supabase", (await since(m0)).length === 0);
+    check(`${why}: 403 editing_off`, r.status === 403 && r.body?.code === "editing_off", JSON.stringify(r.body));
+    check(`${why}: nothing reached Monday or Supabase`, (await since(m0)).length === 0);
     const h = await fetch(`${BASE}/api/health`).then((x) => x.json());
-    check("health says editing is off", h.editing === false);
+    check(`${why}: health says editing is off`, h.editing === false);
+  } else if (MODE === "forbidden") {
+    const m0 = await mark();
+    const r = await edit("1001", HAPPY);
+    const s = await since(m0);
+    check("wrong secret: the guard says forbidden → 503 editing_off", r.status === 503 && r.body?.code === "editing_off", JSON.stringify(r.body));
+    check("wrong secret: the route did pass its secret", rpcs(s, "listing_edit_guard")[0]?.args?.p_secret === "wrong-secret");
+    check("wrong secret: nothing reached Monday, nothing logged", s.filter((x) => x.api === "monday").length === 0 && (await state()).log.length === 0);
   } else if (MODE === "dry") {
     const m0 = await mark();
     const r = await edit("1001", HAPPY);
@@ -217,7 +234,7 @@ if (process.argv[2] === "serve") {
     check("dry run: Monday was read (conflict check still runs)", s.some((x) => x.api === "monday" && x.kind === "read"));
     check("dry run: no mutation reached Monday", mutations(s).length === 0, JSON.stringify(mutations(s)));
     check("dry run: nothing mirrored", rpcs(s, "listing_edit_mirror").length === 0);
-    check("dry run: logged as dry_run", (await logOf("1001"))?.status === "dry_run");
+    check("dry run: logged as dry_run, never monday_ok", (await logOf("1001"))?.status === "dry_run" && JSON.stringify((await logOf("1001"))?.finishes) === JSON.stringify(["dry_run"]));
     check("dry run: mock record untouched", (await state()).rows["1001"].monthly_rate === 2200 && (await state()).monday["1001"][C.monthly_rate] === "2200");
     const h = await fetch(`${BASE}/api/health`).then((x) => x.json());
     check("health says dry run and editing on", h.dryRun === true && h.editing === true);
@@ -249,9 +266,12 @@ if (process.argv[2] === "serve") {
     check("write went to the property board, item 1001", change[0]?.variables?.board === "18415735059" && change[0]?.variables?.item === "1001");
     check("Authorization header carries the token on every Monday call", s.filter((x) => x.api === "monday").every((x) => x.auth === "test"));
     const mirror = rpcs(s, "listing_edit_mirror")[0]?.args;
-    check("mirror got the patch (only what changed)", mirror?.p_property_item_id === "1001" && same(mirror?.p_patch, { monthly_rate: 2400, next_availability: "2026-11-01", pet_status: "Yes", notes: "Line one\nLine two" }), JSON.stringify(mirror));
-    const order = s.map((x) => (x.api === "monday" ? x.kind : x.fn)).filter((k) => ["change", "listing_edit_mirror", "update"].includes(k));
-    check("order: Monday write, then mirror, then note", same(order, ["change", "listing_edit_mirror", "update"]), JSON.stringify(order));
+    check("mirror called with the secret, property and log id only (no patch)", same(mirror, { p_secret: SECRET, p_property_item_id: "1001", p_log_id: 1 }), JSON.stringify(mirror));
+    check("every edit RPC carried the secret", s.filter((x) => x.api === "supabase" && x.fn.startsWith("listing_edit_")).every((x) => x.args.p_secret === SECRET));
+    const order = s.map((x) => (x.api === "monday" ? x.kind : x.fn === "listing_edit_finish" ? `finish:${x.args.p_status}` : x.fn))
+      .filter((k) => ["change", "listing_edit_mirror", "update"].includes(k) || k.startsWith("finish:"));
+    check("order: Monday write, monday_ok, mirror, note, applied", same(order, ["change", "finish:monday_ok", "listing_edit_mirror", "update", "finish:applied"]), JSON.stringify(order));
+    check("the mirror applied the logged row's values to the record", (await state()).rows["1001"].monthly_rate === 2400 && (await state()).rows["1001"].bedrooms === 3);
     const note = s.find((x) => x.kind === "update")?.variables;
     const today = new Date().toISOString().slice(0, 10);
     const expectedNote =
@@ -262,7 +282,7 @@ if (process.argv[2] === "serve") {
     check("response detail has the new values from the mirror", d?.monthly_rate === 2400 && d?.pet_status === "Yes" && d?.next_availability === "2026-11-01" && d?.notes === "Line one\nLine two");
     check("response detail carries map_status, map_reason, other_claims like GET; no geom/fields", d?.map_status === "green" && d?.map_reason === "used_before" && d?.other_claims?.length === 1 && !("geom" in d) && !("fields" in d));
     const l1 = await logOf("1001");
-    check("log: applied, before = Monday's values then", l1?.status === "applied" && same(l1?.before, { monthly_rate: 2200, next_availability: null, pet_status: "No", notes: "Old", bedrooms: 3 }), JSON.stringify(l1));
+    check("log: monday_ok then applied (by the mirror), before = Monday's values then", l1?.status === "applied" && same(l1?.finishes, ["monday_ok"]) && same(l1?.before, { monthly_rate: 2200, next_availability: null, pet_status: "No", notes: "Old", bedrooms: 3 }), JSON.stringify(l1));
 
     // ---- Clearing fields ----
     m0 = await mark();
@@ -271,7 +291,7 @@ if (process.argv[2] === "serve") {
     const clear = JSON.parse(s.find((x) => x.kind === "change")?.variables?.values ?? "null");
     check("clear: 200", r.status === 200 && r.body?.mirrored === true, JSON.stringify(r.body).slice(0, 200));
     check("clear: Monday got null for the number and the text column", same(clear, { [C.sqft]: null, [C.property_link]: null }), JSON.stringify(clear));
-    check("clear: mirror got nulls", same(rpcs(s, "listing_edit_mirror")[0]?.args?.p_patch, { sqft: null, property_link: null }));
+    check("clear: the logged changes (what the mirror applies) are nulls", same((await logOf("1002"))?.changes, { sqft: null, property_link: null }) && (await state()).rows["1002"].sqft === null);
     check("clear: detail shows blanks", r.body?.detail?.sqft === null && r.body?.detail?.property_link === null);
     check("clear: note says → blank", /Square feet: 1200 → blank<br>• Listing link: https:\/\/example.com\/listing\/1 → blank$/.test(s.find((x) => x.kind === "update")?.variables?.body ?? ""), s.find((x) => x.kind === "update")?.variables?.body);
 
@@ -302,12 +322,16 @@ if (process.argv[2] === "serve") {
     m0 = await mark();
     r = await edit("404404", HAPPY);
     check("guard not_found: 404", r.status === 404 && r.body?.code === "not_found");
-    for (const [id, why] of Object.entries(GUARD_SAYS)) {
+    for (const [id, why] of Object.entries(GUARD_SAYS).filter(([, w]) => /limit|cap/.test(w))) {
       r = await edit(id, HAPPY);
       check(`guard ${why}: 429 rate_limited with a message`, r.status === 429 && r.body?.code === "rate_limited" && typeof r.body?.error === "string" && r.body.error.length > 10, JSON.stringify(r.body));
     }
     r = await edit(GUARD_ERRORS, HAPPY);
     check("guard RPC error: 500", r.status === 500 && r.body?.code === "server_error");
+    r = await edit("400400", HAPPY);
+    check("guard invalid: 400 bad_request", r.status === 400 && r.body?.code === "bad_request", JSON.stringify(r.body));
+    r = await edit("409409", HAPPY);
+    check("guard busy: 409 busy with the message", r.status === 409 && r.body?.code === "busy" && r.body?.error === "Someone else is saving this property; try again in a moment", JSON.stringify(r.body));
     s = await since(m0);
     check("refused edits never reached Monday", s.filter((x) => x.api === "monday").length === 0);
 
@@ -334,6 +358,7 @@ if (process.argv[2] === "serve") {
     // ---- Mirror failure ----
     r = await edit(MIRROR_FAILS, HAPPY);
     check("mirror failure: 200 mirrored false, detail still shows the edit", r.status === 200 && r.body?.mirrored === false && r.body?.noted === true && r.body?.detail?.monthly_rate === 2400 && r.body?.detail?.move_in_total === 2900, JSON.stringify(r.body).slice(0, 200));
+    check("mirror failure: the route closes the row (monday_ok → applied)", same((await logOf(MIRROR_FAILS))?.finishes, ["monday_ok", "applied"]) && (await logOf(MIRROR_FAILS))?.status === "applied");
 
     // ---- Bad requests never reach the guard ----
     m0 = await mark();
@@ -348,14 +373,26 @@ if (process.argv[2] === "serve") {
       ["availability is not editable", "1001", { editor: "Will", changes: { availability: "Available Now" } }, "availability can't be edited from the map"],
       ["owner_phone is not editable", "1001", { editor: "Will", changes: { owner_phone: "+15551234567" } }, "owner_phone can't be edited from the map"],
       ["bad value", "1001", { editor: "Will", changes: { bedrooms: "3.5" } }, "Bedrooms must be a whole number"],
-      ["body too large", "1001", { editor: "Will", changes: { notes: "x" }, pad: "y".repeat(40_000) }, "Body is too large"],
     ];
     for (const [name, id, body, message] of bad) {
       r = await edit(id, body);
       check(`400: ${name}`, r.status === 400 && r.body?.code === "bad_request" && r.body?.error === message, JSON.stringify(r.body));
     }
+    const big = JSON.stringify({ editor: "Will", changes: { notes: "x" }, pad: "y".repeat(40_000) });
+    r = await edit("1001", big);
+    check("Content-Length over 32 KB: 413 too_large before the body is read", r.status === 413 && r.body?.code === "too_large", JSON.stringify(r.body));
+    // No Content-Length (chunked): the size is checked after reading.
+    const enc = new TextEncoder().encode(big);
+    const chunked = await fetch(`${BASE}/api/properties/1001/edit`, {
+      method: "POST", headers: { "content-type": "application/json" }, duplex: "half",
+      body: new ReadableStream({ start(c) { c.enqueue(enc.slice(0, 20_000)); c.enqueue(enc.slice(20_000)); c.close(); } }),
+    });
+    const cb = await chunked.json().catch(() => null);
+    check("chunked body over 32 KB: 400 Body is too large", chunked.status === 400 && cb?.error === "Body is too large", JSON.stringify(cb));
     check("bad requests reached neither Supabase nor Monday", (await since(m0)).length === 0);
 
+    const left = (await state()).log.filter((l) => l.status === "pending" || l.status === "monday_ok");
+    check("every path finished its log row (none left pending or monday_ok)", left.length === 0, JSON.stringify(left));
     const h = await fetch(`${BASE}/api/health`).then((x) => x.json());
     check("health: editing on, not dry run", h.editing === true && h.dryRun === false);
   }

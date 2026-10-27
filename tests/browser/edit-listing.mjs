@@ -22,7 +22,10 @@ const LOSS = { lat: 36.0865, lng: -95.8593, address: "100 Demo Street, Tulsa, OK
 const needs = { adults: 2, children: 1, bedrooms: 3, bathrooms: 2, pets: 1, frv: 3000, moveIn: "2026-11-02" };
 const CLAIM_ID = "100000001";
 const claim = { id: CLAIM_ID, name: "Demo Family — Test #DEMO-2001", loss: LOSS, needs, attached: [], attachedPins: [], brief: { accountManager: "Melissa C." } };
-const claims = [{ id: CLAIM_ID, name: claim.name, lossAddress: LOSS.address, lat: LOSS.lat, lng: LOSS.lng, needs, createdAt: "2026-10-19T15:00:00Z", status: "Working on it", attachedCount: 0, group: "New Housing Request", isTest: false, accountManager: "Melissa C." }];
+const claims = [
+  { id: CLAIM_ID, name: claim.name, lossAddress: LOSS.address, lat: LOSS.lat, lng: LOSS.lng, needs, createdAt: "2026-10-19T15:00:00Z", status: "Working on it", attachedCount: 0, group: "New Housing Request", isTest: false, accountManager: "Melissa C." },
+  { id: "100000002", name: "Other Family — #7", lossAddress: "5 Sample Rd, Tulsa, OK", lat: LOSS.lat, lng: LOSS.lng, needs, createdAt: "2026-10-18T15:00:00Z", status: "Working on it", attachedCount: 0, group: "New Housing Request", isTest: false, accountManager: null },
+];
 
 let seq = 0;
 function pin(id, over = {}) {
@@ -39,7 +42,7 @@ const STATES = [
   { id: "4001", pin: { map_status: "green", availability: "Available Soon", available_from: "2026-11-01", availability_checked: "2026-10-22", pet_status: "N/D" }, label: "Available soon", detail: "from Nov 1 · checked Oct 22", tone: "info", row: "Available soon" },
   { id: "4002", pin: { availability: "Available Now", availability_checked: "2026-10-22" }, label: "Available now", detail: "checked Oct 22", tone: "ok", row: "Available now" },
   { id: "4003", pin: { availability: "Available (Unverified)", available_from: "2026-11-15" }, label: "Unverified", detail: "from Nov 15", tone: "muted", row: "Unverified" },
-  { id: "4004", pin: { availability: "Unavailable", availability_checked: "2026-10-20", available_from: "2025-03-01" }, label: "Unavailable", detail: "checked Oct 20", tone: "bad", row: "Unavailable" },
+  { id: "4004", pin: { availability: "Unavailable", availability_checked: "2026-10-20", available_from: "2025-03-01" }, label: "Unavailable", detail: "next availability was Mar 1, 2025 · checked Oct 20", tone: "bad", row: "Unavailable" },
   { id: "4005", pin: { availability: "Listing Removed", availability_checked: "2026-10-19" }, label: "Listing removed", detail: "checked Oct 19", tone: "removed", row: "Listing removed" },
   { id: "4006", pin: { availability: "Check Failed", availability_checked: "2026-10-21" }, label: "Availability unknown", detail: "checked Oct 21", tone: "muted", row: null },
   { id: "4007", pin: { availability: "Available Soon", available_from: "2025-03-01", availability_checked: "2026-10-22" }, label: "Available soon", detail: "date passed (Mar 1, 2025) · checked Oct 22", tone: "info", row: "Available soon", stale: true },
@@ -49,7 +52,7 @@ const pins = STATES.map((s) => pin(s.id, s.pin));
 const byId = new Map(pins.map((p) => [p.monday_item_id, p]));
 
 function makeDetail(p) {
-  return {
+  const d = {
     monday_item_id: p.monday_item_id, name: p.name, group_id: "g", group_title: p.group_title, address: `${p.monday_item_id} Fixture Ln`, city: "Tulsa", state: "OK", zipcode: "74133",
     lat: p.lat, lng: p.lng, bedrooms: p.bedrooms, bathrooms: p.bathrooms, monthly_rate: p.monthly_rate, pet_status: p.pet_status, property_type: "House", sqft: 1800, furnished: "No", fenced_yard: "Yes",
     next_availability: p.available_from, last_contact: null, ntv: null, property_link: `https://example.com/listing/${p.monday_item_id}`, photo_folder_url: null,
@@ -61,6 +64,9 @@ function makeDetail(p) {
     availability: p.availability, availability_checked: p.availability_checked, link_status: null, other_claims: [],
     synced_at: "2026-10-22T12:00:00Z", updated_at: "2026-10-22T12:00:00Z",
   };
+  // 4002 has an owner phone, so the Quo digest (ContactDigest) mounts and reads /api/health too.
+  if (p.monday_item_id === "4002") Object.assign(d, { owner_phone: "(918) 555-0100", notes: "Line one of the terms.\nLine two: no smoking." });
+  return d;
 }
 
 // ---------- harness ----------
@@ -93,7 +99,7 @@ async function open(browser, { w = 1440, h = 900, theme = "light", touch = false
     return r.fulfill({ json: { ok: true, dryRun: false, quo: false, editing } });
   });
   await ctx.route("**/api/claims/active**", (r) => r.fulfill({ json: { claims, count: 1 } }));
-  await ctx.route(/\/api\/claim\/\d+$/, (r) => r.fulfill({ json: claim }));
+  await ctx.route(/\/api\/claim\/\d+$/, (r) => r.fulfill({ json: { ...claim, id: r.request().url().split("/").pop() } }));
   await ctx.route("**/api/properties?**", (r) => r.fulfill({ json: { pins, coverage: { mappable: 90, unmapped: 10 } } }));
   await ctx.route(/\/api\/properties\/\d+$/, async (r) => {
     if (state.detailDelay) await new Promise((res) => setTimeout(res, state.detailDelay));
@@ -115,6 +121,11 @@ async function open(browser, { w = 1440, h = 900, theme = "light", touch = false
     return r.fulfill({ status: reply.status, json: reply.json });
   });
   const p = await ctx.newPage();
+  state.dialogs = [];
+  p.on("dialog", (d) => {
+    state.dialogs.push(d.type());
+    void d.dismiss();
+  });
   await p.clock.setFixedTime(NOW);
   p.on("pageerror", (e) => errors.push(String(e)));
   p.on("console", (m) => {
@@ -240,6 +251,13 @@ for (const dev of [
       check(`pill [${L}]: raised and glowing (layered shadow)`, shadow !== "none" && shadow.split(/,\s(?=rgba?\(|color\()/).length >= 3, shadow.slice(0, 80));
     }
     if (st.stale) check(`pill [${L}]: a passed date says so`, t.includes("date passed (Mar 1, 2025)"));
+    const lines = await pill.evaluate((el) => {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      return new Set([...r.getClientRects()].filter((b) => b.width > 1).map((b) => Math.round(b.top))).size;
+    });
+    const pw = await pill.evaluate((el) => ({ pill: el.getBoundingClientRect().width, header: el.parentElement.clientWidth }));
+    check(`pill [${L}]: at most two lines (${lines}), and it has the header's width to itself`, lines >= 1 && lines <= 2 && pw.pill <= pw.header, JSON.stringify(pw));
     const cr = await pillContrast(p);
     check(`pill [${L}]: AA contrast (label ${cr.label.toFixed(2)}, detail ${cr.detail.toFixed(2)})`, cr.label >= 4.5 && cr.detail >= 4.5, JSON.stringify(cr.raw));
     // the header has no availability chip; the list row keeps its chip
@@ -259,7 +277,7 @@ for (const dev of [
       check(`row [${L}]: the list row keeps its '${st.row}' chip`, (await row(p, st.id).locator(".nh-chip", { hasText: st.row }).count()) === 1, rt);
     }
   }
-  if (dev.name === "desktop-light") {
+  if (dev.name === "desktop-light" || dev.name === "phone-dark") {
     // the pill shows from the list's copy before the detail loads, and nothing moves when the detail arrives
     s.state.detailDelay = 1500;
     await selectRow(s, "4002", { wait: false });
@@ -268,12 +286,13 @@ for (const dev of [
     const skeleton = await panel(p).locator(".nh-skeleton").count();
     await panel(p).getByRole("heading", { name: "Fixture 4002" }).waitFor();
     const after = await pillOf(p).boundingBox();
-    check("pill: shows before the detail loads (from the pin)", skeleton > 0 && !!before, String(skeleton));
-    check("pill: no header layout shift when the detail arrives", before && after && Math.abs(before.y - after.y) < 0.5 && Math.abs(before.x - after.x) < 0.5, `${before?.y} -> ${after?.y}`);
+    check(`pill [${dev.name}]: shows before the detail loads (from the pin)`, skeleton > 0 && !!before, String(skeleton));
+    check(`pill [${dev.name}]: no layout shift when the detail arrives`, before && after && Math.abs(before.y - after.y) < 0.5 && Math.abs(before.x - after.x) < 0.5 && Math.abs(before.width - after.width) < 0.5 && Math.abs(before.height - after.height) < 0.5, `${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
+    const notes = panel(p).locator("section", { hasText: "Notes & links" }).locator("p").first();
+    check(`notes [${dev.name}]: multi-line notes keep their line breaks`, (await notes.evaluate((e) => getComputedStyle(e).whiteSpace)) === "pre-line" && (await notes.innerText()).includes("\n"));
     s.state.detailDelay = 0;
     await closePanel(s);
-    const healthCalls = s.state.healthCalls;
-    check("health: asked once by the panel helper for both mounts (plus the app header and nothing else)", healthCalls <= 2, String(healthCalls));
+    check(`health [${dev.name}]: one /api/health request for the page (header, both panel mounts, the Quo digest)`, s.state.healthCalls === 1, String(s.state.healthCalls));
   }
   await s.ctx.close();
 }
@@ -385,6 +404,7 @@ for (const dev of [
   check("segmented: Shift+Tab comes back to the checked choice", await pets.getByRole("radio", { name: "Yes" }).evaluate((e) => e === document.activeElement));
 
   await field("Monthly rent").fill("$2,450");
+  check("money: a typed '$' isn't shown twice (the box already draws one)", (await field("Monthly rent").inputValue()) === "2,450", await field("Monthly rent").inputValue());
   await field("Cleaning fee").fill("");
   const longer = "Two-car garage. Lease terms flexible. Pets on approval.";
   await field("Terms and notes").fill(longer);
@@ -470,12 +490,16 @@ for (const dev of [
     [{ status: 502, json: { error: "Monday didn't take the change. Try again in a minute.", code: "monday_error" } }, "Monday didn't take the change. Try again in a minute."],
     [{ status: 429, json: { error: "Too many edits right now; try again in a few minutes.", code: "rate_limited" } }, "Too many edits right now; try again in a few minutes."],
     [{ abort: true }, "Couldn't reach the map server. Try again."],
+    [{ status: 409, json: { code: "busy", error: "Someone else is saving this property; try again in a moment" } }, "Someone else is saving this property; try again in a moment"],
   ]) {
     state.replies.push(reply);
     await form().getByRole("button", { name: /^Save/ }).click();
     const msg = form().getByRole("alert").filter({ hasText: want });
     await msg.waitFor();
-    check(`error ${reply.status ?? "network"}: footer says '${want}' and the edit is kept`, (await field("Pet deposit").inputValue()) === "450" && (await form().getByText("was $300").count()) === 1);
+    check(
+      `error ${reply.status ?? "network"}${reply.json?.code ? " " + reply.json.code : ""}: footer says '${want}' and the edit is kept`,
+      (await field("Pet deposit").inputValue()) === "450" && (await form().getByText("was $300").count()) === 1 && (await form().getByText("since you opened the form").count()) === 0,
+    );
   }
   // disabled while saving
   state.replies.push({ status: 200, delay: 1200 });
@@ -484,6 +508,67 @@ for (const dev of [
   check("saving: the form is disabled and the button says Saving…", (await form().locator("fieldset").getAttribute("disabled")) !== null && (await text(form().getByRole("button", { name: /Saving/ }))) === "Saving…");
   await form().waitFor({ state: "detached" });
   check("saving: then saved", (await P.getByText("Saved to Monday.", { exact: true }).count()) === 1);
+
+  // a later mount of the same property starts from its own fresh read, never the old saved snapshot
+  await closePanel(s);
+  state.details.set("4001", { ...state.details.get("4001"), monthly_rate: 2600 }); // Monday changed since (the webhook)
+  state.detailDelay = 1200;
+  await selectRow(s, "4001", { wait: false });
+  await p.waitForTimeout(400);
+  const early = await text(P);
+  check("reopen: nothing from the old saved snapshot shows while the fresh read is in flight", !early.includes("$2,450") && (await P.getByRole("button", { name: "Edit", exact: true }).count()) === 0, early.slice(0, 120));
+  await P.getByRole("heading", { name: "Fixture 4001" }).waitFor();
+  state.detailDelay = 0;
+  check("reopen: the panel shows the fresh read ($2,600)", (await text(P.locator('[aria-label="Key facts"]'))).includes("$2,600"));
+  await editBtn.click();
+  check("reopen: the form starts from the fresh value", (await field("Monthly rent").inputValue()) === "2600");
+
+  // unsaved edits: every way of closing the form asks first
+  await field("Bedrooms").fill("5");
+  const ask = form().getByText("Discard 1 change?");
+  const keep = () => form().getByRole("button", { name: "Keep editing" });
+  const discard = () => form().getByRole("button", { name: "Discard" });
+  await P.getByRole("button", { name: "Close panel" }).click();
+  check("discard [close]: X asks 'Discard 1 change?' and the panel stays", (await ask.count()) === 1 && (await P.count()) === 1);
+  check("discard [close]: Keep editing has focus", await keep().evaluate((e) => e === document.activeElement));
+  await p.screenshot({ path: `${OUT}/discard-prompt-desktop.png` });
+  await keep().click();
+  check("discard [close]: Keep editing cancels the close and keeps the edit", (await P.count()) === 1 && (await field("Bedrooms").inputValue()) === "5");
+  await row(p, "4002").click();
+  check("discard [other row]: picking another property asks", (await ask.count()) === 1 && (await P.getByRole("heading", { name: "Fixture 4001" }).count()) === 1);
+  await keep().click();
+  check("discard [other row]: Keep editing stays on this property", (await P.getByRole("heading", { name: "Fixture 4001" }).count()) === 1 && (await field("Bedrooms").inputValue()) === "5");
+  await row(p, "4002").click();
+  await discard().click();
+  await P.getByRole("heading", { name: "Fixture 4002" }).waitFor();
+  check("discard [other row]: Discard opens the other property", (await P.getByRole("heading", { name: "Fixture 4002" }).count()) === 1);
+  check("discard [other row]: nothing was sent", state.posts.every((b) => b.changes.bedrooms !== 5));
+
+  // switching claims
+  await editBtn.click();
+  await field("Bedrooms").fill("5");
+  await p.getByRole("button", { name: "Active claims" }).click();
+  await p.getByRole("option", { name: /Other Family/ }).click();
+  await ask.waitFor();
+  check("discard [claim]: switching claims asks; the claim stays until answered", new URL(p.url()).searchParams.get("claimId") === CLAIM_ID);
+  await keep().click();
+  check("discard [claim]: Keep editing keeps the claim and the edit", new URL(p.url()).searchParams.get("claimId") === CLAIM_ID && (await field("Bedrooms").inputValue()) === "5");
+
+  // leaving the page
+  await p.close({ runBeforeUnload: true });
+  await new Promise((r) => setTimeout(r, 800));
+  check("beforeunload: leaving with unsaved edits asks the browser's question", state.dialogs.includes("beforeunload") && !p.isClosed(), state.dialogs.join(","));
+
+  await p.getByRole("button", { name: "Active claims" }).click();
+  await p.getByRole("option", { name: /Other Family/ }).click();
+  await ask.waitFor();
+  await discard().click();
+  await p.waitForTimeout(500);
+  check("discard [claim]: Discard switches the claim and closes the panel", new URL(p.url()).searchParams.get("claimId") === "100000002" && (await P.count()) === 0);
+  state.dialogs.length = 0;
+  await p.close({ runBeforeUnload: true });
+  await new Promise((r) => setTimeout(r, 800));
+  check("beforeunload: no question once nothing is unsaved", state.dialogs.length === 0 && p.isClosed(), state.dialogs.join(","));
   await s.ctx.close();
 }
 
@@ -523,6 +608,18 @@ for (const dev of [
   );
   check("phone: the desktop rail mount agrees", other.length === 1 && other[0].includes("$2,500") && other[0].includes("4"), other[0]);
   await p.screenshot({ path: `${OUT}/edit-saved-phone-dark.png` });
+
+  // tapping the scrim with unsaved edits asks first
+  await editBtn.tap();
+  await form.getByLabel("Bedrooms", { exact: true }).fill("6");
+  await p.mouse.click(5, 420); // the scrim strip beside the sheet
+  const ask = form.getByText("Discard 1 change?");
+  check("phone discard [scrim]: tapping outside asks, the sheet stays", (await ask.count()) === 1 && (await P.count()) === 1);
+  await ask.scrollIntoViewIfNeeded();
+  await p.screenshot({ path: `${OUT}/discard-prompt-phone-dark.png` });
+  await form.getByRole("button", { name: "Discard" }).tap();
+  await p.waitForTimeout(300);
+  check("phone discard [scrim]: Discard closes the sheet", (await p.locator('aside[aria-label="Property details"]:visible').count()) === 0);
   await s.ctx.close();
 }
 

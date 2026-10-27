@@ -30,9 +30,15 @@ interface Props {
   attached: boolean;
   onAttached: (propertyId: string, subitemId: string) => void;
   onFlagged: (propertyId: string) => void;
-  /** The latest saved edit of any property (from either panel mount): this mount shows it when it is this property. */
-  edited: PropertyDetail | null;
+  /** The latest saved edit (from either panel mount, at `at` ms): this mount takes it when it is this property and newer than the mount. */
+  edited: { detail: PropertyDetail; at: number } | null;
   onEdited: (detail: PropertyDetail) => void;
+  /** Bumped when something outside the panel (close, another property, another claim) needs the edit form to ask "Discard N changes?". */
+  discardAsk: number;
+  /** How many unsaved changes the edit form holds (0 when it is closed). */
+  onDirty: (count: number) => void;
+  /** The answer to that question: true = Discard (run the action that asked), false = Keep editing. */
+  onDiscardDecision: (discard: boolean) => void;
   onClose: () => void;
 }
 
@@ -49,8 +55,26 @@ const STATUS_TOKEN: Record<MapStatus, { bg: string; ink: string; line: string }>
   red: { bg: "var(--bad-bg)", ink: "var(--bad-ink)", line: "var(--bad-line)" },
 };
 
-export default function PropertyPanel({ propertyId, pin, claim, needs, attached, onAttached, onFlagged, edited, onEdited, onClose }: Props) {
+export default function PropertyPanel({
+  propertyId,
+  pin,
+  claim,
+  needs,
+  attached,
+  onAttached,
+  onFlagged,
+  edited,
+  onEdited,
+  discardAsk,
+  onDirty,
+  onDiscardDecision,
+  onClose,
+}: Props) {
   const [detail, setDetail] = useState<PropertyDetail | null>(null);
+  // Edit waits for this panel's own read, so the form never starts from an older copy.
+  const [fetched, setFetched] = useState(false);
+  const [mountedAt] = useState(() => Date.now());
+  const savedHere = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [reported, setReported] = useState<Reported | null>(null);
   const [canEdit, setCanEdit] = useState(false);
@@ -68,9 +92,12 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
   }, []);
 
   // A save in the other mount (rail or sheet) lands here too, so the two never disagree.
+  // An edit saved before this panel mounted is ignored: the panel's own read is at least as fresh.
   useEffect(() => {
-    if (edited && edited.monday_item_id === propertyId) setDetail(edited);
-  }, [edited, propertyId]);
+    if (!edited || edited.detail.monday_item_id !== propertyId || edited.at < mountedAt) return;
+    savedHere.current = true;
+    setDetail(edited.detail);
+  }, [edited, propertyId, mountedAt]);
 
   useEffect(() => {
     if (!saved) return;
@@ -92,6 +119,7 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
   }
 
   function handleSaved(next: PropertyDetail, outcome: SavedOutcome) {
+    savedHere.current = true;
     setDetail(next);
     setSaved(savedText(outcome));
     closeEditor();
@@ -105,9 +133,12 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
         const res = await fetch(`/api/properties/${propertyId}`, { cache: "no-store" });
         const json = (await res.json()) as PropertyDetail | ApiError;
         if (!res.ok) throw new Error((json as ApiError).error || `HTTP ${res.status}`);
-        if (!cancelled) setDetail(json as PropertyDetail);
+        // A save that landed while this read was in flight is newer than it.
+        if (!cancelled && !savedHere.current) setDetail(json as PropertyDetail);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Could not load this property");
+      } finally {
+        if (!cancelled) setFetched(true);
       }
     })();
     return () => {
@@ -139,9 +170,11 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
       aria-label="Property details"
     >
       {/* Header */}
-      <div className="flex items-start gap-3 border-b border-line px-4 py-3.5">
+      {/* The pill has the header's full width to itself; Edit and Close sit beside the status line under it. */}
+      <div className="border-b border-line px-4 py-3.5">
+        {pill && <AvailabilityPill pill={pill} className="mb-2.5" />}
+        <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          {pill && <AvailabilityPill pill={pill} className="mb-2.5" />}
           {detail ? (
             <>
               <div className="flex flex-wrap items-center gap-2">
@@ -178,11 +211,13 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
               type="button"
               aria-hidden={editing || undefined}
               tabIndex={editing ? -1 : undefined}
+              disabled={!fetched}
+              title={fetched ? undefined : "Loading the latest copy…"}
               onClick={() => {
                 setSaved(null);
                 setEditing(true);
               }}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-[13px] font-medium text-ink hover:bg-surface-muted ${editing ? "invisible" : ""} [@media(pointer:coarse)]:h-[44px] [@media(pointer:coarse)]:px-3`}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-[13px] font-medium text-ink hover:bg-surface-muted disabled:opacity-50 ${editing ? "invisible" : ""} [@media(pointer:coarse)]:h-[44px] [@media(pointer:coarse)]:px-3`}
             >
               <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
               Edit
@@ -196,6 +231,7 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
           >
             <X className="h-3 w-3" />
           </button>
+        </div>
         </div>
       </div>
 
@@ -220,7 +256,15 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
       </div>
 
       {editing && detail ? (
-        <EditListing propertyId={propertyId} detail={detail} onCancel={closeEditor} onSaved={handleSaved} />
+        <EditListing
+          propertyId={propertyId}
+          detail={detail}
+          discardAsk={discardAsk}
+          onDirty={onDirty}
+          onDiscardDecision={onDiscardDecision}
+          onCancel={closeEditor}
+          onSaved={handleSaved}
+        />
       ) : (
       <>
       {/* Body */}
@@ -285,7 +329,7 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
                     <span className="group-open:hidden">Show</span>
                     <span className="hidden group-open:inline">Hide</span>
                   </summary>
-                  <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-[13px]">{detail.notes}</p>
+                  <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-line break-words text-[13px]">{detail.notes}</p>
                 </details>
               )}
             </div>
@@ -390,7 +434,7 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
 
             {/* Notes + links */}
             <Section title="Notes & links">
-              <p className="mb-2.5 text-[13px] text-muted">{detail.notes || "No notes on the record."}</p>
+              <p className="mb-2.5 whitespace-pre-line break-words text-[13px] text-muted">{detail.notes || "No notes on the record."}</p>
               <div className="flex flex-wrap items-center gap-1.5">
                 {detail.property_link && (
                   <LinkChip

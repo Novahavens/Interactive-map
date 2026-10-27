@@ -59,12 +59,18 @@ function evaluate(field: EditField, raw: string, base: EditValue): { changed: fa
 interface Props {
   propertyId: string;
   detail: PropertyDetail;
+  /** Bumped from outside (close, another property, another claim): ask "Discard N changes?" now. */
+  discardAsk: number;
+  /** Unsaved change count, reported on every change and as 0 when the form goes. */
+  onDirty: (count: number) => void;
+  /** Answer to the question above: true = Discard, false = Keep editing. Also called for the form's own Cancel. */
+  onDiscardDecision: (discard: boolean) => void;
   onCancel: () => void;
   onSaved: (detail: PropertyDetail, outcome: SavedOutcome) => void;
 }
 
 /** Edit the listing details of one property; the server writes Monday, then the Supabase mirror. */
-export default function EditListing({ propertyId, detail, onCancel, onSaved }: Props) {
+export default function EditListing({ propertyId, detail, discardAsk, onDirty, onDiscardDecision, onCancel, onSaved }: Props) {
   const uid = useId();
   const [base, setBase] = useState<Values>(() => {
     const row = detail as unknown as Record<string, unknown>;
@@ -107,6 +113,35 @@ export default function EditListing({ propertyId, detail, onCancel, onSaved }: P
   const trimmedName = name.trim();
   const nameProblem = !trimmedName ? "Enter your name" : trimmedName.length > EDITOR_MAX ? `At most ${EDITOR_MAX} characters` : null;
   const saving = status.kind === "saving";
+
+  useEffect(() => onDirty(count), [count, onDirty]);
+  useEffect(() => () => onDirty(0), [onDirty]);
+
+  // Leaving or reloading the page with unsaved changes asks the browser's own question.
+  useEffect(() => {
+    if (count === 0) return;
+    const ask = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", ask);
+    return () => window.removeEventListener("beforeunload", ask);
+  }, [count]);
+
+  // Something outside the form wants to close it: the same inline question as Cancel.
+  const askedAt = useRef(discardAsk);
+  useEffect(() => {
+    if (discardAsk === askedAt.current) return;
+    askedAt.current = discardAsk;
+    if (count === 0) {
+      onDiscardDecision(true);
+      return;
+    }
+    setConfirming(true);
+    requestAnimationFrame(() => keepRef.current?.focus());
+    // Runs on a new question only; count and the callback are read as they are at that moment.
+  }, [discardAsk]);
+
   const canSave = count > 0 && !invalid && !nameProblem && !saving;
 
   function setValue(field: EditField, value: string) {
@@ -132,6 +167,7 @@ export default function EditListing({ propertyId, detail, onCancel, onSaved }: P
 
   function keepEditing() {
     setConfirming(false);
+    onDiscardDecision(false);
     requestAnimationFrame(() => cancelRef.current?.focus());
   }
 
@@ -335,7 +371,13 @@ export default function EditListing({ propertyId, detail, onCancel, onSaved }: P
           {confirming ? (
             <div role="group" aria-label="Discard changes" className="flex flex-wrap items-center gap-2">
               <span className="mr-auto text-[13px] font-medium">Discard {plural(count, "change", "changes")}?</span>
-              <button type="button" onClick={onCancel} className={cn(buttonClass, "border border-line bg-surface text-[var(--bad-ink)]")}>
+              <button
+                type="button"
+                onClick={() => {
+                  onCancel();
+                  onDiscardDecision(true);
+                }}
+                className={cn(buttonClass, "border border-line bg-surface text-[var(--bad-ink)]")}>
                 Discard
               </button>
               <button ref={keepRef} type="button" onClick={keepEditing} className={cn(buttonClass, "bg-ink text-bg hover:brightness-110")}>
@@ -399,7 +441,16 @@ function FieldInput({ id, field, value, base, changed, error, inputRef, onChange
           <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-[13px] text-muted" aria-hidden="true">
             $
           </span>
-          <input {...common} ref={inputRef} type="text" inputMode="decimal" autoComplete="off" onChange={(e) => onChange(e.target.value)} className={cn(inputClass, "pl-5 font-mono", bad)} />
+          <input
+            {...common}
+            ref={inputRef}
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            // The "$" is drawn in front of the box; a typed one would show twice.
+            onChange={(e) => onChange(e.target.value.replace(/^\s*\$\s*/, ""))}
+            className={cn(inputClass, "pl-5 font-mono", bad)}
+          />
         </div>
       );
       break;

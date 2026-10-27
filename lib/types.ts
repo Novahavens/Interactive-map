@@ -250,7 +250,7 @@ export interface HealthResponse {
   dryRun: boolean;
   /** QUO_API_KEY is set: the owner card offers the Quo contact history. */
   quo: boolean;
-  /** Listing edits from the map are switched on (MAP_EDITING is not "off"). */
+  /** Listing edits from the map are switched on: MAP_EDIT_SECRET is set and MAP_EDITING is not "off". */
   editing: boolean;
 }
 

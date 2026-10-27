@@ -8,8 +8,9 @@ import SearchBox from "./SearchBox";
 import ActiveClaimsDrawer from "./ActiveClaimsDrawer";
 import SummarySheet from "./SummarySheet";
 import { useTheme } from "@/lib/useTheme";
-import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse, type PropertyDetail } from "@/lib/types";
+import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, type PropertyDetail } from "@/lib/types";
 import { EDIT_FIELDS } from "@/lib/listing-edit";
+import { readHealth } from "./property/health";
 import { STATUS_ORDER, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
 import ClaimBrief, { claimGlance } from "./ClaimBrief";
 import ResultsSheet, { type SheetSnap } from "./ResultsSheet";
@@ -56,6 +57,30 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   const [pinsError, setPinsError] = useState<string | null>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+
+  // Unsaved listing edits: anything that would unmount the open form (close, scrim, another property, another
+  // claim, a new search) asks the form's own "Discard N changes?" first, and only runs once Discard is chosen.
+  const dirtyRef = useRef(0);
+  const pendingRef = useRef<(() => void) | null>(null);
+  const [discardAsk, setDiscardAsk] = useState(0);
+  const guard = useCallback((action: () => void) => {
+    if (dirtyRef.current > 0) {
+      pendingRef.current = action;
+      setDiscardAsk((n) => n + 1);
+    } else action();
+  }, []);
+  const onDirty = useCallback((count: number) => {
+    dirtyRef.current = count;
+  }, []);
+  const onDiscardDecision = useCallback((discard: boolean) => {
+    const action = pendingRef.current;
+    pendingRef.current = null;
+    if (!discard) return;
+    dirtyRef.current = 0;
+    action?.();
+  }, []);
   // List row <-> map pin highlight. `from` decides whether the list follows (map hover) or the map pans (pointer on a row).
   const [hover, setHover] = useState<{ id: string; from: HoverSource } | null>(null);
   const hoveredId = hover?.id ?? null;
@@ -102,9 +127,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
 
   // Switching claims: drop everything scoped to the old one before the new claim loads,
   // so nothing (selection, attached set, an in-flight add) can land on the wrong claim.
-  const selectClaim = useCallback((c: ActiveClaim) => {
-    setDrawerOpen(false);
-    if (c.id === claimIdRef.current) return;
+  const switchClaim = useCallback((c: ActiveClaim) => {
     claimIdRef.current = c.id;
     setClaimId(c.id);
     setClaim(null);
@@ -116,6 +139,11 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     url.searchParams.set("claimId", c.id);
     window.history.replaceState(null, "", url);
   }, []);
+  const selectClaim = useCallback((c: ActiveClaim) => {
+    setDrawerOpen(false);
+    if (c.id === claimIdRef.current) return;
+    guard(() => switchClaim(c));
+  }, [guard, switchClaim]);
 
   // Cmd/Ctrl+K toggles the drawer.
   useEffect(() => {
@@ -136,10 +164,11 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   // Dry-run chip: tells whoever is testing that Add to claim will not write to Monday.
   const [dryRun, setDryRun] = useState(false);
   useEffect(() => {
-    fetch("/api/health", { cache: "no-store" })
-      .then((r) => (r.ok ? (r.json() as Promise<HealthResponse>) : null))
-      .then((h) => setDryRun(!!h?.dryRun))
-      .catch(() => undefined);
+    let live = true;
+    void readHealth().then((h) => live && setDryRun(!!h?.dryRun));
+    return () => {
+      live = false;
+    };
   }, []);
 
   // ---- 2. pins inside the radius ----
@@ -195,10 +224,18 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     [pins],
   );
 
-  const onSelect = useCallback((id: string) => {
-    setSelectedId(id);
-    setSheetSnap("collapsed");
-  }, []);
+  const onSelect = useCallback(
+    (id: string) => {
+      const go = () => {
+        setSelectedId(id);
+        setSheetSnap("collapsed");
+      };
+      if (id === selectedIdRef.current) go(); // same property: the open form stays
+      else guard(go);
+    },
+    [guard],
+  );
+  const closePanel = useCallback(() => guard(() => setSelectedId(null)), [guard]);
 
   // Pointing at a pin on the map brings its row into view in whichever results list is showing.
   useEffect(() => {
@@ -213,9 +250,11 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   }, []);
 
   // A saved listing edit: the list row, the map pin and the other panel mount take the new values at once.
-  const [editedDetail, setEditedDetail] = useState<PropertyDetail | null>(null);
+  // `at` lets a panel mounted later ignore it (it fetches its own, fresher copy); cleared when the selection moves.
+  const [editedDetail, setEditedDetail] = useState<{ detail: PropertyDetail; at: number } | null>(null);
+  useEffect(() => setEditedDetail(null), [selectedId, claimId]);
   const handleEdited = useCallback((d: PropertyDetail) => {
-    setEditedDetail(d);
+    setEditedDetail({ detail: d, at: Date.now() });
     const apply = <T extends object>(p: T): T => {
       const next = { ...p } as Record<string, unknown>;
       for (const { key } of EDIT_FIELDS) if (key in next && key in d) next[key] = d[key as keyof PropertyDetail];
@@ -266,10 +305,12 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       placeholder="Loss address"
       badge={center?.source === "claim" ? "from claim" : undefined}
       value={center?.source === "claim" ? center.address : undefined}
-      onPick={(loc) => {
-        setSelectedId(null);
-        setCenter({ ...loc, source: "search" });
-      }}
+      onPick={(loc) =>
+        guard(() => {
+          setSelectedId(null);
+          setCenter({ ...loc, source: "search" });
+        })
+      }
       onClear={() => {
         if (claim?.loss) setCenter({ lat: claim.loss.lat, lng: claim.loss.lng, address: claim.loss.address, source: "claim" });
         else setCenter(null);
@@ -454,7 +495,10 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       onFlagged={handleFlagged}
       edited={editedDetail}
       onEdited={handleEdited}
-      onClose={() => setSelectedId(null)}
+      discardAsk={discardAsk}
+      onDirty={onDirty}
+      onDiscardDecision={onDiscardDecision}
+      onClose={closePanel}
     />
   ) : null;
 
@@ -597,10 +641,12 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
                   apiKey={apiKey}
                   size="hero"
                   placeholder="Street, city, state"
-                  onPick={(loc) => {
-                    setSelectedId(null);
-                    setCenter({ ...loc, source: "search" });
-                  }}
+                  onPick={(loc) =>
+                    guard(() => {
+                      setSelectedId(null);
+                      setCenter({ ...loc, source: "search" });
+                    })
+                  }
                 />
                 <p className="px-0.5 text-xs text-muted">Suggestions by Google Places · one search is one billable session, however many keystrokes.</p>
               </div>
@@ -632,7 +678,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
           {/* Compact: panel floats over the map */}
           {selectedId && (
             <div className="absolute inset-0 z-30 lg:hidden">
-              <div className="absolute inset-0" style={{ background: "var(--scrim)" }} onClick={() => setSelectedId(null)} />
+              <div className="absolute inset-0" style={{ background: "var(--scrim)" }} onClick={closePanel} />
               <div className="absolute inset-x-3 bottom-3 top-3 flex overflow-hidden rounded-xl border border-line shadow-[0_12px_40px_rgba(0,0,0,0.25)] sm:inset-x-auto sm:right-3 sm:w-[400px]">
                 {panel}
               </div>

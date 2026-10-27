@@ -45,12 +45,14 @@ test("a passed date is stale unless the status is settled", () => {
     assert.equal(r?.detail, "date passed (Mar 1, 2025) · checked Oct 22", String(s));
   }
   assert.equal(pill("Available Soon", "2026-10-26")?.detail, "date passed (Oct 26, 2026)");
+  // Settled statuses: the passed date stays visible as plain information, not as the stale warning
   for (const s of ["Available Now", "Unavailable", "Listing Removed"]) {
     const r = pill(s, "2025-03-01", "2026-10-22");
     assert.equal(r?.stale, false, s);
-    assert.equal(r?.detail, "checked Oct 22", s);
+    assert.equal(r?.detail, "next availability was Mar 1, 2025 · checked Oct 22", s);
   }
-  assert.deepEqual(pill("Unavailable", "2025-03-01"), { label: "Unavailable", detail: null, tone: "bad", stale: false });
+  assert.deepEqual(pill("Unavailable", "2026-09-01"), { label: "Unavailable", detail: "next availability was Sep 1", tone: "bad", stale: false });
+  assert.deepEqual(pill("Available Now", "2026-10-26"), { label: "Available now", detail: "next availability was Oct 26", tone: "ok", stale: false });
 });
 
 test("unreadable dates are left out", () => {

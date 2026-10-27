@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { editSecret, editingEnabled } from "@/lib/edit-config";
 import { overlayDetail } from "@/lib/edit-overlay";
 import {
   FIELD_BY_KEY, conflicts, diffLines, fromMondayText, mondayColumnValues, parseEditRequest, sameValue,
@@ -14,10 +15,15 @@ export const dynamic = "force-dynamic";
 /** 18 fields with a 2,000-character note at most; anything much bigger is not a form submission. */
 const MAX_BODY = 32_000;
 
-// What listing_edit_guard (Postgres) can answer besides "ok:<log id>". The guard owns every limit: 30 edits per
-// IP per 10 min, 20 per property per hour, 500 per day overall.
+// What listing_edit_guard (Postgres) can answer besides "ok:<log id>". The guard owns every limit: 30 attempts
+// per IP per 10 min, 20 saved edits per property per hour, 500 per day overall, one edit of a property at a time.
 const REFUSALS: Record<string, { status: number; code: string; error: string }> = {
+  // MAP_EDIT_SECRET doesn't match sync_config MAP_EDIT_KEY (or the key isn't stored yet): a setup problem.
+  forbidden: { status: 503, code: "editing_off", error: "Editing from the map isn't set up yet; nothing was changed" },
+  // parseEditRequest already enforces the same rules, so this means the two definitions have drifted.
+  invalid: { status: 400, code: "bad_request", error: "One of the values isn't allowed; nothing was changed" },
   not_found: { status: 404, code: "not_found", error: "Property not found" },
+  busy: { status: 409, code: "busy", error: "Someone else is saving this property; try again in a moment" },
   ip_limit: { status: 429, code: "rate_limited", error: "Too many edits; try again in a few minutes" },
   property_limit: { status: 429, code: "rate_limited", error: "This property has been edited a lot in the last hour; try again later" },
   daily_cap: { status: 429, code: "rate_limited", error: "Too many edits today; try again tomorrow" },
@@ -44,14 +50,22 @@ const pick = (from: EditChanges, keys: EditKey[]): EditChanges => Object.fromEnt
  * Edits a property's listing details from the map. Order: validate (parseEditRequest), listing_edit_guard
  * (limits, and logs the attempt), read the changed columns fresh from Monday, refuse with 409 if Monday no
  * longer holds what the editor started from, drop changes Monday already has, write Monday
- * (change_multiple_column_values), then mirror the same values into Supabase so the map shows them at once,
- * and post a note on the item saying who changed what. Nothing is mirrored unless the Monday write succeeded,
- * and never in a dry run. The Monday webhook later re-reads the item and confirms the mirror.
+ * (change_multiple_column_values), mark the log row monday_ok, then have Supabase mirror exactly that row's
+ * logged values so the map shows them at once, and post a note on the item saying who changed what. Nothing
+ * is mirrored unless the Monday write succeeded, and never in a dry run. Every path finishes its log row.
+ * The Monday webhook later re-reads the item and confirms the mirror.
+ *
+ * On only when MAP_EDIT_SECRET is set and MAP_EDITING is not "off"; every RPC carries the secret, which the
+ * database checks against sync_config MAP_EDIT_KEY. A cleared field is sent to Monday as a JSON null for every
+ * column kind, per monday.com's API reference ("Changing column values" and each column type's "Clear"
+ * section): in change_multiple_column_values an empty string sets a numbers column to 0.
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  if (process.env.MAP_EDITING === "off") return fail(403, "editing_off", "Editing from the map is switched off");
+  const secret = editSecret();
+  if (!secret || !editingEnabled()) return fail(403, "editing_off", "Editing from the map is switched off");
   const { id } = await ctx.params;
   if (!/^\d{1,20}$/.test(id)) return fail(400, "bad_request", "Invalid property id");
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) return fail(413, "too_large", "Body is too large");
 
   let raw: unknown;
   try {
@@ -70,11 +84,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   let logId: number;
   try {
     const { data, error } = await sb.rpc("listing_edit_guard", {
-      p_property_item_id: id, p_ip: clientIp(req), p_editor: editor, p_fields: keys, p_changes: changes,
+      p_secret: secret, p_property_item_id: id, p_ip: clientIp(req), p_editor: editor, p_fields: keys, p_changes: changes,
     });
     if (error) throw error;
     const answer = String(data);
     if (!answer.startsWith("ok:")) {
+      if (answer === "forbidden") console.error("edit: the database refused MAP_EDIT_SECRET (sync_config MAP_EDIT_KEY missing or different)", id);
       const refusal = REFUSALS[answer];
       return refusal ? fail(refusal.status, refusal.code, refusal.error) : fail(500, "server_error", "Edit failed");
     }
@@ -87,7 +102,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   // The outcome only feeds the log; a failure to record it never changes the answer.
   const finish = async (status: string, before?: EditChanges) => {
-    const { error } = await sb.rpc("listing_edit_finish", { p_log_id: logId, p_status: status, ...(before && { p_before: before }) });
+    const { error } = await sb.rpc("listing_edit_finish", { p_secret: secret, p_log_id: logId, p_status: status, ...(before && { p_before: before }) });
     if (error) console.error("edit: could not record the outcome", id, status, error.message);
   };
 
@@ -142,9 +157,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json<EditListingResponse>({ ok: true, detail: overlayDetail(before, remaining), noted: false, mirrored: false, dryRun: true });
   }
 
+  // Monday has the values: from here the edit counts as saved. The mirror applies the log row's own changes
+  // (only "remaining" reached Monday, but the logged changes differ from it only by values Monday already held).
+  await finish("monday_ok", current);
   let mirrored = false;
   {
-    const { data, error } = await sb.rpc("listing_edit_mirror", { p_property_item_id: id, p_patch: remaining });
+    const { data, error } = await sb.rpc("listing_edit_mirror", { p_secret: secret, p_property_item_id: id, p_log_id: logId });
     if (error) console.error("edit: mirror failed; the Monday webhook will bring the values", id, error.message);
     mirrored = !error && data === true;
   }
@@ -170,6 +188,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     console.error("edit: note failed after the edit was saved", id, e instanceof Error ? e.message : e);
   }
 
-  await finish("applied", current);
+  // The mirror already marks its row applied; this closes the row when the mirror didn't (a no-op otherwise).
+  await finish("applied");
   return NextResponse.json<EditListingResponse>({ ok: true, detail, noted, mirrored });
 }

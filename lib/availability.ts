@@ -5,7 +5,7 @@ export type AvailabilityTone = "ok" | "info" | "muted" | "bad" | "removed";
 
 export interface AvailabilityPill {
   label: string;
-  /** "from Nov 1 · checked Oct 22", or null when there is nothing to add to the label. */
+  /** "from Nov 1 · checked Oct 22" (or "next availability was Sep 1" for a settled status), null when there is nothing to add. */
   detail: string | null;
   tone: AvailabilityTone;
   /** next_availability has passed while the status still says the place is coming free. */
@@ -61,7 +61,7 @@ export function availabilityPill(src: AvailabilitySource, today: string): Availa
     else if (!state.settled) {
       stale = true;
       parts.push(`date passed (${shortDate(next, today, true)})`);
-    }
+    } else parts.push(`next availability was ${nextText}`); // a settled status: the old date is only information
   }
   const checkedText = checked ? shortDate(checked, today) : null;
   if (checkedText) parts.push(`checked ${checkedText}`);
