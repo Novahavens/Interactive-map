@@ -45,6 +45,16 @@ export interface EditDraft {
   notice: "restored" | "stale" | null;
   /** Focus the first field when the form mounts (only right after Edit, not when it moves between layouts). */
   autofocus: boolean;
+  /** Filled in from a call ("Owner said"): the save names the call, and each value shows the sentence it came from. */
+  source?: { callId: string; label: string };
+  evidence?: Partial<Record<EditKey, string>>;
+}
+
+/** Values read from a call summary, to open the form with. `label` reads "Will's call on Oct 27". */
+export interface Prefill {
+  values: Partial<Record<EditKey, EditValue>>;
+  evidence: Partial<Record<EditKey, string>>;
+  source: { callId: string; label: string };
 }
 
 /** What the server said about a save that went through. */
@@ -175,7 +185,8 @@ export interface EditSession {
   /** The line after a save: "Saved to Monday." for ~6 s, or a warning kept until dismissed. */
   note: { propertyId: string; text: string; warn: boolean } | null;
   dismissNote: () => void;
-  open: (detail: PropertyDetail) => void;
+  /** With `prefill`, the form starts from the call's values instead of any stored draft. */
+  open: (detail: PropertyDetail, prefill?: Prefill) => void;
   update: (propertyId: string, fn: (d: EditDraft) => EditDraft) => void;
   /** Runs `action` unless the open draft has changes: then asks "Discard N changes?" first (or, while saving, runs it after a successful save). */
   guard: (action: () => void) => void;
@@ -248,7 +259,7 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
     setDraft(null);
   }, []);
 
-  const open = useCallback((detail: PropertyDetail) => {
+  const open = useCallback((detail: PropertyDetail, prefill?: Prefill) => {
     const id = detail.monday_item_id;
     setNote(null);
     if (draftRef.current?.propertyId === id) return;
@@ -257,7 +268,13 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
     let raw = rawOf(base);
     let name = readReporterName();
     let notice: EditDraft["notice"] = null;
-    const stored = readStored(id);
+    if (prefill) {
+      // The call's values replace a stored draft: the form shows what the owner said, not older typing.
+      clearStored(id);
+      const keys = (Object.keys(prefill.values) as EditKey[]).filter((k) => FIELD_BY_KEY.has(k));
+      raw = { ...raw, ...Object.fromEntries(keys.map((k) => [k, toRaw(prefill.values[k])])) };
+    }
+    const stored = prefill ? null : readStored(id);
     if (stored) {
       // A field Monday now holds as typed (an unconfirmed save that landed after all) has nothing left to restore.
       const storedKeys = Object.keys(stored.raw)
@@ -274,7 +291,10 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
         notice = "stale";
       }
     }
-    const next: EditDraft = { propertyId: id, raw, base, name, shown: {}, nameError: null, confirming: false, askSeq: 0, status: { kind: "idle" }, notice, autofocus: true };
+    const next: EditDraft = {
+      propertyId: id, raw, base, name, shown: {}, nameError: null, confirming: false, askSeq: 0, status: { kind: "idle" }, notice, autofocus: true,
+      ...(prefill && { source: prefill.source, evidence: prefill.evidence }),
+    };
     draftRef.current = next;
     setDraft(next);
   }, []);

@@ -39,7 +39,7 @@ interface Props {
  */
 export default function EditListing({ draft, session }: Props) {
   const uid = useId();
-  const { propertyId, raw, base, name, shown, nameError, confirming, askSeq, status, notice } = draft;
+  const { propertyId, raw, base, name, shown, nameError, confirming, askSeq, status, notice, source, evidence } = draft;
   const update = (fn: (d: EditDraft) => EditDraft) => session.update(propertyId, fn);
 
   const firstRef = useRef<HTMLInputElement>(null);
@@ -114,6 +114,8 @@ export default function EditListing({ draft, session }: Props) {
       return;
     }
     const body: EditListingRequest = { editor: trimmedName, changes, base: sentBase };
+    // Filled in from a call: the server marks that call's summary as applied.
+    if (source) body.source = { kind: "quo_call", callId: source.callId };
     setStatus({ kind: "saving" });
     // From here on only the session is touched: this form may be unmounted (layout switch) before the answer.
     const fail = (st: EditDraft["status"]) => {
@@ -217,6 +219,15 @@ export default function EditListing({ draft, session }: Props) {
     >
       <fieldset disabled={saving} className="m-0 flex min-h-0 min-w-0 flex-1 flex-col border-0 p-0">
         <div className="nh-scroll min-h-0 flex-1 overflow-y-auto">
+          {source && (
+            <div
+              role="status"
+              className="mx-4 mt-3 rounded-md border px-3 py-2 text-[13px]"
+              style={{ borderColor: "var(--line2)", background: "var(--surface-muted)", color: "var(--ink)" }}
+            >
+              Filled in from {source.label}. Check each value, then save.
+            </div>
+          )}
           {notice && (
             <div
               role="status"
@@ -308,6 +319,7 @@ export default function EditListing({ draft, session }: Props) {
                         base={base[f.key]}
                         changed={ev.changed}
                         error={shown[f.key]}
+                        evidence={evidence?.[f.key]}
                         inputRef={f.key === FIELDS[0].key ? firstRef : undefined}
                         onChange={(v) => setValue(f, v)}
                         onBlur={() => check(f)}
@@ -393,15 +405,20 @@ interface FieldProps {
   base: EditValue;
   changed: boolean;
   error: string | undefined;
+  /** The call summary sentence this value came from (a form filled in from "Owner said"). */
+  evidence?: string;
   inputRef?: React.Ref<HTMLInputElement>;
   onChange: (v: string) => void;
   onBlur: () => void;
 }
 
-function FieldInput({ id, field, value, base, changed, error, inputRef, onChange, onBlur }: FieldProps) {
+const EVIDENCE_MAX = 140;
+
+function FieldInput({ id, field, value, base, changed, error, evidence, inputRef, onChange, onBlur }: FieldProps) {
   const errorId = `${id}-error`;
   const wasId = `${id}-was`;
-  const describedBy = [error && errorId, changed && wasId].filter(Boolean).join(" ") || undefined;
+  const fromId = `${id}-from`;
+  const describedBy = [error && errorId, changed && wasId, evidence && fromId].filter(Boolean).join(" ") || undefined;
   const common = {
     id,
     value,
@@ -409,7 +426,8 @@ function FieldInput({ id, field, value, base, changed, error, inputRef, onChange
     "aria-invalid": error ? true : undefined,
     "aria-describedby": describedBy,
   } as const;
-  const wide = field.kind === "yesno" || field.kind === "url" || field.kind === "longtext" || field.kind === "date";
+  // A field with a call sentence under it takes the full row, so the sentence isn't squeezed into half.
+  const wide = field.kind === "yesno" || field.kind === "url" || field.kind === "longtext" || field.kind === "date" || !!evidence;
   const bad = error ? "border-[var(--bad-ink)]" : "";
   // A stored value the control can't show (pets "N/D" in a Yes/No control) is named under it.
   const stored = (field.kind === "yesno" || field.kind === "date") && !changed && value !== "" && !normaliseValue(field, value).ok ? value : null;
@@ -500,6 +518,11 @@ function FieldInput({ id, field, value, base, changed, error, inputRef, onChange
       {changed && (
         <p id={wasId} className="text-xs text-muted [overflow-wrap:anywhere]">
           was {displayValue(field, base)}
+        </p>
+      )}
+      {evidence && (
+        <p id={fromId} title={evidence} className="text-xs text-muted [overflow-wrap:anywhere]">
+          From the call: “{evidence.length > EVIDENCE_MAX ? `${evidence.slice(0, EVIDENCE_MAX - 1).trimEnd()}…` : evidence}”
         </p>
       )}
     </div>
