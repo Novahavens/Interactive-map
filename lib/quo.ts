@@ -82,13 +82,13 @@ async function all<T>(path: string, params: Record<string, string | number>, sig
 
 // Per-instance caches. Vercel instances don't share them, which only costs an extra Quo read. Both hold
 // promises, so concurrent opens share one read.
-type Directory = { inboxes: string[]; names: Record<string, string>; ttl: number };
+type Directory = { inboxes: string[]; numbers: string[]; names: Record<string, string>; ttl: number };
 let directory: { at: number; value: Promise<Directory> } | null = null;
 type History = { calls: QuoCall[]; messages: QuoMessage[]; callsTruncated: boolean; textsTruncated: boolean };
 const history = new Map<string, { at: number; value: Promise<History> }>();
 
 async function readDirectory(signal: AbortSignal): Promise<Directory> {
-  const numbers = quo<{ data: { id: string }[] }>("/phone-numbers", {}, signal);
+  const numbers = quo<{ data: { id: string; number?: string | null }[] }>("/phone-numbers", {}, signal);
   // Observed now, so a failure while /users is still paging isn't an unhandled rejection; rethrown below.
   numbers.catch(() => undefined);
   const names: Record<string, string> = {};
@@ -104,7 +104,8 @@ async function readDirectory(signal: AbortSignal): Promise<Directory> {
     if (e instanceof QuoError && (e.status === 401 || e.status === 403)) throw e;
     ttl = NAMES_RETRY_MS;
   }
-  return { inboxes: ((await numbers).data ?? []).map((n) => n.id), names, ttl };
+  const inboxes = (await numbers).data ?? [];
+  return { inboxes: inboxes.map((n) => n.id), numbers: inboxes.flatMap((n) => (n.number ? [n.number] : [])), names, ttl };
 }
 
 /** The workspace's Quo numbers and teammates' first names. */
@@ -187,5 +188,147 @@ export async function contactDigest(phones: string[], signal: AbortSignal): Prom
       { calls: unread > 0 || read.some((h) => h.callsTruncated), texts: unread > 0 || read.some((h) => h.textsTruncated) },
     ),
     unread,
+  };
+}
+
+// ---------- Webhook support (calls and texts log themselves; docs/QUO-INTEGRATION.md) ----------
+
+/** Webhooks use Quo's dated API; the classic v1 reads above stay as they are. */
+const ROOT = BASE.replace(/\/v1\/?$/, "");
+export const QUO_API_VERSION = "2026-03-30";
+/** What the one webhook subscribes to; lib/quo-events.ts handles exactly these. */
+export const QUO_EVENTS = ["call.completed", "message.received", "message.delivered", "call.summary.completed"];
+
+async function quoDated<T>(method: "GET" | "POST", path: string, body: unknown, signal: AbortSignal): Promise<T> {
+  const res = await slot(() =>
+    fetch(`${ROOT}${path}`, {
+      method,
+      headers: {
+        Authorization: process.env.QUO_API_KEY ?? "",
+        "Quo-Api-Version": QUO_API_VERSION,
+        ...(body !== undefined && { "Content-Type": "application/json" }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(8_000)]),
+      cache: "no-store",
+    }),
+  );
+  if (!res.ok) throw new QuoError(`Quo ${method} ${path} returned ${res.status}`, res.status);
+  return (await res.json()) as T;
+}
+
+type Webhook = { id: string; url: string; status: string; events: string[]; apiVersion?: string; key?: string };
+
+/**
+ * Makes sure one enabled webhook sends QUO_EVENTS for every number to `url`, and returns its signing key when
+ * Quo hands one out: on create, or on a rotation when the webhook exists but the stored keys aren't its own
+ * (`storedId` is the webhook they belong to; Quo shows a key only on create and rotate). Idempotent: a
+ * matching webhook whose key is stored is left alone.
+ */
+export async function ensureWebhook(
+  url: string,
+  storedId: string | null,
+  haveKey: boolean,
+  signal: AbortSignal,
+): Promise<{ id: string; key: string | null; action: "created" | "rotated" | "existing"; others: { id: string; status: string; resourceIds: string[] }[] }> {
+  const list = await quoDated<{ data: (Webhook & { resourceIds?: string[] })[] }>("GET", "/webhooks", undefined, signal);
+  // Any other webhook to this address (a narrower or older one) is reported, not touched: its deliveries fail
+  // the signature check, so disable it in Quo.
+  const othersThan = (id: string) =>
+    (list.data ?? []).filter((w) => w.url === url && w.id !== id).map((w) => ({ id: w.id, status: w.status, resourceIds: w.resourceIds ?? [] }));
+  const found = (list.data ?? []).find(
+    (w) =>
+      w.url === url && w.status === "enabled" && QUO_EVENTS.every((e) => w.events?.includes(e)) &&
+      (w.apiVersion ?? QUO_API_VERSION) === QUO_API_VERSION && (w.resourceIds ?? ["*"]).length === 1 && (w.resourceIds ?? ["*"])[0] === "*",
+  );
+  if (found) {
+    if (haveKey && storedId === found.id) return { id: found.id, key: null, action: "existing", others: othersThan(found.id) };
+    const rotated = await quoDated<{ data: Webhook }>("POST", `/webhooks/${encodeURIComponent(found.id)}/rotate`, undefined, signal);
+    return { id: found.id, key: rotated.data?.key ?? null, action: "rotated", others: othersThan(found.id) };
+  }
+  const made = await quoDated<{ data: Webhook }>(
+    "POST",
+    "/webhooks",
+    { url, events: QUO_EVENTS, resourceIds: ["*"], label: "Property map: log calls and texts in Monday", status: "enabled" },
+    signal,
+  );
+  return { id: made.data.id, key: made.data.key ?? null, action: "created", others: othersThan(made.data.id) };
+}
+
+/** A teammate's first name from their Quo user id (null when Quo doesn't name them). */
+export async function teammateName(userId: string | null, signal: AbortSignal): Promise<string | null> {
+  if (!userId) return null;
+  try {
+    return (await getDirectory(signal)).names[userId] || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The other party of a call, for a summary whose event couldn't name them: GET /v1/calls/:id lists both
+ * numbers, ours included. Also returns when it happened, how long it ran and who took it.
+ */
+export async function callDetails(
+  callId: string,
+  signal: AbortSignal,
+): Promise<{ numbers: string[]; at: string | null; durationSec: number | null; userId: string | null } | null> {
+  const [{ numbers: ours }, call] = await Promise.all([
+    getDirectory(signal),
+    quo<{ data: { participants?: string[]; createdAt?: string; duration?: number | null; userId?: string | null; answeredBy?: string | null } }>(
+      `/calls/${encodeURIComponent(callId)}`, {}, signal,
+    ).catch((e) => {
+      if (e instanceof QuoError && e.status === 404) return null;
+      throw e;
+    }),
+  ]);
+  if (!call?.data) return null;
+  const c = call.data;
+  return {
+    numbers: (c.participants ?? []).filter((n) => !ours.includes(n)),
+    at: c.createdAt ?? null,
+    durationSec: typeof c.duration === "number" ? c.duration : null,
+    userId: c.answeredBy ?? c.userId ?? null,
+  };
+}
+
+/** One page of every conversation in the workspace (GET /v1/conversations), for the one-off backfill. */
+export async function conversationsPage(
+  pageToken: string | undefined,
+  signal: AbortSignal,
+  pageSize = PAGE,
+): Promise<{ items: { phoneNumberId: string; participants: string[]; lastActivityAt: string | null }[]; next: string | null }> {
+  const page = await quo<Page<{ phoneNumberId?: string; participants?: string[]; lastActivityAt?: string | null }>>(
+    "/conversations",
+    { maxResults: Math.min(PAGE, pageSize), pageToken },
+    signal,
+  );
+  return {
+    items: (page.data ?? []).flatMap((c) =>
+      c.phoneNumberId ? [{ phoneNumberId: c.phoneNumberId, participants: c.participants ?? [], lastActivityAt: c.lastActivityAt ?? null }] : [],
+    ),
+    next: page.nextPageToken ?? null,
+  };
+}
+
+/** The newest page of calls and texts in one conversation (one inbox, one number), with teammates' names. */
+export async function conversationHistory(
+  phoneNumberId: string,
+  phone: string,
+  signal: AbortSignal,
+): Promise<{ calls: QuoCall[]; messages: QuoMessage[]; names: Record<string, string> }> {
+  const q = { phoneNumberId, participants: phone, maxResults: PAGE };
+  const [{ names }, c, m] = await Promise.all([
+    getDirectory(signal),
+    quo<Page<RawCall>>("/calls", q, signal),
+    quo<Page<RawMessage>>("/messages", q, signal),
+  ]);
+  return {
+    calls: (c.data ?? []).map((x) => ({
+      createdAt: x.createdAt, direction: x.direction, status: x.status, duration: x.duration ?? null,
+      answeredAt: x.answeredAt ?? null, answeredBy: x.answeredBy ?? null, userId: x.userId ?? null,
+    })),
+    messages: (m.data ?? []).map((x) => ({ createdAt: x.createdAt, direction: x.direction, text: null, hasMedia: !!x.media?.length, userId: x.userId ?? null })),
+    names,
   };
 }

@@ -46,7 +46,8 @@ export const DRY_RUN = process.env.MONDAY_DRY_RUN === "1";
 const API_VERSION = "2024-10";
 
 export class MondayError extends Error {
-  constructor(message: string, public readonly details?: unknown) {
+  /** `status`: Monday's HTTP status when it answered with one other than 200. */
+  constructor(message: string, public readonly details?: unknown, public readonly status?: number) {
     super(message);
     this.name = "MondayError";
   }
@@ -84,9 +85,7 @@ export async function monday<T>(
   try {
     return await mondayOnce<T>(query, variables, opts.signal);
   } catch (e) {
-    const transient =
-      e instanceof MondayError && (/\b(429|50\d)\b/.test(e.message) || /rate limit|complexity|timeout|non-JSON/i.test(e.message));
-    if (!retry || !transient || opts.signal?.aborted) throw e;
+    if (!retry || !isTransientMondayError(e) || opts.signal?.aborted) throw e;
     // The pause before the retry ends with the signal: a caller's deadline is never overrun by the wait.
     if (!(await sleep(RETRY_PAUSE_MS, opts.signal))) throw new MondayError("Monday timed out (no time left to retry)");
     return await mondayOnce<T>(query, variables, opts.signal);
@@ -94,6 +93,21 @@ export async function monday<T>(
 }
 
 const RETRY_PAUSE_MS = 1200;
+
+/** Monday was busy or answered badly (429, 5xx, rate limit, complexity budget, not JSON): nothing was wrong with the request. */
+export function isTransientMondayError(e: unknown): boolean {
+  if (!(e instanceof MondayError)) return false;
+  if (e.status === 429 || (e.status ?? 0) >= 500) return true;
+  return /\b(429|50\d)\b/.test(e.message) || /rate limit|complexity|timeout|non-JSON/i.test(e.message);
+}
+
+/**
+ * A mutation that failed like this may still have been applied: it timed out, the connection broke, or Monday's
+ * gateway answered 5xx or not JSON. A GraphQL refusal (errors, a rate limit, the complexity budget) means it wasn't.
+ */
+export function mayHaveLanded(e: unknown): boolean {
+  return !(e instanceof MondayError) || (e.status ?? 0) >= 500 || /timed out|non-JSON|\b50\d\b/i.test(e.message);
+}
 
 const isAbort = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
 
@@ -129,7 +143,7 @@ async function mondayOnce<T>(query: string, variables: Record<string, unknown>, 
   }
 
   if (!res.ok) {
-    throw new MondayError(json.error_message ?? `Monday HTTP ${res.status}`, json);
+    throw new MondayError(json.error_message ?? `Monday HTTP ${res.status}`, json, res.status);
   }
   if (json.errors?.length) {
     throw new MondayError(json.errors.map((e) => e.message).join("; "), json.errors);
@@ -499,4 +513,38 @@ export async function changeColumns(
     { signal: opts.signal ?? AbortSignal.timeout(EDIT_CALL_TIMEOUT_MS) },
   );
   if (!data.change_multiple_column_values?.id) throw new MondayError("change_multiple_column_values returned no id");
+}
+
+// ---------- Contact log (Quo) ----------
+
+/** Property board "Last Contact Date". */
+export const LAST_CONTACT_COL = "date_mm5yh71z";
+
+/**
+ * Sets one date column on several property items in one request (one aliased change_multiple_column_values
+ * each, at most 25). All or nothing as far as the caller knows: Monday reports any failed alias as an error,
+ * and setting the same date again is harmless, so the caller simply retries the whole set. Not retried here.
+ */
+export async function setDates(
+  columnId: string,
+  items: { id: string; day: string }[],
+  opts: { signal?: AbortSignal } = {},
+): Promise<void> {
+  if (!items.length) return;
+  if (items.length > 25) throw new MondayError("setDates takes at most 25 items");
+  if (DRY_RUN) {
+    console.info("[monday dry-run] set dates", { columnId, items });
+    return;
+  }
+  const vars: Record<string, unknown> = { board: BOARDS.property };
+  const decl = ["$board: ID!"];
+  const body = items.map((it, i) => {
+    decl.push(`$i${i}: ID!`, `$v${i}: JSON!`);
+    vars[`i${i}`] = it.id;
+    vars[`v${i}`] = JSON.stringify({ [columnId]: { date: it.day } });
+    return `d${i}: change_multiple_column_values(board_id: $board, item_id: $i${i}, column_values: $v${i}) { id }`;
+  });
+  await monday(`mutation (${decl.join(", ")}) { ${body.join(" ")} }`, vars, {
+    signal: opts.signal ?? AbortSignal.timeout(EDIT_CALL_TIMEOUT_MS),
+  });
 }

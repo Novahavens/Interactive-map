@@ -60,13 +60,25 @@ const DATE_MIN = "2020-01-01";
 const DATE_MAX = "2035-12-31";
 
 /** POST /api/properties/:id/edit body. `base` is what the editor saw for each changed field, for the conflict check. */
+/** Where the values came from when the form was filled in from a call summary ("Owner said"). */
+export interface EditSource {
+  kind: "quo_call";
+  callId: string;
+}
+
 export interface EditListingRequest {
   editor: string;
   changes: EditChanges;
   base: EditChanges;
+  source?: EditSource;
 }
 
-export type ParsedEdit = { ok: true; editor: string; changes: EditChanges; base: EditChanges } | { ok: false; error: string };
+export type ParsedEdit =
+  | { ok: true; editor: string; changes: EditChanges; base: EditChanges; source?: EditSource }
+  | { ok: false; error: string };
+
+/** A Quo call id. A source that isn't one is ignored (the edit itself stands on its own). */
+const CALL_ID = /^AC[A-Za-z0-9_-]{4,64}$/;
 
 // Control, bidi and zero-width characters out. Long text keeps its line breaks; everything else is one line.
 const INVISIBLE = /[​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
@@ -166,7 +178,11 @@ export function parseEditRequest(body: unknown): ParsedEdit {
     base[field.key] = typeof rb === "number" || typeof rb === "string" ? currentValue(field, { [field.key]: rb }) : null;
   }
   if (Object.keys(changes).length === 0) return { ok: false, error: "Nothing to change" };
-  return { ok: true, editor, changes, base };
+  const s = b.source as Record<string, unknown> | null | undefined;
+  const source = s && typeof s === "object" && s.kind === "quo_call" && typeof s.callId === "string" && CALL_ID.test(s.callId)
+    ? { kind: "quo_call" as const, callId: s.callId }
+    : undefined;
+  return { ok: true, editor, changes, base, ...(source && { source }) };
 }
 
 /** Two values of one field are the same (numbers by value, text exactly, null = blank). */

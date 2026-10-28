@@ -292,3 +292,27 @@ export interface ApiError {
   code?: string;
 }
 
+
+/** One answered call's Quo AI summary on the property panel ("Owner said"). */
+export interface OwnerSaidCall {
+  callId: string;
+  /** When the call happened (ISO). */
+  at: string;
+  /** The teammate on the call (first name), when Quo names one. */
+  by: string | null;
+  durationSec: number | null;
+  /** How many properties the number is on. Above 1, the summary may be about another of them. */
+  propertyCount: number | null;
+  summary: string[];
+  nextSteps: string[];
+  /** Listing facts read from the summary (lib/owner-said.ts), each with the sentence it came from. */
+  facts: { key: string; value: string | number; evidence: string }[];
+  /** Set once someone saved values from this call through the Edit form. */
+  applied: { by: string; at: string; fields: string[] } | null;
+}
+
+/** GET /api/properties/:id/owner-said: the property's latest call summaries, newest first (at most 3). */
+export interface OwnerSaidResponse {
+  enabled: boolean;
+  calls: OwnerSaidCall[];
+}
