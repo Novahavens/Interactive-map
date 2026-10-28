@@ -488,6 +488,7 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   const hidden = await p.locator('aside[aria-label="Property details"]').evaluateAll((els) => els.filter((e) => e.offsetParent === null).map((e) => e.textContent ?? ""));
   check("after save: the other panel mount shows it applied too", hidden.length === 1 && hidden[0].includes("Applied to Monday by Pat Tester · Oct 28"));
   check("after save: 'Saved to Monday.'", (await panel(p).getByText("Saved to Monday.", { exact: true }).count()) === 1);
+  await card(p).scrollIntoViewIfNeeded();
   await p.screenshot({ path: `${OUT}/card-applied.png`, clip: await panel(p).boundingBox() });
 
   // ---------------------------------------------------------------------------------------------
