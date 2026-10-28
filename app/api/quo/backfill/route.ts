@@ -12,6 +12,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const E164_US = /^\+1[2-9]\d{2}[2-9]\d{6}$/;
+/** Monday errors that say nothing about the row (the same ones lib/monday.ts retries reads on). */
+const TRANSIENT = /\b(429|50\d)\b|rate limit|complexity|timed? ?out|non-JSON/i;
 
 /**
  * POST /api/quo/backfill (x-map-secret) — the one-off fill of Last Contact Date from Quo's history.
@@ -23,7 +25,8 @@ const E164_US = /^\+1[2-9]\d{2}[2-9]\d{6}$/;
  *   { "mode": "apply", "limit"?: number }  writes up to `limit` (≤ 25) proposed dates to Monday in one request
  *     and marks them applied (the map's date follows). Rows the map has meanwhile caught up with are skipped. If
  *     Monday refuses the batch, each row is tried on its own and the ones it still refuses (a deleted item) are
- *     marked failed, so one bad row never blocks the rest.
+ *     marked failed, so one bad row never blocks the rest; a row that only met a busy Monday (rate limit,
+ *     complexity budget, timeout) stays proposed and is tried again on the next call (`retryLater`).
  *
  * Driven by hand: scan to the end, export contact_backfill as the report, then apply once it's approved.
  */
@@ -53,15 +56,17 @@ export async function POST(req: NextRequest) {
           refused.push({ id: r.id, error: errText(one) });
         }
       }
-      if (!written.length && refused.every((r) => /timed out|429|50\d/i.test(r.error))) {
-        return NextResponse.json({ ok: false, error: `Monday: ${errText(e)}` }, { status: 502 }); // Monday is down, not the rows
+      if (!written.length && refused.every((r) => TRANSIENT.test(r.error))) {
+        return NextResponse.json({ ok: false, error: `Monday: ${errText(e)}` }, { status: 502 }); // Monday is busy or down, not the rows
       }
     }
+    // Only a row Monday refuses for itself is failed; one that hit a busy Monday stays proposed for the next run.
+    const failed = refused.filter((r) => !TRANSIENT.test(r.error));
     const mark = (ids: string[], state: string, error?: string) => sb.rpc("quo_backfill_mark", { p_secret: secret, p_ids: ids, p_state: state, p_error: error ?? null });
     const { data: n, error: markError } = written.length ? await mark(written.map((r) => r.id), "applied") : { data: 0, error: null };
-    for (const r of refused) await mark([r.id], "failed", r.error);
+    for (const r of failed) await mark([r.id], "failed", r.error);
     if (markError) return NextResponse.json({ ok: false, error: `written to Monday, not marked: ${markError.message}` }, { status: 502 });
-    return NextResponse.json({ ok: true, applied: n, failed: refused.length, done: false });
+    return NextResponse.json({ ok: true, applied: n, failed: failed.length, retryLater: refused.length - failed.length, done: false });
   }
 
   if (body.mode !== "scan") return NextResponse.json({ ok: false, error: 'mode must be "scan" or "apply"' }, { status: 400 });

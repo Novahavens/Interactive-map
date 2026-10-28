@@ -174,7 +174,7 @@ After an answered, recorded call, Quo writes an AI summary (`call.summary.comple
 
 1. `{"mode":"scan"}`, then `{"mode":"scan","pageToken":"<next>"}` until `next` is null. Each call reads 50 Quo conversations (`GET /v1/conversations`), matches their numbers, reads the history only where Quo has activity after the map's date, and stores the newest answered call or text per property in `contact_backfill` as `proposed`. Nothing is written to Monday.
 2. The report: `select property_item_id, phone, quo_day, kind, teammate, monday_day from contact_backfill where state = 'proposed' order by quo_day desc;` exported as a CSV for approval.
-3. `{"mode":"apply"}` repeatedly until `applied: 0, done: true`. Each call writes up to 25 dates in one Monday request and marks them `applied` (the map follows). A row Monday refuses on its own is marked `failed` and doesn't block the rest; rows the map has meanwhile caught up with are `skipped`.
+3. `{"mode":"apply"}` repeatedly until `applied: 0, done: true`. Each call writes up to 25 dates in one Monday request and marks them `applied` (the map follows). A row Monday refuses on its own is marked `failed` and doesn't block the rest; one that only met a busy Monday (rate limit, complexity budget, timeout) stays proposed for the next call (`retryLater`); rows the map has meanwhile caught up with are `skipped`.
 
 ## 11. Setting it up and checking it
 
