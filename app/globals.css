@@ -436,3 +436,88 @@ a:focus-visible,
 [data-slot] {
   border-color: var(--line);
 }
+
+/* Availability pill at the top of the property panel (components/property/AvailabilityPill.tsx, lib/availability.ts).
+   Raised and softly lit in its tone colour; one line is a full pill, a wrapped detail line keeps soft corners. No motion. */
+.nh-avail {
+  --nh-tone: var(--muted);
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 3px 11px 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--nh-tone) 30%, var(--surface));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--nh-tone) 8%, var(--surface));
+  color: var(--nh-tone);
+  font-size: 12.5px;
+  line-height: 1.3;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 0 0 4px color-mix(in srgb, var(--nh-tone) 12%, transparent),
+    0 6px 18px color-mix(in srgb, var(--nh-tone) 28%, transparent);
+}
+[data-theme="dark"] .nh-avail {
+  background: color-mix(in srgb, var(--nh-tone) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--nh-tone) 35%, var(--surface));
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 0 0 4px color-mix(in srgb, var(--nh-tone) 10%, transparent),
+    0 6px 18px color-mix(in srgb, var(--nh-tone) 16%, transparent);
+}
+.nh-avail--ok {
+  --nh-tone: var(--ok-ink);
+}
+.nh-avail--info {
+  --nh-tone: var(--info-ink);
+}
+.nh-avail--bad {
+  --nh-tone: var(--bad-ink);
+}
+.nh-avail--muted,
+.nh-avail--removed {
+  --nh-tone: var(--muted);
+}
+.nh-avail__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--nh-tone);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--nh-tone) 22%, transparent),
+    0 0 6px color-mix(in srgb, var(--nh-tone) 70%, transparent);
+}
+.nh-avail__label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.nh-avail__detail {
+  min-width: 0;
+  color: color-mix(in srgb, var(--nh-tone) 55%, var(--muted));
+  font-weight: 400;
+}
+/* Listing removed: struck through, flat, no glow. */
+.nh-avail--removed,
+[data-theme="dark"] .nh-avail--removed {
+  background: var(--surface-muted);
+  border-color: var(--line2);
+  box-shadow: none;
+}
+.nh-avail--removed .nh-avail__dot {
+  box-shadow: none;
+}
+.nh-avail--removed .nh-avail__label {
+  text-decoration: line-through;
+}
+
+/* Listing edit form (components/property/EditListing.tsx). */
+.nh-field-changed {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--focus);
+}

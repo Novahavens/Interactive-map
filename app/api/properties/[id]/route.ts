@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { first, rpcAll } from "@/lib/supabase";
-import { asMapStatus } from "@/lib/status";
-import type { PropertyDetail, ClaimOption, ApiError } from "@/lib/types";
+import { loadPropertyDetail } from "@/lib/property-detail";
+import type { PropertyDetail, ApiError } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -13,20 +12,11 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   }
 
   try {
-    const [found, status, claims] = await rpcAll([
-      ["property_detail", { p_monday_item_id: id }],
-      ["property_map_status", { p_monday_item_id: id }],
-      ["property_claim_options", { p_monday_item_id: id }],
-    ]);
-    const st = first<{ status?: string; reason?: string }>(status);
-    const row = first<Record<string, unknown>>(found);
-    if (!row) {
+    const detail = await loadPropertyDetail(id);
+    if (!detail) {
       return NextResponse.json<ApiError>({ error: "Property not found", code: "not_found" }, { status: 404 });
     }
-    // Strip the PostGIS geometry and the raw Monday jsonb; the panel uses typed columns only.
-    const { geom: _geom, fields: _fields, ...rest } = row;
-    const detail = { ...rest, map_status: asMapStatus(st?.status), map_reason: st?.reason ?? "none", other_claims: Array.isArray(claims) ? (claims as ClaimOption[]) : [] };
-    return NextResponse.json<PropertyDetail>(detail as unknown as PropertyDetail, {
+    return NextResponse.json<PropertyDetail>(detail, {
       headers: { "Cache-Control": "private, max-age=15" },
     });
   } catch (e) {

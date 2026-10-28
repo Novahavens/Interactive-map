@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { X, ExternalLink, Images, Mail, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { X, ExternalLink, Images, Mail, Pencil, Sparkles } from "lucide-react";
 import type { PropertyDetail, ClaimNeeds, ApiError, Pin } from "@/lib/types";
 import { BAD_LINK } from "@/lib/types";
 import { STATUS, asMapStatus, reasonText, type MapStatus } from "@/lib/status";
@@ -15,7 +15,12 @@ import ContactDigest from "./property/ContactDigest";
 import ContactActions from "./property/ContactActions";
 import { Fee, LinkChip, Row, Section } from "./property/parts";
 import { ReportBadLink, ReportedNote, type Reported } from "./property/ReportBadLink";
-import { MONDAY_BOARDS, mondayItemUrl, money, num, dateShort, miles, yesNo } from "@/lib/utils";
+import AvailabilityPill from "./property/AvailabilityPill";
+import EditListing from "./property/EditListing";
+import type { EditSession } from "./property/edit-session";
+import { editingEnabled } from "./property/health";
+import { availabilityPill, localToday } from "@/lib/availability";
+import { MONDAY_BOARDS, mondayItemUrl, money, num, miles, yesNo } from "@/lib/utils";
 
 interface Props {
   propertyId: string;
@@ -26,6 +31,12 @@ interface Props {
   attached: boolean;
   onAttached: (propertyId: string, subitemId: string) => void;
   onFlagged: (propertyId: string) => void;
+  /** The latest saved edit (from either panel mount, at `at` ms): this mount takes it when it is this property and newer than the mount. */
+  edited: { detail: PropertyDetail; at: number } | null;
+  /** The page's listing-edit session (one draft, shared by both panel copies). */
+  session: EditSession;
+  /** This copy is the one on screen (rail on wide screens, sheet on narrow): only it shows the edit form. */
+  active: boolean;
   onClose: () => void;
 }
 
@@ -35,10 +46,59 @@ const STATUS_TOKEN: Record<MapStatus, { bg: string; ink: string; line: string }>
   red: { bg: "var(--bad-bg)", ink: "var(--bad-ink)", line: "var(--bad-line)" },
 };
 
-export default function PropertyPanel({ propertyId, pin, claim, needs, attached, onAttached, onFlagged, onClose }: Props) {
+export default function PropertyPanel({
+  propertyId,
+  pin,
+  claim,
+  needs,
+  attached,
+  onAttached,
+  onFlagged,
+  edited,
+  session,
+  active,
+  onClose,
+}: Props) {
   const [detail, setDetail] = useState<PropertyDetail | null>(null);
+  // Edit waits for this panel's own read, so the form never starts from an older copy.
+  const [fetched, setFetched] = useState(false);
+  const [mountedAt] = useState(() => Date.now());
+  const savedHere = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [reported, setReported] = useState<Reported | null>(null);
+  const [canEditHealth, setCanEdit] = useState(false);
+  const canEdit = canEditHealth && !session.editingOff;
+  const draft = session.draft?.propertyId === propertyId ? session.draft : null;
+  const editing = !!draft; // in either copy
+  const formHere = editing && active;
+  const savedNote = session.note?.propertyId === propertyId ? session.note : null;
+  const saved = savedNote?.text ?? null;
+  const editRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    let live = true;
+    void editingEnabled().then((on) => live && setCanEdit(on));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // A save in the other mount (rail or sheet) lands here too, so the two never disagree.
+  // An edit saved before this panel mounted is ignored: the panel's own read is at least as fresh.
+  useEffect(() => {
+    if (!edited || edited.detail.monday_item_id !== propertyId || edited.at < mountedAt) return;
+    savedHere.current = true;
+    setDetail(edited.detail);
+  }, [edited, propertyId, mountedAt]);
+
+  // Back on the Edit button once the form closes in this copy (Close when Edit has gone: editing switched off).
+  // A form that moved to the other layout isn't a close.
+  const hadForm = useRef(false);
+  useEffect(() => {
+    if (hadForm.current && !editing && active) (editRef.current ?? closeRef.current)?.focus();
+    hadForm.current = formHere;
+  }, [formHere, editing, active]);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,9 +107,12 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
         const res = await fetch(`/api/properties/${propertyId}`, { cache: "no-store" });
         const json = (await res.json()) as PropertyDetail | ApiError;
         if (!res.ok) throw new Error((json as ApiError).error || `HTTP ${res.status}`);
-        if (!cancelled) setDetail(json as PropertyDetail);
+        // A save that landed while this read was in flight is newer than it.
+        if (!cancelled && !savedHere.current) setDetail(json as PropertyDetail);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Could not load this property");
+      } finally {
+        if (!cancelled) setFetched(true);
       }
     })();
     return () => {
@@ -62,7 +125,18 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
   const fitRows = detail && needs ? computeFit(detail, needs) : [];
 
   const source = mergeChipSource(detail, pin);
-  const { chips, otherClaims, badLink } = chipsFor(reported ? { ...source, link_status: BAD_LINK } : source, claim?.id ?? null);
+  const { chips, otherClaims, badLink } = chipsFor(reported ? { ...source, link_status: BAD_LINK } : source, claim?.id ?? null, {
+    availability: false,
+  });
+  // Before the detail loads the list's copy shows it (pins carry next_availability as available_from).
+  const pill = availabilityPill(
+    {
+      availability: source.availability,
+      availability_checked: detail?.availability_checked ?? pin?.availability_checked,
+      next_availability: detail && detail.next_availability !== undefined ? detail.next_availability : pin?.available_from,
+    },
+    localToday(),
+  );
 
   return (
     <aside
@@ -70,7 +144,10 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
       aria-label="Property details"
     >
       {/* Header */}
-      <div className="flex items-start gap-3 border-b border-line px-4 py-3.5">
+      {/* The pill has the header's full width to itself; Edit and Close sit beside the status line under it. */}
+      <div className="border-b border-line px-4 py-3.5">
+        {pill && <AvailabilityPill pill={pill} className="mb-2.5" />}
+        <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           {detail ? (
             <>
@@ -100,16 +177,64 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
             <div className="nh-skeleton h-12" />
           )}
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close panel"
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line bg-surface text-muted hover:text-ink"
-        >
-          <X className="h-3 w-3" />
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {detail && (canEdit || editing) && (
+            // Kept in place (invisible) while editing so the header doesn't reflow.
+            <button
+              ref={editRef}
+              type="button"
+              aria-hidden={editing || undefined}
+              tabIndex={editing ? -1 : undefined}
+              disabled={!fetched}
+              title={fetched ? undefined : "Loading the latest copy…"}
+              onClick={() => detail && session.open(detail)}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-[13px] font-medium text-ink hover:bg-surface-muted disabled:opacity-50 ${editing ? "invisible" : ""} [@media(pointer:coarse)]:h-[44px] [@media(pointer:coarse)]:px-3`}
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+              Edit
+            </button>
+          )}
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Close panel"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line bg-surface text-muted hover:text-ink"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+        </div>
       </div>
 
+      {/* What the last save did; always mounted so screen readers hear it. */}
+      <div aria-live="polite" className="empty:hidden">
+        {saved && !editing && (
+          <div
+            className="flex items-start justify-between gap-2 border-b px-4 py-2 text-[13px]"
+            style={
+              savedNote?.warn
+                ? { background: "var(--amber-bg)", color: "var(--amber-ink)", borderColor: "var(--amber-line)" }
+                : { background: "var(--ok-bg)", color: "var(--ok-ink)", borderColor: "var(--ok-line)" }
+            }
+          >
+            <span className="min-w-0">{saved}</span>
+            <button
+              type="button"
+              onClick={session.dismissNote}
+              aria-label="Dismiss"
+              className="-my-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded [@media(pointer:coarse)]:h-[44px] [@media(pointer:coarse)]:w-[44px]"
+            >
+              <X className="h-3 w-3" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {formHere && draft ? (
+        <EditListing draft={draft} session={session} />
+      ) : (
+      <>
       {/* Body */}
       <div className="nh-scroll min-h-0 flex-1 overflow-y-auto text-sm">
         {error && (
@@ -172,7 +297,7 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
                     <span className="group-open:hidden">Show</span>
                     <span className="hidden group-open:inline">Hide</span>
                   </summary>
-                  <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-[13px]">{detail.notes}</p>
+                  <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-line break-words text-[13px]">{detail.notes}</p>
                 </details>
               )}
             </div>
@@ -238,7 +363,6 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
                 <Row k="Type" v={detail.property_type && detail.property_type !== "N/D" ? detail.property_type : "—"} />
                 <Row k="Furnished" v={yesNo(detail.furnished)} />
                 <Row k="Fenced yard" v={yesNo(detail.fenced_yard)} />
-                <Row k="Available" v={dateShort(detail.next_availability)} />
               </div>
             </Section>
 
@@ -278,7 +402,7 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
 
             {/* Notes + links */}
             <Section title="Notes & links">
-              <p className="mb-2.5 text-[13px] text-muted">{detail.notes || "No notes on the record."}</p>
+              <p className="mb-2.5 whitespace-pre-line break-words text-[13px] text-muted">{detail.notes || "No notes on the record."}</p>
               <div className="flex flex-wrap items-center gap-1.5">
                 {detail.property_link && (
                   <LinkChip
@@ -322,6 +446,8 @@ export default function PropertyPanel({ propertyId, pin, claim, needs, attached,
         attached={attached}
         onAttached={onAttached}
       />
+      </>
+      )}
     </aside>
   );
 }

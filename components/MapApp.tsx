@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AlertTriangle, ChevronDown, DollarSign, Images, Inbox, Moon, PawPrint, RefreshCw, Send, SlidersHorizontal, Sun } from "lucide-react";
 import MapCanvas from "./MapCanvas";
 import PropertyPanel from "./PropertyPanel";
@@ -8,7 +8,12 @@ import SearchBox from "./SearchBox";
 import ActiveClaimsDrawer from "./ActiveClaimsDrawer";
 import SummarySheet from "./SummarySheet";
 import { useTheme } from "@/lib/useTheme";
-import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, HealthResponse } from "@/lib/types";
+import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, type PropertyDetail } from "@/lib/types";
+import { EDIT_FIELDS } from "@/lib/listing-edit";
+
+const COST_KEYS = new Set<string>(EDIT_FIELDS.filter((f) => f.group === "costs").map((f) => f.key));
+import { readHealth } from "./property/health";
+import { useEditSession, type SavedOutcome } from "./property/edit-session";
 import { STATUS_ORDER, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
 import ClaimBrief, { claimGlance } from "./ClaimBrief";
 import ResultsSheet, { type SheetSnap } from "./ResultsSheet";
@@ -27,6 +32,17 @@ interface Props {
 
 type Center = { lat: number; lng: number; address: string; source: "claim" | "search" };
 const NONE_HIDDEN: Record<MapStatus, boolean> = { green: false, yellow: false, red: false };
+
+// The docked rail (Tailwind's lg, 64rem and up) or the phone sheet: which panel copy is on screen. In rem, like
+// Tailwind, so it follows the browser's default font size the same way the lg: classes do.
+const WIDE = "(min-width: 64rem)";
+const RECHECK_MS = 3000;
+const isWide = () => window.matchMedia(WIDE).matches;
+function subscribeWide(onChange: () => void) {
+  const mq = window.matchMedia(WIDE);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
 
 export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props) {
   const { theme, toggle } = useTheme();
@@ -55,6 +71,73 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   const [pinsError, setPinsError] = useState<string | null>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+
+  // A saved listing edit: the list row, the map pin and the other panel mount take the new values at once.
+  // `at` lets a panel mounted later ignore it (it fetches its own, fresher copy); cleared when the selection moves.
+  const [editedDetail, setEditedDetail] = useState<{ detail: PropertyDetail; at: number } | null>(null);
+  useEffect(() => setEditedDetail(null), [selectedId, claimId]);
+  const applyDetail = useCallback((d: PropertyDetail) => {
+    setEditedDetail({ detail: d, at: Date.now() });
+    const apply = <T extends object>(p: T): T => {
+      const next = { ...p } as Record<string, unknown>;
+      for (const { key } of EDIT_FIELDS) if (key in next && key in d) next[key] = d[key as keyof PropertyDetail];
+      // The list carries next_availability under its own name.
+      if ("available_from" in next && "next_availability" in d) next.available_from = d.next_availability;
+      return next as T;
+    };
+    setPins((prev) => prev.map((p) => (p.monday_item_id === d.monday_item_id ? apply(p) : p)));
+    setAttachedPins((prev) => prev.map((p) => (p.monday_item_id === d.monday_item_id ? apply(p) : p)));
+  }, []);
+  // When Monday didn't confirm every field, read the property once more a few seconds later: by then the
+  // Monday webhook has brought what Monday really holds into the mirror, and the panel and list show that.
+  // The fields Monday did confirm keep the save's values (an unmirrored save's are not in that read yet), and
+  // a read made for an older save is dropped once a newer save of the same property has landed.
+  const recheckTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const saveSeq = useRef(new Map<string, number>());
+  useEffect(() => () => recheckTimers.current.forEach(clearTimeout), []);
+  const handleEdited = useCallback(
+    (d: PropertyDetail, outcome: SavedOutcome) => {
+      const id = d.monday_item_id;
+      const seq = (saveSeq.current.get(id) ?? 0) + 1;
+      saveSeq.current.set(id, seq);
+      applyDetail(d);
+      if (outcome.unconfirmed.length === 0 || outcome.dryRun) return;
+      // Only when the mirror didn't take the confirmed fields does the refetch need them laid back over it;
+      // when it did, the fresh read is the truth. The move-in total is kept only if every cost field this save
+      // touched was confirmed (otherwise the fresh total is the consistent one).
+      const confirmed = outcome.mirrored ? [] : outcome.keys.filter((k) => !outcome.unconfirmed.includes(k));
+      const keep: Partial<PropertyDetail> = Object.fromEntries(confirmed.map((k) => [k, d[k]]));
+      const costKeys = outcome.keys.filter((k) => COST_KEYS.has(k));
+      if (confirmed.length && costKeys.length && costKeys.every((k) => confirmed.includes(k))) keep.move_in_total = d.move_in_total;
+      const current = () => saveSeq.current.get(id) === seq;
+      recheckTimers.current.push(
+        setTimeout(() => {
+          if (!current()) return;
+          fetch(`/api/properties/${id}`, { cache: "no-store" })
+            .then((r) => (r.ok ? (r.json() as Promise<PropertyDetail>) : null))
+            .then((fresh) => {
+              if (fresh && fresh.monday_item_id === id && current()) applyDetail({ ...fresh, ...keep });
+            })
+            .catch(() => undefined);
+        }, RECHECK_MS),
+      );
+    },
+    [applyDetail],
+  );
+
+  // Unsaved listing edits: one session for both panel copies. Anything that would unmount the open form (close,
+  // scrim, another property, another claim, a new search) goes through `guard`, which asks "Discard N changes?"
+  // first (or, while a save is in flight, runs it right after a successful save).
+  const session = useEditSession(handleEdited);
+  const guard = session.guard;
+  const wide = useSyncExternalStore(subscribeWide, isWide, () => true);
+  const dropDraft = session.drop;
+  useEffect(() => {
+    if (session.draft && session.draft.propertyId !== selectedId) dropDraft();
+  }, [selectedId, session.draft, dropDraft]);
+
   // List row <-> map pin highlight. `from` decides whether the list follows (map hover) or the map pans (pointer on a row).
   const [hover, setHover] = useState<{ id: string; from: HoverSource } | null>(null);
   const hoveredId = hover?.id ?? null;
@@ -101,9 +184,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
 
   // Switching claims: drop everything scoped to the old one before the new claim loads,
   // so nothing (selection, attached set, an in-flight add) can land on the wrong claim.
-  const selectClaim = useCallback((c: ActiveClaim) => {
-    setDrawerOpen(false);
-    if (c.id === claimIdRef.current) return;
+  const switchClaim = useCallback((c: ActiveClaim) => {
     claimIdRef.current = c.id;
     setClaimId(c.id);
     setClaim(null);
@@ -115,6 +196,11 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     url.searchParams.set("claimId", c.id);
     window.history.replaceState(null, "", url);
   }, []);
+  const selectClaim = useCallback((c: ActiveClaim) => {
+    setDrawerOpen(false);
+    if (c.id === claimIdRef.current) return;
+    guard(() => switchClaim(c));
+  }, [guard, switchClaim]);
 
   // Cmd/Ctrl+K toggles the drawer.
   useEffect(() => {
@@ -135,10 +221,11 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   // Dry-run chip: tells whoever is testing that Add to claim will not write to Monday.
   const [dryRun, setDryRun] = useState(false);
   useEffect(() => {
-    fetch("/api/health", { cache: "no-store" })
-      .then((r) => (r.ok ? (r.json() as Promise<HealthResponse>) : null))
-      .then((h) => setDryRun(!!h?.dryRun))
-      .catch(() => undefined);
+    let live = true;
+    void readHealth().then((h) => live && setDryRun(!!h?.dryRun));
+    return () => {
+      live = false;
+    };
   }, []);
 
   // ---- 2. pins inside the radius ----
@@ -194,10 +281,18 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     [pins],
   );
 
-  const onSelect = useCallback((id: string) => {
-    setSelectedId(id);
-    setSheetSnap("collapsed");
-  }, []);
+  const onSelect = useCallback(
+    (id: string) => {
+      const go = () => {
+        setSelectedId(id);
+        setSheetSnap("collapsed");
+      };
+      if (id === selectedIdRef.current) go(); // same property: the open form stays
+      else guard(go);
+    },
+    [guard],
+  );
+  const closePanel = useCallback(() => guard(() => setSelectedId(null)), [guard]);
 
   // Pointing at a pin on the map brings its row into view in whichever results list is showing.
   useEffect(() => {
@@ -250,10 +345,12 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       placeholder="Loss address"
       badge={center?.source === "claim" ? "from claim" : undefined}
       value={center?.source === "claim" ? center.address : undefined}
-      onPick={(loc) => {
-        setSelectedId(null);
-        setCenter({ ...loc, source: "search" });
-      }}
+      onPick={(loc) =>
+        guard(() => {
+          setSelectedId(null);
+          setCenter({ ...loc, source: "search" });
+        })
+      }
       onClear={() => {
         if (claim?.loss) setCenter({ lat: claim.loss.lat, lng: claim.loss.lng, address: claim.loss.address, source: "claim" });
         else setCenter(null);
@@ -426,7 +523,9 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     </div>
   ) : null;
 
-  const panel = selectedId ? (
+  // One copy per layout; `active` says which one is on screen, and only that one shows the edit form.
+  const panelFor = (rail: boolean) =>
+    selectedId ? (
     <PropertyPanel
       key={`${claim?.id ?? "none"}:${selectedId}`}
       propertyId={selectedId}
@@ -436,7 +535,10 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       attached={attachedIds.has(selectedId)}
       onAttached={handleAttached}
       onFlagged={handleFlagged}
-      onClose={() => setSelectedId(null)}
+      edited={editedDetail}
+      session={session}
+      active={rail === wide}
+      onClose={closePanel}
     />
   ) : null;
 
@@ -579,10 +681,12 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
                   apiKey={apiKey}
                   size="hero"
                   placeholder="Street, city, state"
-                  onPick={(loc) => {
-                    setSelectedId(null);
-                    setCenter({ ...loc, source: "search" });
-                  }}
+                  onPick={(loc) =>
+                    guard(() => {
+                      setSelectedId(null);
+                      setCenter({ ...loc, source: "search" });
+                    })
+                  }
                 />
                 <p className="px-0.5 text-xs text-muted">Suggestions by Google Places · one search is one billable session, however many keystrokes.</p>
               </div>
@@ -614,9 +718,9 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
           {/* Compact: panel floats over the map */}
           {selectedId && (
             <div className="absolute inset-0 z-30 lg:hidden">
-              <div className="absolute inset-0" style={{ background: "var(--scrim)" }} onClick={() => setSelectedId(null)} />
+              <div className="absolute inset-0" style={{ background: "var(--scrim)" }} onClick={closePanel} />
               <div className="absolute inset-x-3 bottom-3 top-3 flex overflow-hidden rounded-xl border border-line shadow-[0_12px_40px_rgba(0,0,0,0.25)] sm:inset-x-auto sm:right-3 sm:w-[400px]">
-                {panel}
+                {panelFor(false)}
               </div>
             </div>
           )}
@@ -625,7 +729,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         {/* ---------- Docked panel (lg+) ---------- */}
         {selectedId && (
           <div className="hidden w-[400px] shrink-0 border-l border-line lg:flex">
-            {panel}
+            {panelFor(true)}
           </div>
         )}
 

@@ -3,19 +3,14 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, MessageSquare, Phone, PhoneMissed } from "lucide-react";
 import { callLength, type ContactDigest as Digest, type ContactResponse, type LastCall } from "@/lib/contact";
-import type { HealthResponse } from "@/lib/types";
+import { readHealth } from "./health";
 import { dayMonth } from "@/lib/utils";
 
 type State = { kind: "closed" } | { kind: "loading" } | { kind: "done"; res: ContactResponse } | { kind: "error" };
 
-// Whether the map has a Quo key, asked once per page. Without one the drawer isn't shown at all.
-let quoOn: Promise<boolean> | null = null;
+// Whether the map has a Quo key, from the page's one /api/health request. Without one the drawer isn't shown at all.
 function quoEnabled(): Promise<boolean> {
-  quoOn ??= fetch("/api/health", { cache: "no-store" })
-    .then((r) => (r.ok ? (r.json() as Promise<HealthResponse>) : null))
-    .then((h) => !!h?.quo)
-    .catch(() => false);
-  return quoOn;
+  return readHealth().then((h) => !!h?.quo);
 }
 
 // The panel is mounted twice (desktop rail and phone sheet, one hidden), so both share one request
