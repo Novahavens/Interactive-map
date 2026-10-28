@@ -34,7 +34,7 @@ const SEED_ROW = {
   move_in_total: 2700, updated_at: "2026-10-26T00:00:00Z",
 };
 
-const OK = ["1001", "1002", "1003", "1004", "1005", "5021", "5022", "5023", "5024", "5030"];
+const OK = ["1001", "1002", "1003", "1004", "1005", "1006", "5021", "5022", "5023", "5024", "5030", "5031", "5032", "5033", "5034"];
 const SECRET = "test-secret"; // the mock's sync_config MAP_EDIT_KEY
 const GUARD_SAYS = { "429001": "ip_limit", "429002": "property_limit", "429003": "daily_cap", "400400": "invalid", "409409": "busy" };
 const GUARD_ERRORS = "500500";
@@ -43,7 +43,13 @@ const MONDAY_WRITE_FAILS = "5022";
 const NOTE_FAILS = "5023";
 const MIRROR_FAILS = "5024";
 const STATUS_FAILS = "5030";
-const ND = "1005"; // property_map_status errors: GET answers 502 db_error
+const ND = "1005";
+const SAME_EDIT = "1006"; // someone already set the rent to 2400 in Monday
+const HANG_READ = "5031"; // the first Monday read answers after 12 s (the route gives up at 10 s)
+const HANG_WRITE_LANDS = "5032"; // the write lands in Monday, but the answer comes after 12 s
+const IGNORES_PETS = "5033"; // Monday answers the write OK but silently keeps the pets column
+const REREAD_FAILS = "5034"; // the read-back after the write fails
+const HANG_MS = 12_000; // property_map_status errors: GET answers 502 db_error
 
 if (process.argv[2] === "serve") {
   let seen, monday, rows, log;
@@ -55,7 +61,10 @@ if (process.argv[2] === "serve") {
     // 1005 holds a hand-typed pets value that would not validate ("N/D"), in Monday and in the mirror.
     monday[ND][C.pet_status] = "N/D";
     rows[ND].pet_status = "N/D";
+    monday[SAME_EDIT][C.monthly_rate] = "2400";
+    reads = {};
   };
+  let reads = {};
   reset();
 
   const mondayText = (v) => {
@@ -96,7 +105,10 @@ if (process.argv[2] === "serve") {
         if (req.headers.authorization !== "test") return send(401, { error_message: "bad token" });
         if (kind === "read") {
           const id = String(v.ids?.[0]);
+          reads[id] = (reads[id] ?? 0) + 1;
           if (id === MONDAY_READ_FAILS) return send(200, { errors: [{ message: "boom (read)" }] });
+          if (id === REREAD_FAILS && reads[id] > 1) return send(200, { errors: [{ message: "boom (read-back)" }] });
+          if (id === HANG_READ && reads[id] === 1) await new Promise((r) => setTimeout(r, HANG_MS));
           const item = monday[id];
           if (!item) return send(200, { data: { items: [] } });
           return send(200, { data: { items: [{ id, column_values: (v.cols ?? []).map((c) => ({ id: c, text: item[c] ?? null })) }] } });
@@ -105,7 +117,8 @@ if (process.argv[2] === "serve") {
           const id = String(v.item);
           if (id === MONDAY_WRITE_FAILS) return send(200, { errors: [{ message: "boom (write)" }] });
           const values = JSON.parse(v.values);
-          for (const [col, val] of Object.entries(values)) monday[id][col] = mondayText(val);
+          for (const [col, val] of Object.entries(values)) if (!(id === IGNORES_PETS && col === C.pet_status)) monday[id][col] = mondayText(val);
+          if (id === HANG_WRITE_LANDS) await new Promise((r) => setTimeout(r, HANG_MS));
           return send(200, { data: { change_multiple_column_values: { id } } });
         }
         if (kind === "update") {
@@ -139,6 +152,7 @@ if (process.argv[2] === "serve") {
               entry.status = a.p_status;
               entry.finishes = [...(entry.finishes ?? []), a.p_status];
               if (a.p_before !== undefined && a.p_before !== null) entry.before = a.p_before;
+              if (a.p_status === "monday_ok") entry.confirmed = (a.p_confirmed ?? []).filter((k) => k in entry.changes);
             }
             return send(204);
           }
@@ -148,7 +162,9 @@ if (process.argv[2] === "serve") {
             if (id === MIRROR_FAILS) return pgError("mirror exploded");
             const entry = log.find((l) => l.id === a.p_log_id);
             if (a.p_secret !== SECRET || !entry || entry.property_item_id !== id || entry.status !== "monday_ok" || !rows[id]) return send(200, false);
-            Object.assign(rows[id], entry.changes);
+            const patch = Object.fromEntries(Object.entries(entry.changes).filter(([k]) => (entry.confirmed ?? []).includes(k)));
+            if (!Object.keys(patch).length) return send(200, false);
+            Object.assign(rows[id], patch);
             entry.status = "applied";
             return send(200, true);
           }
@@ -228,7 +244,7 @@ if (process.argv[2] === "serve") {
     const m0 = await mark();
     const r = await edit("1001", HAPPY);
     const s = await since(m0);
-    check("dry run: 200 with dryRun, not mirrored, not noted", r.status === 200 && r.body?.dryRun === true && r.body?.mirrored === false && r.body?.noted === false, JSON.stringify(r.body).slice(0, 200));
+    check("dry run: 200 with dryRun, not mirrored, not noted", r.status === 200 && r.body?.dryRun === true && r.body?.mirrored === false && r.body?.noted === false && same(r.body?.unconfirmed, []), JSON.stringify(r.body).slice(0, 200));
     check("dry run: the detail shows the edit laid over the record", r.body?.detail?.monthly_rate === 2400 && r.body?.detail?.pet_status === "Yes" && r.body?.detail?.next_availability === "2026-11-01");
     check("dry run: move_in_total follows the new rent", r.body?.detail?.move_in_total === 2900, String(r.body?.detail?.move_in_total));
     check("dry run: Monday was read (conflict check still runs)", s.some((x) => x.api === "monday" && x.kind === "read"));
@@ -243,7 +259,7 @@ if (process.argv[2] === "serve") {
     let m0 = await mark();
     let r = await edit("1001", HAPPY);
     let s = await since(m0);
-    check("happy path: 200, noted, mirrored, not dry run", r.status === 200 && r.body?.ok === true && r.body?.noted === true && r.body?.mirrored === true && !r.body?.dryRun, JSON.stringify(r.body).slice(0, 300));
+    check("happy path: 200, noted, mirrored, nothing unconfirmed, not dry run", r.status === 200 && r.body?.ok === true && r.body?.noted === true && r.body?.mirrored === true && same(r.body?.unconfirmed, []) && !r.body?.dryRun, JSON.stringify(r.body).slice(0, 300));
     const guard = rpcs(s, "listing_edit_guard")[0]?.args;
     check(
       "guard got the id, client IP, cleaned editor, fields and normalised changes",
@@ -269,8 +285,9 @@ if (process.argv[2] === "serve") {
     check("mirror called with the secret, property and log id only (no patch)", same(mirror, { p_secret: SECRET, p_property_item_id: "1001", p_log_id: 1 }), JSON.stringify(mirror));
     check("every edit RPC carried the secret", s.filter((x) => x.api === "supabase" && x.fn.startsWith("listing_edit_")).every((x) => x.args.p_secret === SECRET));
     const order = s.map((x) => (x.api === "monday" ? x.kind : x.fn === "listing_edit_finish" ? `finish:${x.args.p_status}` : x.fn))
-      .filter((k) => ["change", "listing_edit_mirror", "update"].includes(k) || k.startsWith("finish:"));
-    check("order: Monday write, monday_ok, mirror, note, applied", same(order, ["change", "finish:monday_ok", "listing_edit_mirror", "update", "finish:applied"]), JSON.stringify(order));
+      .filter((k) => ["read", "change", "listing_edit_mirror", "update"].includes(k) || k.startsWith("finish:"));
+    check("order: read, write, read back, monday_ok, mirror, note, applied", same(order, ["read", "change", "read", "finish:monday_ok", "listing_edit_mirror", "update", "finish:applied"]), JSON.stringify(order));
+    check("the read-back asked for the same columns", same(s.filter((x) => x.kind === "read")[1]?.variables?.cols, [C.monthly_rate, C.next_availability, C.pet_status, C.notes, C.bedrooms]));
     check("the mirror applied the logged row's values to the record", (await state()).rows["1001"].monthly_rate === 2400 && (await state()).rows["1001"].bedrooms === 3);
     const note = s.find((x) => x.kind === "update")?.variables;
     const today = new Date().toISOString().slice(0, 10);
@@ -282,6 +299,7 @@ if (process.argv[2] === "serve") {
     check("response detail has the new values from the mirror", d?.monthly_rate === 2400 && d?.pet_status === "Yes" && d?.next_availability === "2026-11-01" && d?.notes === "Line one\nLine two");
     check("response detail carries map_status, map_reason, other_claims like GET; no geom/fields", d?.map_status === "green" && d?.map_reason === "used_before" && d?.other_claims?.length === 1 && !("geom" in d) && !("fields" in d));
     const l1 = await logOf("1001");
+    check("log: confirmed = every field Monday now shows at the new value (unchanged bedrooms included)", same(l1?.confirmed, ["monthly_rate", "next_availability", "pet_status", "notes", "bedrooms"]), JSON.stringify(l1?.confirmed));
     check("log: monday_ok then applied (by the mirror), before = Monday's values then", l1?.status === "applied" && same(l1?.finishes, ["monday_ok"]) && same(l1?.before, { monthly_rate: 2200, next_availability: null, pet_status: "No", notes: "Old", bedrooms: 3 }), JSON.stringify(l1));
 
     // ---- Clearing fields ----
@@ -346,7 +364,7 @@ if (process.argv[2] === "serve") {
     m0 = await mark();
     r = await edit(MONDAY_WRITE_FAILS, HAPPY);
     s = await since(m0);
-    check("Monday write failure: 502 monday_error", r.status === 502 && r.body?.code === "monday_error", JSON.stringify(r.body));
+    check("Monday write failure: 502 monday_error, 'may not have saved'", r.status === 502 && r.body?.code === "monday_error" && r.body?.error === "Monday may not have saved this. Reopen the property to check before trying again", JSON.stringify(r.body));
     check("Monday write failure: nothing mirrored, no note, logged failed", rpcs(s, "listing_edit_mirror").length === 0 && !s.some((x) => x.kind === "update") && (await logOf(MONDAY_WRITE_FAILS))?.status === "failed");
     check("Monday write failure: the mirror row is untouched", (await state()).rows[MONDAY_WRITE_FAILS].monthly_rate === 2200);
 
@@ -359,6 +377,54 @@ if (process.argv[2] === "serve") {
     r = await edit(MIRROR_FAILS, HAPPY);
     check("mirror failure: 200 mirrored false, detail still shows the edit", r.status === 200 && r.body?.mirrored === false && r.body?.noted === true && r.body?.detail?.monthly_rate === 2400 && r.body?.detail?.move_in_total === 2900, JSON.stringify(r.body).slice(0, 200));
     check("mirror failure: the route closes the row (monday_ok → applied)", same((await logOf(MIRROR_FAILS))?.finishes, ["monday_ok", "applied"]) && (await logOf(MIRROR_FAILS))?.status === "applied");
+
+    // ---- Equal to current is not a conflict ----
+    m0 = await mark();
+    r = await edit(SAME_EDIT, { editor: "Will", changes: { monthly_rate: 2400, bedrooms: 4 }, base: { monthly_rate: 2200, bedrooms: 3 } });
+    s = await since(m0);
+    check("someone already made the same edit: no conflict for that field, 200", r.status === 200 && r.body?.mirrored === true, JSON.stringify(r.body).slice(0, 200));
+    check("…only the other field is written and noted", same(JSON.parse(s.find((x) => x.kind === "change")?.variables?.values ?? "null"), { [C.bedrooms]: "4" }) && /<br>• Bedrooms: 3 → 4$/.test(s.find((x) => x.kind === "update")?.variables?.body ?? ""), s.find((x) => x.kind === "update")?.variables?.body);
+    r = await edit("1003", { editor: "Will", changes: { monthly_rate: 2200, bedrooms: 4 }, base: { monthly_rate: 2000, bedrooms: 2 } });
+    check("stale base on a field set to Monday's value is fine; a real conflict on another field still 409s", r.status === 409 && same(r.body?.fields, ["bedrooms"]) && same(r.body?.current, { bedrooms: 3 }), JSON.stringify(r.body));
+
+    // ---- Hung Monday ----
+    m0 = await mark();
+    let t = Date.now();
+    r = await edit(HANG_READ, HAPPY);
+    let took = Date.now() - t;
+    s = await since(m0);
+    check("hung Monday read: 502 'nothing was changed' after ~10 s", r.status === 502 && r.body?.error === "Could not reach Monday; nothing was changed. Try again" && took >= 9_000 && took < HANG_MS, `${took} ms ${JSON.stringify(r.body)}`);
+    check("hung Monday read: no write, no mirror, logged failed", mutations(s).length === 0 && rpcs(s, "listing_edit_mirror").length === 0 && (await logOf(HANG_READ))?.status === "failed");
+    m0 = await mark();
+    t = Date.now();
+    r = await edit(HANG_WRITE_LANDS, HAPPY);
+    took = Date.now() - t;
+    s = await since(m0);
+    check("hung Monday write: 502 'may not have saved' after ~10 s", r.status === 502 && r.body?.error === "Monday may not have saved this. Reopen the property to check before trying again" && took >= 9_000 && took < HANG_MS, `${took} ms ${JSON.stringify(r.body)}`);
+    check("hung Monday write: nothing mirrored, no note, logged failed", rpcs(s, "listing_edit_mirror").length === 0 && !s.some((x) => x.kind === "update") && (await logOf(HANG_WRITE_LANDS))?.status === "failed");
+    await new Promise((res) => setTimeout(res, HANG_MS - took + 300)); // let the mock finish its late answer
+    m0 = await mark();
+    r = await edit(HANG_WRITE_LANDS, HAPPY);
+    s = await since(m0);
+    check("trying the same save again (it had landed): no conflict, a no-op 200", r.status === 200 && r.body?.noted === false && mutations(s).length === 0 && (await logOf(HANG_WRITE_LANDS))?.status === "noop", JSON.stringify(r.body).slice(0, 200));
+
+    // ---- Monday silently ignores a column ----
+    m0 = await mark();
+    r = await edit(IGNORES_PETS, HAPPY);
+    s = await since(m0);
+    check("Monday ignored pets: 200 with unconfirmed ['pet_status']", r.status === 200 && same(r.body?.unconfirmed, ["pet_status"]) && r.body?.mirrored === true, JSON.stringify(r.body).slice(0, 300));
+    check("…pets is not mirrored; the other fields are", (await state()).rows[IGNORES_PETS].pet_status === "No" && (await state()).rows[IGNORES_PETS].monthly_rate === 2400 && same((await logOf(IGNORES_PETS))?.confirmed, ["monthly_rate", "next_availability", "notes", "bedrooms"]));
+    check("…the detail shows Monday's pets, not the edit", r.body?.detail?.pet_status === "No" && r.body?.detail?.monthly_rate === 2400);
+    const ignoredNote = s.find((x) => x.kind === "update")?.variables?.body ?? "";
+    check("…the note leaves pets out", !ignoredNote.includes("Pets allowed") && ignoredNote.includes("Monthly rent: $2,200 → $2,400"), ignoredNote);
+
+    // ---- The read-back fails ----
+    m0 = await mark();
+    r = await edit(REREAD_FAILS, HAPPY);
+    s = await since(m0);
+    check("read-back failed: 200, mirrored false, every written field unconfirmed", r.status === 200 && r.body?.mirrored === false && same(r.body?.unconfirmed, ["monthly_rate", "next_availability", "pet_status", "notes"]), JSON.stringify(r.body).slice(0, 300));
+    check("…nothing mirrored, row closed applied with nothing confirmed", rpcs(s, "listing_edit_mirror").length === 0 && (await state()).rows[REREAD_FAILS].monthly_rate === 2200 && same((await logOf(REREAD_FAILS))?.confirmed, []) && (await logOf(REREAD_FAILS))?.status === "applied");
+    check("…the detail is the record as it is (the webhook brings Monday's truth)", r.body?.detail?.monthly_rate === 2200);
 
     // ---- Bad requests never reach the guard ----
     m0 = await mark();
@@ -388,7 +454,13 @@ if (process.argv[2] === "serve") {
       body: new ReadableStream({ start(c) { c.enqueue(enc.slice(0, 20_000)); c.enqueue(enc.slice(20_000)); c.close(); } }),
     });
     const cb = await chunked.json().catch(() => null);
-    check("chunked body over 32 KB: 400 Body is too large", chunked.status === 400 && cb?.error === "Body is too large", JSON.stringify(cb));
+    check("chunked body over 32 KB (no Content-Length): 413 too_large", chunked.status === 413 && cb?.code === "too_large", JSON.stringify(cb));
+    const small = new TextEncoder().encode(JSON.stringify({ editor: "Will", changes: { colour: "red" } }));
+    const chunkedOk = await fetch(`${BASE}/api/properties/1001/edit`, {
+      method: "POST", headers: { "content-type": "application/json" }, duplex: "half",
+      body: new ReadableStream({ start(c) { c.enqueue(small.slice(0, 10)); c.enqueue(small.slice(10)); c.close(); } }),
+    });
+    check("a small chunked body is read in full and parsed", chunkedOk.status === 400 && (await chunkedOk.json()).error === "colour can't be edited from the map");
     check("bad requests reached neither Supabase nor Monday", (await since(m0)).length === 0);
 
     const left = (await state()).log.filter((l) => l.status === "pending" || l.status === "monday_ok");

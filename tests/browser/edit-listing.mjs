@@ -124,7 +124,7 @@ async function open(browser, { w = 1440, h = 900, theme = "light", touch = false
   state.dialogs = [];
   p.on("dialog", (d) => {
     state.dialogs.push(d.type());
-    void d.dismiss();
+    void (state.acceptDialogs ? d.accept() : d.dismiss());
   });
   await p.clock.setFixedTime(NOW);
   p.on("pageerror", (e) => errors.push(String(e)));
@@ -493,7 +493,7 @@ for (const dev of [
   await editBtn.click();
   await field("Pet deposit").fill("450");
   for (const [reply, want] of [
-    [{ status: 502, json: { error: "Monday didn't take the change. Try again in a minute.", code: "monday_error" } }, "Monday didn't take the change. Try again in a minute."],
+    [{ status: 502, json: { error: "Monday may not have saved this. Reopen the property to check before trying again", code: "monday_error" } }, "Monday may not have saved this. Reopen the property to check before trying again"],
     [{ status: 429, json: { error: "Too many edits right now; try again in a few minutes.", code: "rate_limited" } }, "Too many edits right now; try again in a few minutes."],
     [{ abort: true }, "Couldn't reach the map server. Try again."],
     [{ status: 409, json: { code: "busy", error: "Someone else is saving this property; try again in a moment" } }, "Someone else is saving this property; try again in a moment"],
@@ -503,6 +503,7 @@ for (const dev of [
     await form().getByRole("button", { name: /^Save/ }).click();
     const msg = form().getByRole("alert").filter({ hasText: want });
     await msg.waitFor();
+    if (reply.json?.code === "monday_error") check("error 502 monday_error: the server's words stand alone (no 'Not saved.' in front)", (await text(msg)) === want, await text(msg));
     check(
       `error ${reply.status ?? "network"}${reply.json?.code ? " " + reply.json.code : ""}: footer says '${want}' and the edit is kept`,
       (await field("Pet deposit").inputValue()) === "450" && (await form().getByText("was $300").count()) === 1 && (await form().getByText("since you opened the form").count()) === 0,
@@ -581,6 +582,123 @@ for (const dev of [
     return e.defaultPrevented;
   });
   check("beforeunload: no question once nothing is unsaved", !blocked);
+  await s.ctx.close();
+}
+
+// ===================================================================================================
+// 3c. Guarded actions during a save; the draft across a layout switch; the draft in sessionStorage
+// ===================================================================================================
+{
+  const s = await open(browser, { reporter: "Pat Tester" });
+  const { p, state } = s;
+  const P = panel(p);
+  const form = () => P.getByRole("form", { name: "Edit listing details" });
+  const field = (label) => form().getByLabel(label, { exact: true });
+  const editBtn = P.getByRole("button", { name: "Edit", exact: true });
+  const heading = async () => (await P.getByRole("heading").first().innerText()).trim();
+  const stored = (id) => p.evaluate((k) => sessionStorage.getItem(k), `nh-edit-draft:${id}`);
+
+  // another row picked while a save is in flight: goes there right after the save succeeds, no question
+  await selectRow(s, "4003");
+  await editBtn.click();
+  await field("Square feet").fill("2000");
+  state.replies.push({ status: 200, delay: 1200 });
+  await form().getByRole("button", { name: /^Save/ }).click();
+  await p.waitForTimeout(200);
+  await row(p, "4004").click();
+  await p.waitForTimeout(200);
+  check("in-flight save + another row: no question while saving, still on the first property", (await form().getByText(/Discard \d+ change/).count()) === 0 && (await heading()) === "Fixture 4003");
+  await P.getByRole("heading", { name: "Fixture 4004" }).waitFor({ timeout: 5000 }).catch(() => undefined);
+  check("in-flight save + another row: the save lands, then the other property opens", (await heading()) === "Fixture 4004" && state.details.get("4003").sqft === 2000);
+  await editBtn.click();
+  await field("Square feet").fill("2222");
+  await form().getByRole("button", { name: "Cancel" }).click();
+  await form().getByRole("button", { name: "Discard" }).click();
+  await form().waitFor({ state: "detached" });
+  check("in-flight save + another row: a later Discard runs nothing stale (stays put)", (await heading()) === "Fixture 4004" && (await P.count()) === 1);
+
+  // a failed save drops the waiting action and keeps the form
+  await editBtn.click();
+  await field("Square feet").fill("2300");
+  state.replies.push({ status: 502, delay: 900, json: { code: "monday_error", error: "Monday may not have saved this. Reopen the property to check before trying again" } });
+  await form().getByRole("button", { name: /^Save/ }).click();
+  await p.waitForTimeout(150);
+  await P.getByRole("button", { name: "Close panel" }).click();
+  await form().getByRole("alert").filter({ hasText: "Monday may not" }).waitFor();
+  await p.waitForTimeout(300);
+  check("in-flight save + Close, save fails: the panel stays with the form and the edit", (await P.count()) === 1 && (await field("Square feet").inputValue()) === "2300");
+  await form().getByRole("button", { name: "Cancel" }).click();
+  await form().getByRole("button", { name: "Discard" }).click();
+  await form().waitFor({ state: "detached" });
+  check("in-flight save + Close, save fails: the dropped close doesn't fire later", (await P.count()) === 1 && (await heading()) === "Fixture 4004");
+
+  // Close during a save that succeeds: closes right after it
+  await editBtn.click();
+  await field("Square feet").fill("2400");
+  state.replies.push({ status: 200, delay: 900 });
+  await form().getByRole("button", { name: /^Save/ }).click();
+  await p.waitForTimeout(150);
+  await P.getByRole("button", { name: "Close panel" }).click();
+  await p.waitForTimeout(1500);
+  check("in-flight save + Close, save succeeds: the panel closes after the save", (await p.locator('aside[aria-label="Property details"]').count()) === 0 && state.details.get("4004").sqft === 2400);
+
+  // the draft survives crossing the lg breakpoint (1440 -> 390 -> 1440), and only the copy on screen has the form
+  await selectRow(s, "4001");
+  await editBtn.click();
+  await field("Bedrooms").fill("5");
+  await field("Monthly rent").fill("2500");
+  await p.setViewportSize({ width: 390, height: 844 });
+  await p.waitForTimeout(500);
+  check("resize to 390: the form is in the sheet copy, with the edits", (await form().count()) === 1 && (await field("Bedrooms").inputValue()) === "5" && (await field("Monthly rent").inputValue()) === "2500");
+  check("resize to 390: only one form in the page", (await p.locator('form[aria-label="Edit listing details"]').count()) === 1);
+  await P.getByRole("button", { name: "Close panel" }).click();
+  const askPhone = form().getByRole("group", { name: "Discard changes" });
+  await askPhone.waitFor({ timeout: 3000 }).catch(() => undefined);
+  check("resize to 390: the Discard question shows where it can be seen", await askPhone.isVisible());
+  await p.screenshot({ path: `${OUT}/resize-390-prompt.png` });
+  await form().getByRole("button", { name: "Keep editing" }).click();
+  await p.setViewportSize({ width: 1440, height: 900 });
+  await p.waitForTimeout(500);
+  check("resize back to 1440: the rail form has the same edits", (await form().count()) === 1 && (await field("Bedrooms").inputValue()) === "5" && (await field("Monthly rent").inputValue()) === "2500");
+  check("resize back to 1440: only one form in the page", (await p.locator('form[aria-label="Edit listing details"]').count()) === 1);
+  check("the draft is stored for this tab while it has changes", JSON.parse((await stored("4001")) ?? "{}").raw?.bedrooms === "5");
+  await form().getByRole("button", { name: /^Save/ }).click();
+  await form().waitFor({ state: "detached" });
+  const lastPost = state.posts.at(-1);
+  check("resize: the save sends the edits made before the switch", lastPost.changes.bedrooms === 5 && lastPost.changes.monthly_rate === 2500, JSON.stringify(lastPost.changes));
+  check("saved: the stored draft is cleared", (await stored("4001")) === null);
+
+  // the iframe goes away without beforeunload (here: a reload that is let through): the draft comes back
+  await editBtn.click();
+  await field("Square feet").fill("2100");
+  state.acceptDialogs = true;
+  await p.reload({ waitUntil: "networkidle" });
+  state.acceptDialogs = false;
+  await p.waitForTimeout(2500);
+  await selectRow(s, "4001");
+  await editBtn.click();
+  check("restore: 'Restored your unsaved changes' and the value is back", (await form().getByText("Restored your unsaved changes.").count()) === 1 && (await field("Square feet").inputValue()) === "2100");
+  check("restore: the restored value counts as a change", (await text(form().getByRole("button", { name: /^Save/ }))) === "Save 1 change");
+  await p.screenshot({ path: `${OUT}/restored-draft.png` });
+  await form().getByRole("button", { name: "Start over" }).click();
+  check("restore: Start over goes back to the property's values and forgets the draft", (await field("Square feet").inputValue()) === "1800" && (await form().getByText("Restored your unsaved changes.").count()) === 0 && (await stored("4001")) === null);
+  await field("Square feet").fill("2100");
+  await form().getByRole("button", { name: "Cancel" }).click();
+  await form().getByRole("button", { name: "Discard" }).click();
+  check("discard: the stored draft is cleared", (await stored("4001")) === null);
+
+  // a stored draft for an older version of the property is dropped, with a word about it
+  await editBtn.click();
+  await field("Square feet").fill("2100");
+  state.acceptDialogs = true;
+  await p.reload({ waitUntil: "networkidle" });
+  state.acceptDialogs = false;
+  state.details.set("4001", { ...state.details.get("4001"), sqft: 1950 }); // changed in Monday meanwhile
+  await p.waitForTimeout(2500);
+  await selectRow(s, "4001");
+  await editBtn.click();
+  check("stale draft: 'Your unsaved changes were for an older version of this property.'", (await form().getByText("Your unsaved changes were for an older version of this property.").count()) === 1);
+  check("stale draft: the form starts from the current value and the draft is gone", (await field("Square feet").inputValue()) === "1950" && (await stored("4001")) === null);
   await s.ctx.close();
 }
 

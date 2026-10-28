@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AlertTriangle, ChevronDown, DollarSign, Images, Inbox, Moon, PawPrint, RefreshCw, Send, SlidersHorizontal, Sun } from "lucide-react";
 import MapCanvas from "./MapCanvas";
 import PropertyPanel from "./PropertyPanel";
@@ -11,6 +11,7 @@ import { useTheme } from "@/lib/useTheme";
 import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, type PropertyDetail } from "@/lib/types";
 import { EDIT_FIELDS } from "@/lib/listing-edit";
 import { readHealth } from "./property/health";
+import { useEditSession } from "./property/edit-session";
 import { STATUS_ORDER, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
 import ClaimBrief, { claimGlance } from "./ClaimBrief";
 import ResultsSheet, { type SheetSnap } from "./ResultsSheet";
@@ -29,6 +30,15 @@ interface Props {
 
 type Center = { lat: number; lng: number; address: string; source: "claim" | "search" };
 const NONE_HIDDEN: Record<MapStatus, boolean> = { green: false, yellow: false, red: false };
+
+// The docked rail (lg, 1024px and up) or the phone sheet: which panel copy is on screen.
+const WIDE = "(min-width: 1024px)";
+const isWide = () => window.matchMedia(WIDE).matches;
+function subscribeWide(onChange: () => void) {
+  const mq = window.matchMedia(WIDE);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
 
 export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props) {
   const { theme, toggle } = useTheme();
@@ -60,27 +70,34 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
 
-  // Unsaved listing edits: anything that would unmount the open form (close, scrim, another property, another
-  // claim, a new search) asks the form's own "Discard N changes?" first, and only runs once Discard is chosen.
-  const dirtyRef = useRef(0);
-  const pendingRef = useRef<(() => void) | null>(null);
-  const [discardAsk, setDiscardAsk] = useState(0);
-  const guard = useCallback((action: () => void) => {
-    if (dirtyRef.current > 0) {
-      pendingRef.current = action;
-      setDiscardAsk((n) => n + 1);
-    } else action();
+  // A saved listing edit: the list row, the map pin and the other panel mount take the new values at once.
+  // `at` lets a panel mounted later ignore it (it fetches its own, fresher copy); cleared when the selection moves.
+  const [editedDetail, setEditedDetail] = useState<{ detail: PropertyDetail; at: number } | null>(null);
+  useEffect(() => setEditedDetail(null), [selectedId, claimId]);
+  const handleEdited = useCallback((d: PropertyDetail) => {
+    setEditedDetail({ detail: d, at: Date.now() });
+    const apply = <T extends object>(p: T): T => {
+      const next = { ...p } as Record<string, unknown>;
+      for (const { key } of EDIT_FIELDS) if (key in next && key in d) next[key] = d[key as keyof PropertyDetail];
+      // The list carries next_availability under its own name.
+      if ("available_from" in next && "next_availability" in d) next.available_from = d.next_availability;
+      return next as T;
+    };
+    setPins((prev) => prev.map((p) => (p.monday_item_id === d.monday_item_id ? apply(p) : p)));
+    setAttachedPins((prev) => prev.map((p) => (p.monday_item_id === d.monday_item_id ? apply(p) : p)));
   }, []);
-  const onDirty = useCallback((count: number) => {
-    dirtyRef.current = count;
-  }, []);
-  const onDiscardDecision = useCallback((discard: boolean) => {
-    const action = pendingRef.current;
-    pendingRef.current = null;
-    if (!discard) return;
-    dirtyRef.current = 0;
-    action?.();
-  }, []);
+
+  // Unsaved listing edits: one session for both panel copies. Anything that would unmount the open form (close,
+  // scrim, another property, another claim, a new search) goes through `guard`, which asks "Discard N changes?"
+  // first (or, while a save is in flight, runs it right after a successful save).
+  const session = useEditSession(handleEdited);
+  const guard = session.guard;
+  const wide = useSyncExternalStore(subscribeWide, isWide, () => true);
+  const dropDraft = session.drop;
+  useEffect(() => {
+    if (session.draft && session.draft.propertyId !== selectedId) dropDraft();
+  }, [selectedId, session.draft, dropDraft]);
+
   // List row <-> map pin highlight. `from` decides whether the list follows (map hover) or the map pans (pointer on a row).
   const [hover, setHover] = useState<{ id: string; from: HoverSource } | null>(null);
   const hoveredId = hover?.id ?? null;
@@ -247,23 +264,6 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   // A bad-link report from the panel shows on the list straight away, without waiting for the sync.
   const handleFlagged = useCallback((propertyId: string) => {
     setPins((prev) => prev.map((p) => (p.monday_item_id === propertyId ? { ...p, link_status: BAD_LINK } : p)));
-  }, []);
-
-  // A saved listing edit: the list row, the map pin and the other panel mount take the new values at once.
-  // `at` lets a panel mounted later ignore it (it fetches its own, fresher copy); cleared when the selection moves.
-  const [editedDetail, setEditedDetail] = useState<{ detail: PropertyDetail; at: number } | null>(null);
-  useEffect(() => setEditedDetail(null), [selectedId, claimId]);
-  const handleEdited = useCallback((d: PropertyDetail) => {
-    setEditedDetail({ detail: d, at: Date.now() });
-    const apply = <T extends object>(p: T): T => {
-      const next = { ...p } as Record<string, unknown>;
-      for (const { key } of EDIT_FIELDS) if (key in next && key in d) next[key] = d[key as keyof PropertyDetail];
-      // The list carries next_availability under its own name.
-      if ("available_from" in next && "next_availability" in d) next.available_from = d.next_availability;
-      return next as T;
-    };
-    setPins((prev) => prev.map((p) => (p.monday_item_id === d.monday_item_id ? apply(p) : p)));
-    setAttachedPins((prev) => prev.map((p) => (p.monday_item_id === d.monday_item_id ? apply(p) : p)));
   }, []);
 
   const visiblePins = useMemo(() => pins.filter((p) => passesFilters(p, filters)), [pins, filters]);
@@ -483,7 +483,9 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     </div>
   ) : null;
 
-  const panel = selectedId ? (
+  // One copy per layout; `active` says which one is on screen, and only that one shows the edit form.
+  const panelFor = (rail: boolean) =>
+    selectedId ? (
     <PropertyPanel
       key={`${claim?.id ?? "none"}:${selectedId}`}
       propertyId={selectedId}
@@ -494,10 +496,8 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       onAttached={handleAttached}
       onFlagged={handleFlagged}
       edited={editedDetail}
-      onEdited={handleEdited}
-      discardAsk={discardAsk}
-      onDirty={onDirty}
-      onDiscardDecision={onDiscardDecision}
+      session={session}
+      active={rail === wide}
       onClose={closePanel}
     />
   ) : null;
@@ -680,7 +680,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
             <div className="absolute inset-0 z-30 lg:hidden">
               <div className="absolute inset-0" style={{ background: "var(--scrim)" }} onClick={closePanel} />
               <div className="absolute inset-x-3 bottom-3 top-3 flex overflow-hidden rounded-xl border border-line shadow-[0_12px_40px_rgba(0,0,0,0.25)] sm:inset-x-auto sm:right-3 sm:w-[400px]">
-                {panel}
+                {panelFor(false)}
               </div>
             </div>
           )}
@@ -689,7 +689,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         {/* ---------- Docked panel (lg+) ---------- */}
         {selectedId && (
           <div className="hidden w-[400px] shrink-0 border-l border-line lg:flex">
-            {panel}
+            {panelFor(true)}
           </div>
         )}
 

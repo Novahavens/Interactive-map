@@ -16,8 +16,9 @@ import ContactActions from "./property/ContactActions";
 import { Fee, LinkChip, Row, Section } from "./property/parts";
 import { ReportBadLink, ReportedNote, type Reported } from "./property/ReportBadLink";
 import AvailabilityPill from "./property/AvailabilityPill";
-import EditListing, { type SavedOutcome } from "./property/EditListing";
-import { editingEnabled, markEditingOff } from "./property/health";
+import EditListing from "./property/EditListing";
+import type { EditSession } from "./property/edit-session";
+import { editingEnabled } from "./property/health";
 import { availabilityPill, localToday } from "@/lib/availability";
 import { MONDAY_BOARDS, mondayItemUrl, money, num, miles, yesNo } from "@/lib/utils";
 
@@ -32,21 +33,11 @@ interface Props {
   onFlagged: (propertyId: string) => void;
   /** The latest saved edit (from either panel mount, at `at` ms): this mount takes it when it is this property and newer than the mount. */
   edited: { detail: PropertyDetail; at: number } | null;
-  onEdited: (detail: PropertyDetail) => void;
-  /** Bumped when something outside the panel (close, another property, another claim) needs the edit form to ask "Discard N changes?". */
-  discardAsk: number;
-  /** How many unsaved changes the edit form holds (0 when it is closed). */
-  onDirty: (count: number) => void;
-  /** The answer to that question: true = Discard (run the action that asked), false = Keep editing. */
-  onDiscardDecision: (discard: boolean) => void;
+  /** The page's listing-edit session (one draft, shared by both panel copies). */
+  session: EditSession;
+  /** This copy is the one on screen (rail on wide screens, sheet on narrow): only it shows the edit form. */
+  active: boolean;
   onClose: () => void;
-}
-
-const SAVED_MS = 6000;
-
-function savedText(o: SavedOutcome): string {
-  if (o.dryRun) return "Dry run: nothing was written to Monday.";
-  return o.noted ? "Saved to Monday." : "Saved to Monday. The Monday note couldn't be posted.";
 }
 
 const STATUS_TOKEN: Record<MapStatus, { bg: string; ink: string; line: string }> = {
@@ -64,10 +55,8 @@ export default function PropertyPanel({
   onAttached,
   onFlagged,
   edited,
-  onEdited,
-  discardAsk,
-  onDirty,
-  onDiscardDecision,
+  session,
+  active,
   onClose,
 }: Props) {
   const [detail, setDetail] = useState<PropertyDetail | null>(null);
@@ -77,12 +66,14 @@ export default function PropertyPanel({
   const savedHere = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [reported, setReported] = useState<Reported | null>(null);
-  const [canEdit, setCanEdit] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [saved, setSaved] = useState<string | null>(null);
+  const [canEditHealth, setCanEdit] = useState(false);
+  const canEdit = canEditHealth && !session.editingOff;
+  const draft = session.draft?.propertyId === propertyId ? session.draft : null;
+  const editing = !!draft; // in either copy
+  const formHere = editing && active;
+  const saved = session.note?.propertyId === propertyId ? session.note.text : null;
   const editRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const focusEdit = useRef(false);
 
   useEffect(() => {
     let live = true;
@@ -100,32 +91,13 @@ export default function PropertyPanel({
     setDetail(edited.detail);
   }, [edited, propertyId, mountedAt]);
 
+  // Back on the Edit button once the form closes in this copy (Close when Edit has gone: editing switched off).
+  // A form that moved to the other layout isn't a close.
+  const hadForm = useRef(false);
   useEffect(() => {
-    if (!saved) return;
-    const t = setTimeout(() => setSaved(null), SAVED_MS);
-    return () => clearTimeout(t);
-  }, [saved]);
-
-  // Back on the Edit button once the form has gone (it is invisible while editing).
-  useEffect(() => {
-    if (!editing && focusEdit.current) {
-      focusEdit.current = false;
-      (editRef.current ?? closeRef.current)?.focus(); // Close when Edit has gone (editing switched off)
-    }
-  }, [editing]);
-
-  function closeEditor() {
-    focusEdit.current = true;
-    setEditing(false);
-  }
-
-  function handleSaved(next: PropertyDetail, outcome: SavedOutcome) {
-    savedHere.current = true;
-    setDetail(next);
-    setSaved(savedText(outcome));
-    closeEditor();
-    onEdited(next);
-  }
+    if (hadForm.current && !editing && active) (editRef.current ?? closeRef.current)?.focus();
+    hadForm.current = formHere;
+  }, [formHere, editing, active]);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,10 +186,7 @@ export default function PropertyPanel({
               tabIndex={editing ? -1 : undefined}
               disabled={!fetched}
               title={fetched ? undefined : "Loading the latest copy…"}
-              onClick={() => {
-                setSaved(null);
-                setEditing(true);
-              }}
+              onClick={() => detail && session.open(detail)}
               className={`inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-[13px] font-medium text-ink hover:bg-surface-muted disabled:opacity-50 ${editing ? "invisible" : ""} [@media(pointer:coarse)]:h-[44px] [@media(pointer:coarse)]:px-3`}
             >
               <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
@@ -247,7 +216,7 @@ export default function PropertyPanel({
             <span className="min-w-0">{saved}</span>
             <button
               type="button"
-              onClick={() => setSaved(null)}
+              onClick={session.dismissNote}
               aria-label="Dismiss"
               className="-my-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded [@media(pointer:coarse)]:h-[44px] [@media(pointer:coarse)]:w-[44px]"
             >
@@ -257,20 +226,8 @@ export default function PropertyPanel({
         )}
       </div>
 
-      {editing && detail ? (
-        <EditListing
-          propertyId={propertyId}
-          detail={detail}
-          discardAsk={discardAsk}
-          onDirty={onDirty}
-          onDiscardDecision={onDiscardDecision}
-          onCancel={closeEditor}
-          onSaved={handleSaved}
-          onEditingOff={() => {
-            markEditingOff();
-            setCanEdit(false);
-          }}
-        />
+      {formHere && draft ? (
+        <EditListing draft={draft} session={session} />
       ) : (
       <>
       {/* Body */}

@@ -9,14 +9,16 @@
 --
 -- Clearing a Monday column is done by the route with a JSON null for every kind (numbers, text, long_text,
 -- date, dropdown), per monday.com's API reference "Changing column values" / per-column "Clear" sections
--- (developer.monday.com/api-reference): in change_multiple_column_values "" sets a numbers column to 0.
+-- (developer.monday.com/api-reference), confirmed live on 28 Oct 2026 on a throwaway board: null cleared all
+-- five kinds; "" on a numbers column leaves a stored empty value instead of clearing it.
 --
 -- Every statement stands on its own so it can be applied one at a time (the connector cancels at ~60 s),
 -- and the whole file can be re-run.
 
 -- 1. listing_edit_log: one row per edit that passed the guard. The guard is the only inserter.
 --    Lifecycle: pending → monday_ok (Monday written) → applied (mirrored, or finished without the mirror);
---    pending → conflict | noop | failed | dry_run.
+--    pending → conflict | noop | failed | dry_run. `confirmed` holds the changed keys that Monday showed when it
+--    was read back after the write; the mirror applies only those.
 create table if not exists public.listing_edit_log (
   id               bigserial primary key,
   at               timestamptz not null default now(),
@@ -26,8 +28,11 @@ create table if not exists public.listing_edit_log (
   fields           text[] not null,
   changes          jsonb not null,
   before           jsonb,
+  confirmed        text[],
   status           text not null default 'pending'
 );
+
+alter table public.listing_edit_log add column if not exists confirmed text[];
 
 alter table public.listing_edit_log drop constraint if exists listing_edit_log_status_check;
 
@@ -50,6 +55,8 @@ revoke all on sequence public.listing_edit_log_id_seq from anon, authenticated;
 drop function if exists public.listing_edit_guard(text, text, text, text[], jsonb);
 
 drop function if exists public.listing_edit_finish(bigint, text, jsonb);
+
+drop function if exists public.listing_edit_finish(text, bigint, text, jsonb);
 
 drop function if exists public.listing_edit_mirror(text, jsonb);
 
@@ -164,7 +171,9 @@ grant execute on function public.listing_edit_guard(text, text, text, text, text
 
 -- 6. Records how an edit ended (and what Monday held before it, when given). Only forward moves:
 --    pending → any outcome; monday_ok → applied. A finished row never changes again. Wrong secret: no-op.
-create or replace function public.listing_edit_finish(p_secret text, p_log_id bigint, p_status text, p_before jsonb default null)
+--    Moving to monday_ok records p_confirmed, narrowed to keys of the logged changes (none given: none).
+create or replace function public.listing_edit_finish(p_secret text, p_log_id bigint, p_status text, p_before jsonb default null,
+                                                      p_confirmed text[] default null)
 returns void
 language plpgsql
 security definer
@@ -173,19 +182,23 @@ as $$
 begin
   if not public.listing_edit_key_ok(p_secret) then return; end if;
   update public.listing_edit_log
-  set status = p_status, before = coalesce(p_before, before)
+  set status = p_status, before = coalesce(p_before, before),
+      confirmed = case when p_status = 'monday_ok'
+                       then array(select k from unnest(coalesce(p_confirmed, '{}'::text[])) k where changes ? k)
+                       else confirmed end
   where id = p_log_id
     and ((status = 'pending' and p_status in ('monday_ok', 'applied', 'conflict', 'failed', 'dry_run', 'noop'))
       or (status = 'monday_ok' and p_status = 'applied'));
 end;
 $$;
 
-revoke all on function public.listing_edit_finish(text, bigint, text, jsonb) from public;
+revoke all on function public.listing_edit_finish(text, bigint, text, jsonb, text[]) from public;
 
-grant execute on function public.listing_edit_finish(text, bigint, text, jsonb) to anon, authenticated, service_role;
+grant execute on function public.listing_edit_finish(text, bigint, text, jsonb, text[]) to anon, authenticated, service_role;
 
--- 7. The mirror writer. Applies ONLY the changes stored on log row p_log_id, and only when that row belongs to
---    this property, is from the last 5 minutes and is monday_ok (Monday was written); then marks it applied.
+-- 7. The mirror writer. Applies ONLY the changes stored on log row p_log_id, narrowed to its confirmed keys,
+--    and only when that row belongs to this property, is from the last 5 minutes and is monday_ok (Monday was
+--    written and read back); then marks it applied. Nothing confirmed: nothing written, false.
 --    Touches only the 18 editable columns, each only when its key is in the logged changes (a JSON null
 --    clears it). move_in_total is generated, so it follows the costs. Returns whether the property row was
 --    updated; false for a wrong secret or a row that doesn't qualify.
@@ -195,13 +208,16 @@ language plpgsql
 security definer
 set search_path to 'public'
 as $$
-declare p jsonb; v_found boolean;
+declare p jsonb; v_keys text[]; v_found boolean;
 begin
   if not public.listing_edit_key_ok(p_secret) then return false; end if;
-  select changes into p from public.listing_edit_log
+  select changes, confirmed into p, v_keys from public.listing_edit_log
   where id = p_log_id and property_item_id = p_property_item_id and status = 'monday_ok' and at > now() - interval '5 minutes'
   for update;
-  if not found or not public.listing_edit_valid(p) then return false; end if;
+  if not found then return false; end if;
+  select coalesce(jsonb_object_agg(key, value), '{}'::jsonb) into p
+  from jsonb_each(p) where key = any(coalesce(v_keys, '{}'::text[]));
+  if p = '{}'::jsonb or not public.listing_edit_valid(p) then return false; end if;
   update public.properties set
     next_availability = case when p ? 'next_availability' then (p->>'next_availability')::date else next_availability end,
     bedrooms          = case when p ? 'bedrooms'          then (p->>'bedrooms')::numeric          else bedrooms end,

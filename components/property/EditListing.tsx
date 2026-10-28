@@ -1,16 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import {
-  EDIT_FIELDS,
   EDIT_GROUPS,
   EDITOR_MAX,
   FIELD_BY_KEY,
-  currentValue,
   displayValue,
   normaliseValue,
-  sameValue,
   type EditChanges,
   type EditField,
   type EditGroup,
@@ -18,90 +15,47 @@ import {
   type EditListingRequest,
   type EditValue,
 } from "@/lib/listing-edit";
-import type { ApiError, EditConflictResponse, EditListingResponse, PropertyDetail } from "@/lib/types";
+import type { ApiError, EditConflictResponse, EditListingResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { readReporterName } from "./ReportBadLink";
 import { Section } from "./parts";
+import { FIELDS, evaluate, toRaw, type EditDraft, type EditSession, type Values } from "./edit-session";
 
 const REPORTER_KEY = "nh-reporter-name";
-const FIELDS = EDIT_FIELDS as readonly EditField[];
 const GROUPS = Object.keys(EDIT_GROUPS) as EditGroup[];
 const NETWORK_ERROR = "Couldn't reach the map server. Try again.";
 const EDITING_OFF = "Editing from the map is switched off right now.";
 
-/** What the server said about a save that went through. */
-export interface SavedOutcome {
-  noted: boolean;
-  mirrored: boolean;
-  dryRun: boolean;
-}
-
-type Values = Record<EditKey, EditValue>;
-type Raw = Record<EditKey, string>;
-type Status =
-  | { kind: "idle" }
-  | { kind: "saving" }
-  | { kind: "error"; message: string }
-  | { kind: "conflict"; fields: EditKey[]; current: EditChanges };
-
-const toRaw = (v: EditValue | undefined): string => (v === null || v === undefined ? "" : String(v));
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** One field against where the form started: unchanged, changed to a valid value, or changed and invalid. */
-function evaluate(field: EditField, raw: string, base: EditValue): { changed: false } | { changed: true; value: EditValue } | { changed: true; error: string } {
-  // Untouched stays unchanged even when the stored value wouldn't validate (pets "N/D").
-  if (raw === toRaw(base)) return { changed: false };
-  const n = normaliseValue(field, raw);
-  if (!n.ok) return { changed: true, error: n.error };
-  if (sameValue(n.value, base)) return { changed: false };
-  return { changed: true, value: n.value };
-}
-
 interface Props {
-  propertyId: string;
-  detail: PropertyDetail;
-  /** Bumped from outside (close, another property, another claim): ask "Discard N changes?" now. */
-  discardAsk: number;
-  /** Unsaved change count, reported on every change and as 0 when the form goes. */
-  onDirty: (count: number) => void;
-  /** Answer to the question above: true = Discard, false = Keep editing. Also called for the form's own Cancel. */
-  onDiscardDecision: (discard: boolean) => void;
-  onCancel: () => void;
-  onSaved: (detail: PropertyDetail, outcome: SavedOutcome) => void;
-  /** The route answered editing_off: the panel hides Edit once this form closes. */
-  onEditingOff: () => void;
+  draft: EditDraft;
+  session: EditSession;
 }
 
-/** Edit the listing details of one property; the server writes Monday, then the Supabase mirror. */
-export default function EditListing({ propertyId, detail, discardAsk, onDirty, onDiscardDecision, onCancel, onSaved, onEditingOff }: Props) {
+/**
+ * Edit the listing details of one property; the server writes Monday, then the Supabase mirror. The draft and
+ * every decision about it live in the page's edit session (./edit-session.ts), so this form can be unmounted
+ * and mounted again in the other layout, mid-save included, without losing anything.
+ */
+export default function EditListing({ draft, session }: Props) {
   const uid = useId();
-  const [base, setBase] = useState<Values>(() => {
-    const row = detail as unknown as Record<string, unknown>;
-    return Object.fromEntries(FIELDS.map((f) => [f.key, currentValue(f, row)])) as Values;
-  });
-  const [raw, setRaw] = useState<Raw>(() => Object.fromEntries(FIELDS.map((f) => [f.key, toRaw(base[f.key])])) as Raw);
-  const [shown, setShown] = useState<Partial<Record<EditKey, string>>>({});
-  const [name, setName] = useState(() => readReporterName());
-  const [nameError, setNameError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
-  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const { propertyId, raw, base, name, shown, nameError, confirming, askSeq, status, notice } = draft;
+  const update = (fn: (d: EditDraft) => EditDraft) => session.update(propertyId, fn);
 
   const firstRef = useRef<HTMLInputElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const keepRef = useRef<HTMLButtonElement>(null);
   const conflictRef = useRef<HTMLDivElement>(null);
-  const alive = useRef(true);
 
   useEffect(() => {
-    alive.current = true;
+    if (!draft.autofocus) return;
     firstRef.current?.focus();
-    return () => {
-      alive.current = false;
-    };
+    session.update(propertyId, (d) => ({ ...d, autofocus: false }));
+    // Once, on the mount right after Edit; a later mount in the other layout leaves focus alone.
   }, []);
   useEffect(() => {
     if (confirming) keepRef.current?.focus();
-  }, [confirming]);
+  }, [confirming, askSeq]);
   useEffect(() => {
     if (status.kind === "conflict") {
       conflictRef.current?.scrollIntoView({ block: "nearest" });
@@ -116,63 +70,34 @@ export default function EditListing({ propertyId, detail, discardAsk, onDirty, o
   const trimmedName = name.trim();
   const nameProblem = !trimmedName ? "Enter your name" : trimmedName.length > EDITOR_MAX ? `At most ${EDITOR_MAX} characters` : null;
   const saving = status.kind === "saving";
-
-  useEffect(() => onDirty(count), [count, onDirty]);
-  useEffect(() => () => onDirty(0), [onDirty]);
-
-  // Leaving or reloading the page with unsaved changes asks the browser's own question.
-  useEffect(() => {
-    if (count === 0) return;
-    const ask = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", ask);
-    return () => window.removeEventListener("beforeunload", ask);
-  }, [count]);
-
-  // Something outside the form wants to close it: the same inline question as Cancel.
-  const askedAt = useRef(discardAsk);
-  useEffect(() => {
-    if (discardAsk === askedAt.current) return;
-    askedAt.current = discardAsk;
-    if (count === 0) {
-      onDiscardDecision(true);
-      return;
-    }
-    setConfirming(true);
-    requestAnimationFrame(() => keepRef.current?.focus());
-    // Runs on a new question only; count and the callback are read as they are at that moment.
-  }, [discardAsk]);
-
   const canSave = count > 0 && !invalid && !nameProblem && !saving;
 
   function setValue(field: EditField, value: string) {
-    setRaw((r) => ({ ...r, [field.key]: value }));
-    // Once a message shows, it follows the typing so it clears as soon as the value is right.
-    if (shown[field.key]) {
-      const ev = evaluate(field, value, base[field.key]);
-      setShown((s) => ({ ...s, [field.key]: "error" in ev ? ev.error : undefined }));
-    }
-    if (status.kind === "error") setStatus({ kind: "idle" });
+    update((d) => {
+      const next = { ...d, raw: { ...d.raw, [field.key]: value } };
+      // Once a message shows, it follows the typing so it clears as soon as the value is right.
+      if (d.shown[field.key]) {
+        const ev = evaluate(field, value, d.base[field.key]);
+        next.shown = { ...d.shown, [field.key]: "error" in ev ? ev.error : undefined };
+      }
+      if (d.status.kind === "error") next.status = { kind: "idle" };
+      return next;
+    });
   }
 
   function check(field: EditField) {
-    const ev = evaluate(field, raw[field.key], base[field.key]);
-    setShown((s) => ({ ...s, [field.key]: "error" in ev ? ev.error : undefined }));
-  }
-
-  function requestCancel() {
-    if (saving) return;
-    if (count === 0) onCancel();
-    else setConfirming(true);
+    update((d) => {
+      const ev = evaluate(field, d.raw[field.key], d.base[field.key]);
+      return { ...d, shown: { ...d.shown, [field.key]: "error" in ev ? ev.error : undefined } };
+    });
   }
 
   function keepEditing() {
-    setConfirming(false);
-    onDiscardDecision(false);
+    session.keep();
     requestAnimationFrame(() => cancelRef.current?.focus());
   }
+
+  const setStatus = (st: EditDraft["status"]) => update((d) => ({ ...d, status: st }));
 
   async function save(useBase: Values) {
     const changes: EditChanges = {};
@@ -190,6 +115,11 @@ export default function EditListing({ propertyId, detail, discardAsk, onDirty, o
     }
     const body: EditListingRequest = { editor: trimmedName, changes, base: sentBase };
     setStatus({ kind: "saving" });
+    // From here on only the session is touched: this form may be unmounted (layout switch) before the answer.
+    const fail = (st: EditDraft["status"]) => {
+      session.failed();
+      setStatus(st);
+    };
     let res: Response;
     try {
       res = await fetch(`/api/properties/${propertyId}/edit`, {
@@ -198,7 +128,7 @@ export default function EditListing({ propertyId, detail, discardAsk, onDirty, o
         body: JSON.stringify(body),
       });
     } catch {
-      if (alive.current) setStatus({ kind: "error", message: NETWORK_ERROR });
+      fail({ kind: "error", message: NETWORK_ERROR });
       return;
     }
     const json = (await res.json().catch(() => null)) as EditListingResponse | EditConflictResponse | ApiError | null;
@@ -208,48 +138,50 @@ export default function EditListing({ propertyId, detail, discardAsk, onDirty, o
       } catch {
         // private window or blocked storage: the save still went through
       }
-      onSaved(json.detail, { noted: json.noted !== false, mirrored: json.mirrored !== false, dryRun: !!json.dryRun });
+      session.saved(propertyId, json.detail, { noted: json.noted !== false, mirrored: json.mirrored !== false, dryRun: !!json.dryRun });
       return;
     }
-    if (!alive.current) return;
-    if (res.status === 409 && json && "code" in json && json.code === "conflict") {
+    const code = json && "code" in json ? json.code : undefined;
+    if (res.status === 409 && code === "conflict") {
       const c = json as EditConflictResponse;
       const fields = (c.fields ?? []).filter((k): k is EditKey => FIELD_BY_KEY.has(k));
       if (fields.length > 0) {
-        setStatus({ kind: "conflict", fields, current: (c.current ?? {}) as EditChanges });
+        fail({ kind: "conflict", fields, current: (c.current ?? {}) as EditChanges });
         return;
       }
     }
-    // Everything else (busy, too_large, rate_limited, monday_error, …) is the route's own words; the edits stay.
-    const code = json && "code" in json ? json.code : undefined;
     if (code === "editing_off") {
-      onEditingOff();
-      setStatus({ kind: "error", message: EDITING_OFF });
+      session.markEditingOff();
+      fail({ kind: "error", message: EDITING_OFF });
       return;
     }
+    // Everything else (busy, too_large, rate_limited, monday_error, …) is the route's own words; the edits stay.
+    // A Monday error may mean Monday took the write after all, so its message stands alone.
     const err = json && "error" in json && json.error ? json.error : `Couldn't save (HTTP ${res.status}).`;
-    setStatus({ kind: "error", message: err });
+    fail({ kind: "error", message: err, plain: code === "monday_error" });
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const errs: Partial<Record<EditKey, string>> = {};
     for (const { field, ev } of evals) if ("error" in ev) errs[field.key] = ev.error;
-    setShown(errs);
-    setNameError(nameProblem);
+    update((d) => ({ ...d, shown: errs, nameError: nameProblem }));
     if (canSave) void save(base);
   }
 
   function takeMondays(fields: EditKey[], current: EditChanges) {
-    setBase((b) => ({ ...b, ...Object.fromEntries(fields.map((k) => [k, current[k] ?? null])) }));
-    setRaw((r) => ({ ...r, ...Object.fromEntries(fields.map((k) => [k, toRaw(current[k])])) }));
-    setShown((s) => ({ ...s, ...Object.fromEntries(fields.map((k) => [k, undefined])) }));
-    setStatus({ kind: "idle" });
+    update((d) => ({
+      ...d,
+      base: { ...d.base, ...Object.fromEntries(fields.map((k) => [k, current[k] ?? null])) },
+      raw: { ...d.raw, ...Object.fromEntries(fields.map((k) => [k, toRaw(current[k])])) },
+      shown: { ...d.shown, ...Object.fromEntries(fields.map((k) => [k, undefined])) },
+      status: { kind: "idle" },
+    }));
   }
 
   function saveMine(fields: EditKey[], current: EditChanges) {
     const next = { ...base, ...Object.fromEntries(fields.map((k) => [k, current[k] ?? null])) } as Values;
-    setBase(next);
+    update((d) => ({ ...d, base: next }));
     void save(next);
   }
 
@@ -262,13 +194,41 @@ export default function EditListing({ propertyId, detail, discardAsk, onDirty, o
         e.preventDefault();
         e.stopPropagation();
         if (confirming) keepEditing();
-        else requestCancel();
+        else session.requestCancel();
       }}
       aria-label="Edit listing details"
       className="flex min-h-0 flex-1 flex-col text-sm"
     >
       <fieldset disabled={saving} className="m-0 flex min-h-0 min-w-0 flex-1 flex-col border-0 p-0">
         <div className="nh-scroll min-h-0 flex-1 overflow-y-auto">
+          {notice && (
+            <div
+              role="status"
+              className="mx-4 mt-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-[13px]"
+              style={
+                notice === "restored"
+                  ? { borderColor: "var(--line2)", background: "var(--surface-muted)", color: "var(--ink)" }
+                  : { borderColor: "var(--amber-line)", background: "var(--amber-bg)", color: "var(--amber-ink)" }
+              }
+            >
+              {notice === "restored" ? (
+                <>
+                  <span>Restored your unsaved changes.</span>
+                  <button
+                    type="button"
+                    onClick={session.startOver}
+                    className="text-[13px] font-medium underline underline-offset-2 [@media(pointer:coarse)]:min-h-[44px]"
+                    style={{ color: "var(--focus)" }}
+                  >
+                    Start over
+                  </button>
+                </>
+              ) : (
+                <span>Your unsaved changes were for an older version of this property.</span>
+              )}
+            </div>
+          )}
+
           {status.kind === "conflict" && (
             <div
               ref={conflictRef}
@@ -359,10 +319,10 @@ export default function EditListing({ propertyId, detail, discardAsk, onDirty, o
               aria-invalid={nameError ? true : undefined}
               aria-describedby={nameError ? `${uid}-editor-error` : undefined}
               onChange={(e) => {
-                setName(e.target.value);
-                if (nameError && e.target.value.trim()) setNameError(null);
+                const v = e.target.value;
+                update((d) => ({ ...d, name: v, nameError: d.nameError && v.trim() ? null : d.nameError }));
               }}
-              onBlur={() => setNameError(nameProblem)}
+              onBlur={() => update((d) => ({ ...d, nameError: nameProblem }))}
               className={cn(inputClass, nameError && "border-[var(--bad-ink)]")}
             />
             {nameError && (
@@ -374,20 +334,15 @@ export default function EditListing({ propertyId, detail, discardAsk, onDirty, o
 
           {status.kind === "error" && (
             <p role="alert" className="text-xs" style={{ color: "var(--bad-ink)" }}>
-              <span className="font-medium">Not saved.</span> {status.message}
+              {!status.plain && <span className="font-medium">Not saved. </span>}
+              {status.message}
             </p>
           )}
 
           {confirming ? (
             <div role="group" aria-label="Discard changes" className="flex flex-wrap items-center gap-2">
               <span className="mr-auto text-[13px] font-medium">Discard {plural(count, "change", "changes")}?</span>
-              <button
-                type="button"
-                onClick={() => {
-                  onCancel();
-                  onDiscardDecision(true);
-                }}
-                className={cn(buttonClass, "border border-line bg-surface text-[var(--bad-ink)]")}>
+              <button type="button" onClick={session.discard} className={cn(buttonClass, "border border-line bg-surface text-[var(--bad-ink)]")}>
                 Discard
               </button>
               <button ref={keepRef} type="button" onClick={keepEditing} className={cn(buttonClass, "bg-ink text-bg hover:brightness-110")}>
@@ -400,7 +355,7 @@ export default function EditListing({ propertyId, detail, discardAsk, onDirty, o
                 {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
                 {saving ? "Saving…" : count > 0 ? `Save ${plural(count, "change", "changes")}` : "Save changes"}
               </button>
-              <button ref={cancelRef} type="button" onClick={requestCancel} className={cn(buttonClass, "border border-line bg-surface text-ink")}>
+              <button ref={cancelRef} type="button" onClick={session.requestCancel} className={cn(buttonClass, "border border-line bg-surface text-ink")}>
                 Cancel
               </button>
             </div>

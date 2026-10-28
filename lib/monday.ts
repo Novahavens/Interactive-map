@@ -70,7 +70,7 @@ interface GqlResponse<T> {
 export async function monday<T>(
   query: string,
   variables: Record<string, unknown> = {},
-  opts: { retry?: boolean } = {},
+  opts: { retry?: boolean; signal?: AbortSignal } = {},
 ): Promise<T> {
   if (DRY_RUN && /^\s*mutation\b/.test(query)) {
     // Backstop for any mutation that skips its own dry-run branch: refuse rather than write.
@@ -78,36 +78,49 @@ export async function monday<T>(
     throw new MondayError("Dry run: mutation not sent to Monday");
   }
   const retry = opts.retry ?? /^\s*query\b/.test(query);
+  // A signal bounds the whole call, retry included. Running out of time is final ("timed out" is not
+  // treated as transient): the caller's deadline is what it is.
   try {
-    return await mondayOnce<T>(query, variables);
+    return await mondayOnce<T>(query, variables, opts.signal);
   } catch (e) {
     const transient =
       e instanceof MondayError && (/\b(429|50\d)\b/.test(e.message) || /rate limit|complexity|timeout|non-JSON/i.test(e.message));
-    if (!retry || !transient) throw e;
+    if (!retry || !transient || opts.signal?.aborted) throw e;
     await new Promise((r) => setTimeout(r, 1200));
-    return await mondayOnce<T>(query, variables);
+    return await mondayOnce<T>(query, variables, opts.signal);
   }
 }
 
-async function mondayOnce<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+const isAbort = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+
+async function mondayOnce<T>(query: string, variables: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
   const token = process.env.MONDAY_API_TOKEN;
   if (!token) throw new MondayError("MONDAY_API_TOKEN is not set");
+  if (signal?.aborted) throw new MondayError("Monday timed out (no time left)");
 
-  const res = await fetch(MONDAY_API, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: token,
-      "API-Version": API_VERSION,
-    },
-    body: JSON.stringify({ query, variables }),
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(MONDAY_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: token,
+        "API-Version": API_VERSION,
+      },
+      body: JSON.stringify({ query, variables }),
+      cache: "no-store",
+      signal,
+    });
+  } catch (e) {
+    if (isAbort(e)) throw new MondayError("Monday timed out");
+    throw e;
+  }
 
   let json: GqlResponse<T>;
   try {
     json = (await res.json()) as GqlResponse<T>;
-  } catch {
+  } catch (e) {
+    if (isAbort(e)) throw new MondayError("Monday timed out");
     throw new MondayError(`Monday returned non-JSON (HTTP ${res.status})`);
   }
 
@@ -358,8 +371,8 @@ export async function readSpecialist(claimId: string): Promise<{ name: string | 
   return { name: val(COLS.specialist), emailText: val(COLS.specialistEmail) };
 }
 
-/** Posts an update on the claim item (the record that a summary went out). */
-export async function createUpdate(itemId: string, body: string): Promise<string> {
+/** Posts an update on an item. `signal` bounds the call (the edit route passes its deadline); others have none. */
+export async function createUpdate(itemId: string, body: string, opts: { signal?: AbortSignal } = {}): Promise<string> {
   if (DRY_RUN) {
     console.info("[monday dry-run] create_update", { itemId, body });
     return `dry_${Date.now()}`;
@@ -367,6 +380,7 @@ export async function createUpdate(itemId: string, body: string): Promise<string
   const data = await monday<{ create_update: { id: string } | null }>(
     `mutation ($item: ID!, $body: String!) { create_update(item_id: $item, body: $body) { id } }`,
     { item: itemId, body },
+    { signal: opts.signal },
   );
   if (!data.create_update?.id) throw new MondayError("create_update returned no id");
   return data.create_update.id;
@@ -441,11 +455,19 @@ export async function deleteItem(itemId: string): Promise<void> {
 
 // ---------- Listing edits ----------
 
+/** Edit-path Monday calls give up after this unless the caller passes a tighter signal. */
+export const EDIT_CALL_TIMEOUT_MS = 10_000;
+
 /** Column id → its `text` on one item, fresh from Monday. A column the item doesn't return reads as null. */
-export async function readColumns(itemId: string, columnIds: string[]): Promise<Record<string, string | null>> {
+export async function readColumns(
+  itemId: string,
+  columnIds: string[],
+  opts: { signal?: AbortSignal } = {},
+): Promise<Record<string, string | null>> {
   const data = await monday<{ items: Array<{ id: string; column_values: Array<{ id: string; text: string | null }> }> }>(
     `query ($ids: [ID!], $cols: [String!]) { items(ids: $ids) { id column_values(ids: $cols) { id text } } }`,
     { ids: [itemId], cols: columnIds },
+    { signal: opts.signal ?? AbortSignal.timeout(EDIT_CALL_TIMEOUT_MS) },
   );
   const item = data.items?.[0];
   if (!item) throw new MondayError("Item not found in Monday");
@@ -455,7 +477,12 @@ export async function readColumns(itemId: string, columnIds: string[]): Promise<
 }
 
 /** Writes several columns of one item in one change_multiple_column_values. Never creates labels. Not retried. */
-export async function changeColumns(boardId: string, itemId: string, values: Record<string, unknown>): Promise<void> {
+export async function changeColumns(
+  boardId: string,
+  itemId: string,
+  values: Record<string, unknown>,
+  opts: { signal?: AbortSignal } = {},
+): Promise<void> {
   if (DRY_RUN) {
     console.info("[monday dry-run] change_multiple_column_values", { boardId, itemId, columns: Object.keys(values) });
     return;
@@ -465,6 +492,7 @@ export async function changeColumns(boardId: string, itemId: string, values: Rec
       change_multiple_column_values(board_id: $board, item_id: $item, column_values: $values, create_labels_if_missing: false) { id }
     }`,
     { board: boardId, item: itemId, values: JSON.stringify(values) },
+    { signal: opts.signal ?? AbortSignal.timeout(EDIT_CALL_TIMEOUT_MS) },
   );
   if (!data.change_multiple_column_values?.id) throw new MondayError("change_multiple_column_values returned no id");
 }

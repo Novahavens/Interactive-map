@@ -262,6 +262,11 @@ export interface EditListingResponse {
   noted: boolean;
   /** The Supabase mirror took the new values at once (otherwise the Monday webhook brings them within seconds). */
   mirrored: boolean;
+  /**
+   * Changed fields Monday did not confirm when it was read back after the write (it ignored them, or the read-back
+   * failed). They are not mirrored and not in the note; reopen the property to see what Monday holds. Usually [].
+   */
+  unconfirmed: string[];
   dryRun?: boolean;
 }
 

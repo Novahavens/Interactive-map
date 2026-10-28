@@ -11,12 +11,6 @@ export function readHealth(): Promise<HealthResponse | null> {
   return health;
 }
 
-/** The edit route said editing is off (403/503 editing_off): panels opened from now on hide Edit too. */
-export function markEditingOff(): void {
-  const was = readHealth();
-  health = was.then((h) => (h ? { ...h, editing: false } : h));
-}
-
 /** Listing edits from the map are switched on. */
 export function editingEnabled(): Promise<boolean> {
   return readHealth().then((h) => h?.editing === true);
