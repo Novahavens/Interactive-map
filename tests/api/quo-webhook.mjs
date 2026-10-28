@@ -61,7 +61,7 @@ if (process.argv[2] === "serve") {
     // noteHangMs: the note lands in Monday, but only after the caller has given up; rpcFail: fn → failures left;
     // dateFail: item → refusals left ("Item not found"); datesDown: the next n date mutations fail whole, either
     // as an outage ("http503": a non-JSON 503 page) or as Monday's rate limit ("complexity").
-    inject: { noteFail: {}, dateFail: {}, noteDelayMs: {}, noteHangMs: {}, callFail: {}, rpcFail: {}, datesDown: { kind: null, n: 0 } },
+    inject: { noteFail: {}, dateFail: {}, noteDelayMs: {}, noteHangMs: {}, noteGateway504: {}, callFail: {}, rpcFail: {}, datesDown: { kind: null, n: 0 } },
     quo: { users: [], phoneNumbers: [], calls: {}, conversations: {}, history: {}, webhooks: [], nextWebhookId: 123 },
   });
   let db = blank();
@@ -432,6 +432,13 @@ if (process.argv[2] === "serve") {
           }
           const id = `upd_${db.updates.length + 1}`;
           db.updates.push({ id, item, body: v.body, at: Date.now() });
+          if (db.inject.noteGateway504[item] > 0) {
+            // The update is saved, but Monday's gateway answers 504 (its upstream was too slow to reply).
+            db.inject.noteGateway504[item]--;
+            rec.gateway504 = true;
+            res.writeHead(504, { "content-type": "text/html" });
+            return res.end("<html><body>504 Gateway Time-out</body></html>");
+          }
           return send(200, { data: { create_update: { id } } });
         }
         if (kind === "change") {
@@ -560,13 +567,13 @@ if (process.argv[2] === "serve") {
   const PH = {
     shared: "+19185550101", text: "+19185550102", attempt: "+19185550103", noteFail: "+19185550104", dateFail: "+19185550105",
     busy: "+19185550106", shadow: "+19185550107", pilot: "+19185550108", summary: "+19185550109", summary2: "+19185550110",
-    missed: "+19185550111", summary3: "+19185550112", hang: "+19185550113", matchFail: "+19185550114", unmatched: "+19185550199",
+    missed: "+19185550111", summary3: "+19185550112", hang: "+19185550113", matchFail: "+19185550114", gateway: "+19185550115", unmatched: "+19185550199",
     bf1: "+19185550120", bf2: "+19185550121", bf3: "+19185550122", bf4: "+19185550123", bfNone: "+19185550125",
   };
   const P = {
     shared1: "2001", shared2: "2002", shared3: "2003", shared4: "2004", text: "2005", attempt: "2006", noteFail: "2007", dateFail: "2008",
     busy: "2009", shadow1: "2010", shadow2: "2011", pilot: "2012", harvard: "2013", elm: "2014", oak: "2015", birch: "2016", missed: "2017",
-    cedar: "2018", hang: "2019", matchFail: "2030", bf20: "2020", bf21: "2021", bf22: "2022", bf23: "2023", bf24: "2024", bf25: "2025",
+    cedar: "2018", hang: "2019", matchFail: "2030", gateway: "2031", bf20: "2020", bf21: "2021", bf22: "2022", bf23: "2023", bf24: "2024", bf25: "2025",
     bf27: "2027", // deleted in Monday: every date write to it is refused
   };
   const prop = (id, o) => ({
@@ -602,6 +609,7 @@ if (process.argv[2] === "serve") {
       prop(P.cedar, { owner: PH.summary3, address: "9 Cedar Ct, Tulsa, OK" }),
       prop(P.hang, { owner: PH.hang, last: addDays(DAY, -5) }),
       prop(P.matchFail, { owner: PH.matchFail, last: addDays(DAY, -5) }),
+      prop(P.gateway, { owner: PH.gateway, last: addDays(DAY, -5) }),
       prop(P.bf20, { owner: PH.bf1, last: addDays(DAY, -30) }),
       prop(P.bf24, { owner: PH.bf1 }),
       prop(P.bf25, { owner: "(918) 555-7001", landlord: PH.bf1 }),
@@ -924,6 +932,13 @@ if (process.argv[2] === "serve") {
   await sleep(Math.max(0, 6_500 - took) + 800); // the late note is now in Monday
   r = await deliver(H1);
   check("…Quo delivering it again: 'already handled', and the note that landed late is the only one", r.status === 200 && r.body?.detail === "already handled" && (await updatesOn(P.hang)).length === 1, `${J(r.body)} ${(await updatesOn(P.hang)).length} notes`);
+
+  // Monday saves the note but its gateway answers 504 Gateway Time-out: also a post that may have landed.
+  await mockPost("/__patch", { inject: { noteGateway504: { [P.gateway]: 1 } } });
+  const G1 = call("EVgateway1", { other: PH.gateway, callId: "ACgateway1" });
+  const g1 = await deliver(G1);
+  const g2 = g1.status === 200 ? g1 : await deliver(G1);
+  check("[doc] a note answered '504 Gateway Time-out' (saved by Monday) isn't posted again on the retry", (await updatesOn(P.gateway)).length === 1, `first ${g1.status} ${J(g1.body)}, then ${g2.status}; ${(await updatesOn(P.gateway)).length} notes on the property`);
 
   // ---------------------------------------------------------------------------------------------------
   section("Pilot");
