@@ -78,7 +78,7 @@ const check = (name, ok, extra = "") => {
 };
 const text = async (loc) => (await loc.innerText()).replace(/\s+/g, " ").trim();
 
-async function open(browser, { w = 1440, h = 900, theme = "light", touch = false, editing = true, reporter = "" } = {}) {
+async function open(browser, { w = 1440, h = 900, theme = "light", touch = false, editing = true, reporter = "", fontSize = 0 } = {}) {
   const ctx = await browser.newContext(
     touch ? { viewport: { width: w, height: h }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width: w, height: h }, deviceScaleFactor: 1 },
   );
@@ -114,13 +114,22 @@ async function open(browser, { w = 1440, h = 900, theme = "light", touch = false
     if (reply.delay) await new Promise((res) => setTimeout(res, reply.delay));
     if (reply.abort) return r.abort("connectionrefused");
     if (reply.status === 200) {
-      const next = { ...details.get(id), ...body.changes };
+      // `unconfirmed`: fields "Monday" didn't take (not applied, not mirrored); true = every field sent
+      const unconfirmed = reply.unconfirmed === true ? Object.keys(body.changes) : reply.unconfirmed ?? [];
+      const applied = Object.fromEntries(Object.entries(body.changes).filter(([k]) => !unconfirmed.includes(k)));
+      const next = { ...details.get(id), ...applied };
       details.set(id, next);
-      return r.fulfill({ json: { ok: true, detail: next, noted: reply.noted ?? true, mirrored: true, ...(reply.dryRun ? { dryRun: true } : {}) } });
+      return r.fulfill({ json: { ok: true, detail: next, noted: reply.noted ?? true, mirrored: unconfirmed.length === 0, unconfirmed, ...(reply.dryRun ? { dryRun: true } : {}) } });
     }
     return r.fulfill({ status: reply.status, json: reply.json });
   });
   const p = await ctx.newPage();
+  if (fontSize) {
+    // Chromium's default font size setting (what rem in media queries follows)
+    const cdp = await ctx.newCDPSession(p);
+    await cdp.send("Page.enable");
+    await cdp.send("Page.setFontSizes", { fontSizes: { standard: fontSize, fixed: Math.round(fontSize * 0.8) } });
+  }
   state.dialogs = [];
   p.on("dialog", (d) => {
     state.dialogs.push(d.type());
@@ -699,6 +708,84 @@ for (const dev of [
   await editBtn.click();
   check("stale draft: 'Your unsaved changes were for an older version of this property.'", (await form().getByText("Your unsaved changes were for an older version of this property.").count()) === 1);
   check("stale draft: the form starts from the current value and the draft is gone", (await field("Square feet").inputValue()) === "1950" && (await stored("4001")) === null);
+  await s.ctx.close();
+}
+
+// ===================================================================================================
+// 3d. A save Monday didn't fully confirm (200 with `unconfirmed`)
+// ===================================================================================================
+{
+  const s = await open(browser, { reporter: "Pat Tester" });
+  const { p, state } = s;
+  const P = panel(p);
+  const form = () => P.getByRole("form", { name: "Edit listing details" });
+  const field = (label) => form().getByLabel(label, { exact: true });
+  const editBtn = P.getByRole("button", { name: "Edit", exact: true });
+  const stored = (id) => p.evaluate((k) => sessionStorage.getItem(k), `nh-edit-draft:${id}`);
+  const facts = () => text(P.locator('[aria-label="Key facts"]'));
+
+  // partial: pets not confirmed
+  await selectRow(s, "4002");
+  await editBtn.click();
+  await field("Square feet").fill("2000");
+  await form().getByRole("radiogroup", { name: "Pets allowed" }).getByRole("radio", { name: "No" }).click();
+  state.replies.push({ status: 200, unconfirmed: ["pet_status"] });
+  await form().getByRole("button", { name: /^Save/ }).click();
+  await form().waitFor({ state: "detached" });
+  const partial = "Saved, but Monday didn't confirm Pets allowed. Reopen the property to check.";
+  check("unconfirmed (some): names the field and says to check, not 'Saved to Monday.'", (await P.getByText(partial, { exact: true }).count()) === 1 && (await P.getByText("Saved to Monday.", { exact: true }).count()) === 0);
+  check("unconfirmed (some): the warning sits in the aria-live region", await P.getByText(partial, { exact: true }).evaluate((e) => !!e.closest("[aria-live]")));
+  const st = JSON.parse((await stored("4002")) ?? "null");
+  check("unconfirmed (some): only that field is kept in the stored draft, with its starting value", st && JSON.stringify(Object.keys(st.raw)) === '["pet_status"]' && st.raw.pet_status === "No" && st.base.pet_status === "Yes", JSON.stringify(st));
+  await p.screenshot({ path: `${OUT}/unconfirmed-partial.png` });
+  // the Monday webhook lands meanwhile: the panel re-reads once after ~3 s
+  state.details.set("4002", { ...state.details.get("4002"), bedrooms: 4 });
+  check("recheck: before ~3 s the panel shows the save's copy", (await facts()).includes("Beds 3"), await facts());
+  await p.waitForTimeout(3600);
+  check("recheck: after ~3 s the panel shows what Monday holds", (await facts()).includes("Beds 4"), await facts());
+  check("recheck: the list row follows", (await text(row(p, "4002"))).includes("4 bd"));
+  await p.waitForTimeout(3500);
+  check("unconfirmed: the warning stays until dismissed (past 6 s)", (await P.getByText(partial, { exact: true }).count()) === 1);
+  await editBtn.click();
+  const pets = form().getByRole("radiogroup", { name: "Pets allowed" });
+  check("retry: Edit brings back only the unconfirmed field", (await form().getByText("Restored your unsaved changes.").count()) === 1 && (await pets.getByRole("radio", { name: "No" }).getAttribute("aria-checked")) === "true" && (await text(form().getByRole("button", { name: /^Save/ }))) === "Save 1 change");
+  state.replies.push({ status: 200 });
+  await form().getByRole("button", { name: /^Save/ }).click();
+  await form().waitFor({ state: "detached" });
+  check("retry: a confirmed save says 'Saved to Monday.' and clears the stored draft", (await P.getByText("Saved to Monday.", { exact: true }).count()) === 1 && (await stored("4002")) === null && state.posts.at(-1).changes.pet_status === "No");
+
+  // full: nothing confirmed
+  await editBtn.click();
+  await field("Square feet").fill("2050");
+  await field("Monthly rent").fill("2111");
+  state.replies.push({ status: 200, unconfirmed: true });
+  await form().getByRole("button", { name: /^Save/ }).click();
+  await form().waitFor({ state: "detached" });
+  const full = "Monday may not have saved this. Reopen the property to check.";
+  check("unconfirmed (all): 'Monday may not have saved this. Reopen the property to check.'", (await P.getByText(full, { exact: true }).count()) === 1 && (await P.getByText(/^Saved/).count()) === 0);
+  const st2 = JSON.parse((await stored("4002")) ?? "null");
+  check("unconfirmed (all): both fields kept for a retry", st2 && JSON.stringify(Object.keys(st2.raw).sort()) === '["monthly_rate","sqft"]', JSON.stringify(st2));
+  check("unconfirmed (all): the panel doesn't claim the new values", !(await facts()).includes("$2,111"));
+  await P.getByRole("button", { name: "Dismiss" }).click();
+  check("unconfirmed: the warning can be dismissed", (await P.getByText(full, { exact: true }).count()) === 0);
+  await s.ctx.close();
+}
+
+// ===================================================================================================
+// 3e. A larger browser default font (20px): the lg breakpoint is 64rem = 1280px, so 1100px is the sheet layout
+// ===================================================================================================
+{
+  const s = await open(browser, { w: 1100, h: 900, reporter: "Pat Tester", fontSize: 20 });
+  const { p } = s;
+  const mq = await p.evaluate(() => ({ px: matchMedia("(min-width: 1024px)").matches, rem: matchMedia("(min-width: 64rem)").matches }));
+  check("font 20px: the emulation took (1100px is >= 1024px but < 64rem)", mq.px && !mq.rem, JSON.stringify(mq));
+  await selectRow(s, "4001");
+  const P = panel(p);
+  check("font 20px: the panel on screen is the sheet copy", await P.evaluate((e) => !!e.closest(".lg\\:hidden")));
+  await P.getByRole("button", { name: "Edit", exact: true }).click();
+  const form = P.getByRole("form", { name: "Edit listing details" });
+  await form.waitFor({ timeout: 3000 }).catch(() => undefined);
+  check("font 20px: Edit opens the form in the copy on screen", (await form.isVisible()) && (await p.locator('form[aria-label="Edit listing details"]').count()) === 1);
   await s.ctx.close();
 }
 

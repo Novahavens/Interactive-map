@@ -138,7 +138,13 @@ export default function EditListing({ draft, session }: Props) {
       } catch {
         // private window or blocked storage: the save still went through
       }
-      session.saved(propertyId, json.detail, { noted: json.noted !== false, mirrored: json.mirrored !== false, dryRun: !!json.dryRun });
+      const unconfirmed = (Array.isArray(json.unconfirmed) ? json.unconfirmed : []).filter((k): k is EditKey => k in changes);
+      session.saved(
+        propertyId,
+        json.detail,
+        { noted: json.noted !== false, mirrored: json.mirrored !== false, dryRun: !!json.dryRun, unconfirmed, sent: Object.keys(changes).length },
+        body,
+      );
       return;
     }
     const code = json && "code" in json ? json.code : undefined;

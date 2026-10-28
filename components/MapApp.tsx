@@ -11,7 +11,7 @@ import { useTheme } from "@/lib/useTheme";
 import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, type PropertyDetail } from "@/lib/types";
 import { EDIT_FIELDS } from "@/lib/listing-edit";
 import { readHealth } from "./property/health";
-import { useEditSession } from "./property/edit-session";
+import { useEditSession, type SavedOutcome } from "./property/edit-session";
 import { STATUS_ORDER, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
 import ClaimBrief, { claimGlance } from "./ClaimBrief";
 import ResultsSheet, { type SheetSnap } from "./ResultsSheet";
@@ -31,8 +31,10 @@ interface Props {
 type Center = { lat: number; lng: number; address: string; source: "claim" | "search" };
 const NONE_HIDDEN: Record<MapStatus, boolean> = { green: false, yellow: false, red: false };
 
-// The docked rail (lg, 1024px and up) or the phone sheet: which panel copy is on screen.
-const WIDE = "(min-width: 1024px)";
+// The docked rail (Tailwind's lg, 64rem and up) or the phone sheet: which panel copy is on screen. In rem, like
+// Tailwind, so it follows the browser's default font size the same way the lg: classes do.
+const WIDE = "(min-width: 64rem)";
+const RECHECK_MS = 3000;
 const isWide = () => window.matchMedia(WIDE).matches;
 function subscribeWide(onChange: () => void) {
   const mq = window.matchMedia(WIDE);
@@ -74,7 +76,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   // `at` lets a panel mounted later ignore it (it fetches its own, fresher copy); cleared when the selection moves.
   const [editedDetail, setEditedDetail] = useState<{ detail: PropertyDetail; at: number } | null>(null);
   useEffect(() => setEditedDetail(null), [selectedId, claimId]);
-  const handleEdited = useCallback((d: PropertyDetail) => {
+  const applyDetail = useCallback((d: PropertyDetail) => {
     setEditedDetail({ detail: d, at: Date.now() });
     const apply = <T extends object>(p: T): T => {
       const next = { ...p } as Record<string, unknown>;
@@ -86,6 +88,26 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     setPins((prev) => prev.map((p) => (p.monday_item_id === d.monday_item_id ? apply(p) : p)));
     setAttachedPins((prev) => prev.map((p) => (p.monday_item_id === d.monday_item_id ? apply(p) : p)));
   }, []);
+  // When Monday didn't confirm every field, read the property once more a few seconds later: by then the
+  // Monday webhook has brought what Monday really holds into the mirror, and the panel and list show that.
+  const recheckTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => recheckTimers.current.forEach(clearTimeout), []);
+  const handleEdited = useCallback(
+    (d: PropertyDetail, outcome: SavedOutcome) => {
+      applyDetail(d);
+      if (outcome.unconfirmed.length === 0 || outcome.dryRun) return;
+      const id = d.monday_item_id;
+      recheckTimers.current.push(
+        setTimeout(() => {
+          fetch(`/api/properties/${id}`, { cache: "no-store" })
+            .then((r) => (r.ok ? (r.json() as Promise<PropertyDetail>) : null))
+            .then((fresh) => fresh && fresh.monday_item_id === id && applyDetail(fresh))
+            .catch(() => undefined);
+        }, RECHECK_MS),
+      );
+    },
+    [applyDetail],
+  );
 
   // Unsaved listing edits: one session for both panel copies. Anything that would unmount the open form (close,
   // scrim, another property, another claim, a new search) goes through `guard`, which asks "Discard N changes?"

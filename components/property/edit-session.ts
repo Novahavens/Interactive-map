@@ -52,6 +52,17 @@ export interface SavedOutcome {
   noted: boolean;
   mirrored: boolean;
   dryRun: boolean;
+  /** Sent fields Monday didn't confirm when the route read them back (empty when all went through). */
+  unconfirmed: EditKey[];
+  /** How many fields were sent, so "every field unconfirmed" can be told apart from "some". */
+  sent: number;
+}
+
+/** What the save sent: the changed fields and the values they started from. */
+export interface SentEdit {
+  editor: string;
+  changes: EditChanges;
+  base: EditChanges;
 }
 
 export const toRaw = (v: EditValue | undefined): string => (v === null || v === undefined ? "" : String(v));
@@ -76,9 +87,17 @@ export function baseOf(detail: PropertyDetail): Values {
 }
 export const rawOf = (base: Values): Raw => Object.fromEntries(FIELDS.map((f) => [f.key, toRaw(base[f.key])])) as Raw;
 
-export function savedText(o: SavedOutcome): string {
-  if (o.dryRun) return "Dry run: nothing was written to Monday.";
-  return o.noted ? "Saved to Monday." : "Saved to Monday. The Monday note couldn't be posted.";
+const listLabels = (keys: EditKey[]) => {
+  const labels = keys.map((k) => FIELD_BY_KEY.get(k)?.label ?? k);
+  return labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+};
+
+/** The line after a save, and whether it is a warning (kept until dismissed) rather than a confirmation. */
+export function savedText(o: SavedOutcome): { text: string; warn: boolean } {
+  if (o.dryRun) return { text: "Dry run: nothing was written to Monday.", warn: false };
+  if (o.unconfirmed.length > 0 && o.unconfirmed.length >= o.sent) return { text: "Monday may not have saved this. Reopen the property to check.", warn: true };
+  if (o.unconfirmed.length > 0) return { text: `Saved, but Monday didn't confirm ${listLabels(o.unconfirmed)}. Reopen the property to check.`, warn: true };
+  return { text: o.noted ? "Saved to Monday." : "Saved to Monday. The Monday note couldn't be posted.", warn: false };
 }
 
 // ---- the stored draft: only the changed fields, with the values they started from ----
@@ -112,6 +131,20 @@ function writeStored(d: EditDraft, keys: EditKey[]) {
     // blocked storage: the draft still lives for this page
   }
 }
+/** After a save Monday didn't fully confirm: keep only those fields (and where they started) to retry. */
+function storeUnconfirmed(id: string, sent: SentEdit, keys: EditKey[]) {
+  try {
+    const raw: Partial<Raw> = {};
+    const base: Partial<Values> = {};
+    for (const k of keys) {
+      raw[k] = toRaw(sent.changes[k]);
+      base[k] = sent.base[k] ?? null;
+    }
+    sessionStorage.setItem(storeKey(id), JSON.stringify({ name: sent.editor, raw, base } satisfies Stored));
+  } catch {
+    // blocked storage: the warning still names the fields
+  }
+}
 function clearStored(id: string) {
   try {
     sessionStorage.removeItem(storeKey(id));
@@ -127,8 +160,8 @@ export interface EditSession {
   /** Unsaved changes in the open draft (0 when none is open). */
   count: number;
   editingOff: boolean;
-  /** The "Saved to Monday." line for a property, for ~6 s. */
-  note: { propertyId: string; text: string } | null;
+  /** The line after a save: "Saved to Monday." for ~6 s, or a warning kept until dismissed. */
+  note: { propertyId: string; text: string; warn: boolean } | null;
   dismissNote: () => void;
   open: (detail: PropertyDetail) => void;
   update: (propertyId: string, fn: (d: EditDraft) => EditDraft) => void;
@@ -141,7 +174,7 @@ export interface EditSession {
   /** Keep editing: forget whatever asked. */
   keep: () => void;
   startOver: () => void;
-  saved: (propertyId: string, detail: PropertyDetail, outcome: SavedOutcome) => void;
+  saved: (propertyId: string, detail: PropertyDetail, outcome: SavedOutcome, sent: SentEdit) => void;
   /** A save that failed (the form stays): an action that waited for it is dropped. */
   failed: () => void;
   markEditingOff: () => void;
@@ -184,7 +217,7 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
   }, [count]);
 
   useEffect(() => {
-    if (!note) return;
+    if (!note || note.warn) return;
     const t = setTimeout(() => setNote(null), SAVED_MS);
     return () => clearTimeout(t);
   }, [note]);
@@ -214,9 +247,13 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
     let notice: EditDraft["notice"] = null;
     const stored = readStored(id);
     if (stored) {
-      const storedKeys = Object.keys(stored.raw).filter((k): k is EditKey => FIELD_BY_KEY.has(k));
+      // A field Monday now holds as typed (an unconfirmed save that landed after all) has nothing left to restore.
+      const storedKeys = Object.keys(stored.raw)
+        .filter((k): k is EditKey => FIELD_BY_KEY.has(k))
+        .filter((k) => evaluate(FIELD_BY_KEY.get(k) as EditField, String(stored.raw[k] ?? ""), base[k]).changed);
       const stillMatches = storedKeys.length > 0 && storedKeys.every((k) => sameValue((stored.base[k] ?? null) as EditValue, base[k]));
-      if (stillMatches) {
+      if (storedKeys.length === 0) clearStored(id);
+      else if (stillMatches) {
         raw = { ...raw, ...Object.fromEntries(storedKeys.map((k) => [k, String(stored.raw[k] ?? "")])) };
         if (typeof stored.name === "string" && stored.name.trim()) name = stored.name;
         notice = "restored";
@@ -294,11 +331,12 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
   }, [update]);
 
   const saved = useCallback(
-    (propertyId: string, detail: PropertyDetail, outcome: SavedOutcome) => {
+    (propertyId: string, detail: PropertyDetail, outcome: SavedOutcome, sent: SentEdit) => {
       const action = pending.current;
       if (draftRef.current?.propertyId === propertyId) close();
       else clearStored(propertyId);
-      setNote({ propertyId, text: savedText(outcome) });
+      if (outcome.unconfirmed.length > 0 && !outcome.dryRun) storeUnconfirmed(propertyId, sent, outcome.unconfirmed);
+      setNote({ propertyId, ...savedText(outcome) });
       onSavedRef.current(detail, outcome);
       action?.();
     },

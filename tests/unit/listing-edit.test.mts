@@ -82,7 +82,7 @@ test("Monday column values: the formats change_multiple_column_values takes", ()
   });
 });
 
-test("Monday column values: every clear is a JSON null (an empty string sets a numbers column to 0)", () => {
+test("Monday column values: every clear is a JSON null (an empty string on a numbers column does not clear it)", () => {
   const all = Object.fromEntries(EDIT_FIELDS.map((x) => [x.key, null]));
   const out = mondayColumnValues(all);
   assert.equal(Object.keys(out).length, EDIT_FIELDS.length);

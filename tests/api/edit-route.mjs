@@ -34,7 +34,7 @@ const SEED_ROW = {
   move_in_total: 2700, updated_at: "2026-10-26T00:00:00Z",
 };
 
-const OK = ["1001", "1002", "1003", "1004", "1005", "1006", "5021", "5022", "5023", "5024", "5030", "5031", "5032", "5033", "5034"];
+const OK = ["1001", "1002", "1003", "1004", "1005", "1006", "5021", "5022", "5023", "5024", "5030", "5031", "5032", "5033", "5034", "5035", "5036", "1007"];
 const SECRET = "test-secret"; // the mock's sync_config MAP_EDIT_KEY
 const GUARD_SAYS = { "429001": "ip_limit", "429002": "property_limit", "429003": "daily_cap", "400400": "invalid", "409409": "busy" };
 const GUARD_ERRORS = "500500";
@@ -49,7 +49,10 @@ const HANG_READ = "5031"; // the first Monday read answers after 12 s (the route
 const HANG_WRITE_LANDS = "5032"; // the write lands in Monday, but the answer comes after 12 s
 const IGNORES_PETS = "5033"; // Monday answers the write OK but silently keeps the pets column
 const REREAD_FAILS = "5034"; // the read-back after the write fails
-const HANG_MS = 12_000; // property_map_status errors: GET answers 502 db_error
+const HANG_MS = 12_000;
+const LATE_429 = "5035"; // the first read answers 429 after 9.3 s: the 1.2 s retry pause would overrun the 10 s timeout
+const QUICK_429 = "5036"; // the first read answers 429 at once: the retry goes ahead and works
+const MAP_BEHIND = "1007"; // Monday already has rent 2400 (changed there directly); the mirror still says 2200 // property_map_status errors: GET answers 502 db_error
 
 if (process.argv[2] === "serve") {
   let seen, monday, rows, log;
@@ -62,6 +65,7 @@ if (process.argv[2] === "serve") {
     monday[ND][C.pet_status] = "N/D";
     rows[ND].pet_status = "N/D";
     monday[SAME_EDIT][C.monthly_rate] = "2400";
+    monday[MAP_BEHIND][C.monthly_rate] = "2400";
     reads = {};
   };
   let reads = {};
@@ -109,6 +113,11 @@ if (process.argv[2] === "serve") {
           if (id === MONDAY_READ_FAILS) return send(200, { errors: [{ message: "boom (read)" }] });
           if (id === REREAD_FAILS && reads[id] > 1) return send(200, { errors: [{ message: "boom (read-back)" }] });
           if (id === HANG_READ && reads[id] === 1) await new Promise((r) => setTimeout(r, HANG_MS));
+          if (id === LATE_429 && reads[id] === 1) {
+            await new Promise((r) => setTimeout(r, 9_300));
+            return send(429, {});
+          }
+          if (id === QUICK_429 && reads[id] === 1) return send(429, {});
           const item = monday[id];
           if (!item) return send(200, { data: { items: [] } });
           return send(200, { data: { items: [{ id, column_values: (v.cols ?? []).map((c) => ({ id: c, text: item[c] ?? null })) }] } });
@@ -167,6 +176,15 @@ if (process.argv[2] === "serve") {
             Object.assign(rows[id], patch);
             entry.status = "applied";
             return send(200, true);
+          }
+          case "listing_edit_owed_note": {
+            // Same rule as the SQL: newest failed row with `before`, same property, same changes, 10 min, not
+            // followed by an applied row with the same changes.
+            if (a.p_secret !== SECRET) return send(200, null);
+            const key = (o) => JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k]]));
+            const f = log.filter((l) => l.property_item_id === a.p_property_item_id && l.status === "failed" && l.before && key(l.changes) === key(a.p_changes)).at(-1);
+            if (!f || log.some((l) => l.id > f.id && l.property_item_id === f.property_item_id && l.status === "applied" && key(l.changes) === key(a.p_changes))) return send(200, null);
+            return send(200, f.before);
           }
           case "property_detail":
             return send(200, rows[a.p_monday_item_id] ? [rows[a.p_monday_item_id]] : []);
@@ -252,6 +270,10 @@ if (process.argv[2] === "serve") {
     check("dry run: nothing mirrored", rpcs(s, "listing_edit_mirror").length === 0);
     check("dry run: logged as dry_run, never monday_ok", (await logOf("1001"))?.status === "dry_run" && JSON.stringify((await logOf("1001"))?.finishes) === JSON.stringify(["dry_run"]));
     check("dry run: mock record untouched", (await state()).rows["1001"].monthly_rate === 2200 && (await state()).monday["1001"][C.monthly_rate] === "2200");
+    const m1 = await mark();
+    const rb = await edit(MAP_BEHIND, { editor: "Will", changes: { monthly_rate: 2400 }, base: { monthly_rate: 2400 } });
+    const s1 = await since(m1);
+    check("dry run, map behind Monday: 200 dryRun, detail overlaid, nothing mirrored or noted", rb.status === 200 && rb.body?.dryRun === true && rb.body?.mirrored === false && rb.body?.detail?.monthly_rate === 2400 && rpcs(s1, "listing_edit_mirror").length === 0 && mutations(s1).length === 0 && (await logOf(MAP_BEHIND))?.status === "dry_run" && (await state()).rows[MAP_BEHIND].monthly_rate === 2200, JSON.stringify(rb.body).slice(0, 200));
     const h = await fetch(`${BASE}/api/health`).then((x) => x.json());
     check("health says dry run and editing on", h.dryRun === true && h.editing === true);
   } else {
@@ -401,12 +423,37 @@ if (process.argv[2] === "serve") {
     took = Date.now() - t;
     s = await since(m0);
     check("hung Monday write: 502 'may not have saved' after ~10 s", r.status === 502 && r.body?.error === "Monday may not have saved this. Reopen the property to check before trying again" && took >= 9_000 && took < HANG_MS, `${took} ms ${JSON.stringify(r.body)}`);
-    check("hung Monday write: nothing mirrored, no note, logged failed", rpcs(s, "listing_edit_mirror").length === 0 && !s.some((x) => x.kind === "update") && (await logOf(HANG_WRITE_LANDS))?.status === "failed");
+    check("hung Monday write: nothing mirrored, no note, logged failed with before", rpcs(s, "listing_edit_mirror").length === 0 && !s.some((x) => x.kind === "update") && (await logOf(HANG_WRITE_LANDS))?.status === "failed" && (await logOf(HANG_WRITE_LANDS))?.before?.monthly_rate === 2200);
     await new Promise((res) => setTimeout(res, HANG_MS - took + 300)); // let the mock finish its late answer
     m0 = await mark();
     r = await edit(HANG_WRITE_LANDS, HAPPY);
     s = await since(m0);
-    check("trying the same save again (it had landed): no conflict, a no-op 200", r.status === 200 && r.body?.noted === false && mutations(s).length === 0 && (await logOf(HANG_WRITE_LANDS))?.status === "noop", JSON.stringify(r.body).slice(0, 200));
+    const caught = await logOf(HANG_WRITE_LANDS);
+    check("retry of a save that had landed: 200, no conflict, no Monday write", r.status === 200 && s.filter((x) => x.kind === "change").length === 0, JSON.stringify(r.body).slice(0, 200));
+    check("…the map catches up: monday_ok with every field confirmed, mirrored, detail has the values", r.body?.mirrored === true && same(r.body?.unconfirmed, []) && rpcs(s, "listing_edit_mirror").length === 1 && same(caught?.finishes, ["monday_ok"]) && caught?.status === "applied" && same(caught?.confirmed, ["monthly_rate", "next_availability", "pet_status", "notes", "bedrooms"]) && r.body?.detail?.monthly_rate === 2400 && (await state()).rows[HANG_WRITE_LANDS].pet_status === "Yes", JSON.stringify(caught));
+    const owedNote = s.find((x) => x.kind === "update")?.variables?.body ?? "";
+    check("…and the note the failed save never posted is posted now, against Monday's values before it", r.body?.noted === true && owedNote.includes("Monthly rent: $2,200 → $2,400") && owedNote.includes("Pets allowed: No → Yes") && !owedNote.includes("Bedrooms"), owedNote);
+    m0 = await mark();
+    r = await edit(HANG_WRITE_LANDS, HAPPY);
+    s = await since(m0);
+    check("a third try: Monday and the map agree, a true no-op (no mirror, no note)", r.status === 200 && r.body?.noted === false && r.body?.mirrored === true && rpcs(s, "listing_edit_mirror").length === 0 && !s.some((x) => x.kind === "update") && (await logOf(HANG_WRITE_LANDS))?.status === "noop", JSON.stringify(r.body).slice(0, 200));
+
+    // ---- Monday already has the value but the map is behind (changed in Monday, webhook not here yet) ----
+    m0 = await mark();
+    r = await edit(MAP_BEHIND, { editor: "Will", changes: { monthly_rate: 2400 }, base: { monthly_rate: 2400 } });
+    s = await since(m0);
+    check("map behind Monday: 200, mirrored, detail caught up, no Monday write", r.status === 200 && r.body?.mirrored === true && r.body?.detail?.monthly_rate === 2400 && mutations(s).length === 0, JSON.stringify(r.body).slice(0, 200));
+    check("…no note (no failed save of this edit was owed one)", r.body?.noted === false && rpcs(s, "listing_edit_owed_note").length === 1 && (await logOf(MAP_BEHIND))?.status === "applied");
+
+    // ---- The pause before a read retry respects the deadline ----
+    t = Date.now();
+    r = await edit(LATE_429, HAPPY);
+    took = Date.now() - t;
+    check("429 late in the read: no retry pause past the 10 s timeout (502 at ~10 s, not ~10.5 s)", r.status === 502 && r.body?.error === "Could not reach Monday; nothing was changed. Try again" && took >= 9_900 && took < 10_350, `${took} ms ${JSON.stringify(r.body)}`);
+    m0 = await mark();
+    r = await edit(QUICK_429, HAPPY);
+    s = await since(m0);
+    check("429 at once: the read is retried after the pause and the save goes through", r.status === 200 && s.filter((x) => x.kind === "read").length === 3, JSON.stringify(r.body).slice(0, 200));
 
     // ---- Monday silently ignores a column ----
     m0 = await mark();

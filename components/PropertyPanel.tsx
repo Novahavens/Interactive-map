@@ -71,7 +71,8 @@ export default function PropertyPanel({
   const draft = session.draft?.propertyId === propertyId ? session.draft : null;
   const editing = !!draft; // in either copy
   const formHere = editing && active;
-  const saved = session.note?.propertyId === propertyId ? session.note.text : null;
+  const savedNote = session.note?.propertyId === propertyId ? session.note : null;
+  const saved = savedNote?.text ?? null;
   const editRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -211,7 +212,11 @@ export default function PropertyPanel({
         {saved && !editing && (
           <div
             className="flex items-start justify-between gap-2 border-b px-4 py-2 text-[13px]"
-            style={{ background: "var(--ok-bg)", color: "var(--ok-ink)", borderColor: "var(--ok-line)" }}
+            style={
+              savedNote?.warn
+                ? { background: "var(--amber-bg)", color: "var(--amber-ink)", borderColor: "var(--amber-line)" }
+                : { background: "var(--ok-bg)", color: "var(--ok-ink)", borderColor: "var(--ok-line)" }
+            }
           >
             <span className="min-w-0">{saved}</span>
             <button

@@ -1,4 +1,5 @@
 import "server-only";
+import { sleep } from "./sleep";
 import type { ActiveClaim, AttachedOption, ClaimBrief, ClaimNeeds } from "./types";
 
 // Board wiring — PRD v4 §8.3. Env overrides exist only so a board move is a config change, not a code change.
@@ -86,10 +87,13 @@ export async function monday<T>(
     const transient =
       e instanceof MondayError && (/\b(429|50\d)\b/.test(e.message) || /rate limit|complexity|timeout|non-JSON/i.test(e.message));
     if (!retry || !transient || opts.signal?.aborted) throw e;
-    await new Promise((r) => setTimeout(r, 1200));
+    // The pause before the retry ends with the signal: a caller's deadline is never overrun by the wait.
+    if (!(await sleep(RETRY_PAUSE_MS, opts.signal))) throw new MondayError("Monday timed out (no time left to retry)");
     return await mondayOnce<T>(query, variables, opts.signal);
   }
 }
+
+const RETRY_PAUSE_MS = 1200;
 
 const isAbort = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
 

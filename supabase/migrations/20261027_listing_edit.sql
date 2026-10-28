@@ -2,7 +2,7 @@
 -- truth; the route writes Monday first, then calls listing_edit_mirror so the map shows the edit at once (the
 -- Monday webhook re-reads the item seconds later and confirms it).
 --
--- The three functions are granted to anon (the app holds only the publishable key), so each one is gated on a
+-- The four functions are granted to anon (the app holds only the publishable key), so each one is gated on a
 -- server-only secret: p_secret must equal sync_config 'MAP_EDIT_KEY' (RLS-locked), which the route reads from
 -- env MAP_EDIT_SECRET. Without the row nothing can be logged or mirrored. Values are validated here as well as
 -- in lib/listing-edit.ts, so the log only ever holds valid values and the mirror only writes logged ones.
@@ -248,3 +248,36 @@ $$;
 revoke all on function public.listing_edit_mirror(text, text, bigint) from public;
 
 grant execute on function public.listing_edit_mirror(text, text, bigint) to anon, authenticated, service_role;
+
+-- 8. A change note still owed. A write that failed or timed out may have landed in Monday anyway; its log row is
+--    'failed' with `before` set (only rows that attempted the write have it), and no note was posted. When the
+--    same edit is tried again and Monday already holds it, the route posts that note. Answers the `before` of
+--    the newest such row for this property with exactly these changes, from the last 10 minutes, unless a later
+--    row with the same changes was already applied (that one posted the note); null otherwise or for a wrong
+--    secret. Call it while the current row is still pending.
+create or replace function public.listing_edit_owed_note(p_secret text, p_property_item_id text, p_changes jsonb)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path to 'public'
+as $$
+declare v_id bigint; v_before jsonb;
+begin
+  if not public.listing_edit_key_ok(p_secret) then return null; end if;
+  select id, before into v_id, v_before from public.listing_edit_log
+  where property_item_id = p_property_item_id and status = 'failed' and before is not null
+    and changes = p_changes and at > now() - interval '10 minutes'
+  order by id desc limit 1;
+  if not found then return null; end if;
+  if exists (select 1 from public.listing_edit_log
+             where property_item_id = p_property_item_id and id > v_id and status = 'applied' and changes = p_changes) then
+    return null;
+  end if;
+  return v_before;
+end;
+$$;
+
+revoke all on function public.listing_edit_owed_note(text, text, jsonb) from public;
+
+grant execute on function public.listing_edit_owed_note(text, text, jsonb) to anon, authenticated, service_role;

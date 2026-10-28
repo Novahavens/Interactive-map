@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { editSecret, editingEnabled } from "@/lib/edit-config";
 import { overlayDetail } from "@/lib/edit-overlay";
 import {
-  FIELD_BY_KEY, conflicts, diffLines, fromMondayText, mondayColumnValues, parseEditRequest, sameValue,
+  FIELD_BY_KEY, conflicts, currentValue, diffLines, fromMondayText, mondayColumnValues, parseEditRequest, sameValue,
   type EditChanges, type EditField, type EditKey,
 } from "@/lib/listing-edit";
 import { BOARDS, DRY_RUN, EDIT_CALL_TIMEOUT_MS, changeColumns, createUpdate, readColumns } from "@/lib/monday";
@@ -84,13 +84,19 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : e);
  * mirrored nor noted. Nothing is mirrored unless the write succeeded and was read back, and never in a dry run.
  * Every path finishes its log row. The Monday webhook later re-reads the item and confirms the mirror.
  *
+ * When Monday already holds every requested value: if the map does too, it is a no-op (no note). If the map
+ * is behind (typically a save that timed out but landed), the row goes monday_ok with every field confirmed and
+ * is mirrored so the map catches up, and the change note that the failed save never posted is posted now.
+ *
  * Every Monday call has a timeout and all of them end within MONDAY_BUDGET_MS, so a hung Monday can't keep a
  * save running past the guard's 30 s busy window.
  *
  * On only when MAP_EDIT_SECRET is set and MAP_EDITING is not "off"; every RPC carries the secret, which the
  * database checks against sync_config MAP_EDIT_KEY. A cleared field is sent to Monday as a JSON null for every
  * column kind, per monday.com's API reference ("Changing column values" and each column type's "Clear"
- * section): in change_multiple_column_values an empty string sets a numbers column to 0.
+ * section), verified live on a throwaway board on 28 Oct 2026: null cleared all five kinds (numbers, text,
+ * long text, date, dropdown), while an empty string on a numbers column left a stored empty value instead of
+ * clearing it.
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const deadline = Date.now() + MONDAY_BUDGET_MS;
@@ -180,10 +186,68 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     );
   }
 
+  // After the write: mirror the confirmed fields, answer with the record as the map now has it, post the note
+  // (noteKeys against noteBefore), close the row. Shared by a normal save and a no-op that catches the map up.
+  const settle = async (confirmed: EditKey[], noteKeys: EditKey[], noteBefore: EditChanges, unconfirmed: EditKey[]) => {
+    let mirrored = false;
+    if (confirmed.length) {
+      const { data, error } = await sb.rpc("listing_edit_mirror", { p_secret: secret, p_property_item_id: id, p_log_id: logId });
+      if (error) console.error("edit: mirror failed; the Monday webhook will bring the values", id, error.message);
+      mirrored = !error && data === true;
+    }
+
+    const shown = pick(changes, confirmed);
+    let detail: PropertyDetail;
+    try {
+      const fresh = await loadPropertyDetail(id);
+      detail = fresh && mirrored ? fresh : overlayDetail(fresh ?? before, shown);
+    } catch (e) {
+      console.error("edit: property re-read failed", id, errText(e));
+      detail = overlayDetail(before, shown);
+    }
+
+    let noted = false;
+    const lines = diffLines(pick(changes, noteKeys), noteBefore).map((l) => "• " + l.replace(/\s*\n\s*/g, " "));
+    if (lines.length && timeLeft() > 500) {
+      // One bullet per field on its own line; a multi-line note value is folded onto its bullet.
+      const date = new Date().toISOString().slice(0, 10);
+      const note = escapeHtml(`✏️ Edited on the map by ${editor} on ${date}:\n${lines.join("\n")}`).replace(/\n/g, "<br>");
+      try {
+        await createUpdate(id, note, { signal: mondaySignal() });
+        noted = true;
+      } catch (e) {
+        console.error("edit: note failed after the edit was saved", id, errText(e));
+      }
+    }
+
+    // The mirror already marks its row applied; this closes the row when the mirror didn't (a no-op otherwise).
+    await finish("applied");
+    return NextResponse.json<EditListingResponse>({ ok: true, detail, noted, mirrored, unconfirmed });
+  };
+
   const remainingKeys = keys.filter((k) => !sameValue(changes[k], current[k]));
   if (remainingKeys.length === 0) {
-    await finish("noop");
-    return NextResponse.json<EditListingResponse>({ ok: true, detail: before, noted: false, mirrored: true, unconfirmed: [] });
+    // Monday already holds every requested value. If the map does too, there is nothing to do.
+    const row = before as unknown as Record<string, unknown>;
+    const behind = keys.filter((k) => !sameValue(currentValue(fieldOf(k), row), changes[k]));
+    if (!behind.length) {
+      await finish("noop");
+      return NextResponse.json<EditListingResponse>({ ok: true, detail: before, noted: false, mirrored: true, unconfirmed: [] });
+    }
+    if (DRY_RUN) {
+      await finish("dry_run");
+      return NextResponse.json<EditListingResponse>({ ok: true, detail: overlayDetail(before, changes), noted: false, mirrored: false, unconfirmed: [], dryRun: true });
+    }
+    // The map is behind Monday. Asked while this row is still pending: was this exact edit tried a moment ago,
+    // written to Monday, and failed before its note went out?
+    let owed: EditChanges | null = null;
+    {
+      const { data, error } = await sb.rpc("listing_edit_owed_note", { p_secret: secret, p_property_item_id: id, p_changes: changes });
+      if (error) console.error("edit: could not check for an owed note", id, error.message);
+      else if (data && typeof data === "object" && !Array.isArray(data)) owed = data as EditChanges;
+    }
+    await finish("monday_ok", { before: current, confirmed: keys });
+    return settle(keys, owed ? keys : [], owed ?? current, []);
   }
   const remaining = pick(changes, remainingKeys);
 
@@ -197,7 +261,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     await changeColumns(BOARDS.property, id, mondayColumnValues(remaining), { signal: mondaySignal() });
   } catch (e) {
     console.error("edit: Monday write failed or timed out", id, errText(e));
-    await finish("failed");
+    // `before` marks a row whose write may have landed: a retry that finds Monday already saved posts its note.
+    await finish("failed", { before: current });
     return fail(502, "monday_error", MONDAY_UNSURE);
   }
 
@@ -224,42 +289,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const unconfirmed = remainingKeys.filter((k) => !confirmed.includes(k));
   if (readBack && unconfirmed.length) console.error("edit: Monday did not take", id, unconfirmed.join(","));
 
-  await finish("monday_ok", { before: current, confirmed });
-  let mirrored = false;
-  if (confirmed.length) {
-    const { data, error } = await sb.rpc("listing_edit_mirror", { p_secret: secret, p_property_item_id: id, p_log_id: logId });
-    if (error) console.error("edit: mirror failed; the Monday webhook will bring the values", id, error.message);
-    mirrored = !error && data === true;
-  }
-
-  const shown = pick(changes, confirmed);
-  let detail: PropertyDetail;
-  try {
-    const fresh = await loadPropertyDetail(id);
-    detail = fresh && mirrored ? fresh : overlayDetail(fresh ?? before, shown);
-  } catch (e) {
-    console.error("edit: property re-read failed", id, errText(e));
-    detail = overlayDetail(before, shown);
-  }
-
   // The note lists what Monday took: every written field, less the ones the read-back showed it ignored
   // (when the read-back itself failed, the write's success is all there is to go on).
-  const noteKeys = readBack ? remainingKeys.filter((k) => confirmed.includes(k)) : remainingKeys;
-  let noted = false;
-  if (noteKeys.length && timeLeft() > 500) {
-    // One bullet per field on its own line; a multi-line note value is folded onto its bullet.
-    const date = new Date().toISOString().slice(0, 10);
-    const lines = diffLines(pick(changes, noteKeys), current).map((l) => "• " + l.replace(/\s*\n\s*/g, " "));
-    const note = escapeHtml(`✏️ Edited on the map by ${editor} on ${date}:\n${lines.join("\n")}`).replace(/\n/g, "<br>");
-    try {
-      await createUpdate(id, note, { signal: mondaySignal() });
-      noted = true;
-    } catch (e) {
-      console.error("edit: note failed after the edit was saved", id, errText(e));
-    }
-  }
-
-  // The mirror already marks its row applied; this closes the row when the mirror didn't (a no-op otherwise).
-  await finish("applied");
-  return NextResponse.json<EditListingResponse>({ ok: true, detail, noted, mirrored, unconfirmed });
+  await finish("monday_ok", { before: current, confirmed });
+  return settle(confirmed, readBack ? remainingKeys.filter((k) => confirmed.includes(k)) : remainingKeys, current, unconfirmed);
 }
