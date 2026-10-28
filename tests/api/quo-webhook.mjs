@@ -13,16 +13,16 @@
 //   4. node tests/api/quo-webhook.mjs                                       (BASE=http://localhost:3033 by default)
 //
 // Run 4 against a freshly started server (step 3): the server keeps the Quo directory and the config in
-// per-instance caches. It takes about 50 s: 11 s waiting out the 5 s config cache after two mode flips and
-// ~8 s for a Monday note that lands late. Exit code 0 only when every check passes.
-// Checks marked [doc] test what a doc comment promises where the code was seen to do something else.
-// Result on 28 Oct 2026 (code as of 15:30 UTC that day): 113 PASS, 6 FAIL, the same on two runs. Every FAIL
-// is a bug in the routes:
-//   - a retry wipes contact_events.date_ids (the dates the first attempt moved);
-//   - Supabase errors are logged and stored as "[object Object]" (webhook and backfill);
-//   - a Monday note that times out but lands is posted again on the retry;
-//   - setup accepts a webhook to this URL that covers only some numbers;
-//   - backfill scan fails (Postgres 21000) when one property shows up twice on a page.
+// per-instance caches. It takes about a minute: 11 s waiting out the 5 s config cache after two mode flips,
+// ~1 s pauses for the once-a-second config re-read, and ~8 s for a Monday note that lands late. Exit code 0
+// only when every check passes. Checks marked [doc] test what a doc comment promises where the code was seen to
+// do something else.
+// Result on 28 Oct 2026 (code as of 16:00 UTC, after the first round of fixes): 126 PASS, 2 FAIL, the same on
+// two runs. Both FAILs are bugs in the routes:
+//   - a note Monday saved but answered "504 Gateway Time-out" is posted again on the retry (only a timeout on
+//     our side keeps the claim);
+//   - backfill apply marks rows 'failed' for good when Monday rate-limits every write (ComplexityException):
+//     its "transient" test (timed out / 429 / 50x) is narrower than lib/monday.ts's own.
 import http from "node:http";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 
