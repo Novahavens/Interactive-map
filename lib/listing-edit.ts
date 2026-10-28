@@ -202,9 +202,9 @@ export function fromMondayText(field: EditField, text: string | null | undefined
  * is {date}; Yes/No is a dropdown label; long text is {text}. Labels are never created: the dropdowns
  * already hold exactly Yes and No.
  *
- * A null clears the column, and every kind is cleared with a JSON null. Monday's column reference: in
- * change_multiple_column_values an empty string on a numbers column sets it to 0 instead of clearing it;
- * null is the documented clear for numbers, text, long text, date and dropdown alike.
+ * A null clears the column, for every kind. Verified live on 28 Oct 2026 on a throwaway board: null cleared
+ * numbers, text, long text, date and dropdown, while an empty string on a numbers column left a stored empty
+ * value instead of clearing it.
  */
 export function mondayColumnValues(changes: EditChanges): Record<string, unknown> {
   const out: Record<string, unknown> = {};

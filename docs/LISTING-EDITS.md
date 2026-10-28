@@ -6,7 +6,7 @@ Last updated: 28 Oct 2026 · Owner: Fazal Abed (fazal@novahavens.com)
 
 ## 1. In one paragraph
 
-The property panel has an **Edit** button. It opens a form with 18 listing fields. **Save** sends only the fields that changed to `POST /api/properties/[id]/edit`. The server checks every value, applies rate limits, re-reads those columns from Monday and stops with a conflict if someone changed them there since the form opened. It then writes Monday in one mutation, copies the same values into the Supabase mirror so the map shows them at once, and posts a note on the Monday item saying who changed what. Monday's own webhook re-reads the item a second later and confirms the mirror. At the top of the panel, availability now sits in a raised pill with a soft glow, instead of a chip among the others.
+The property panel has an **Edit** button. It opens a form with 18 listing fields. **Save** sends only the fields that changed to `POST /api/properties/[id]/edit`. The server checks every value, applies rate limits, re-reads those columns from Monday and stops with a conflict if someone changed them there since the form opened. It then writes Monday in one mutation, reads those columns back, copies only the values Monday confirms into the Supabase mirror so the map shows them at once, and posts a note on the Monday item saying who changed what. Anything Monday didn't confirm is named on screen instead of being reported as saved. Monday's own webhook re-reads the item a second later and confirms the mirror. At the top of the panel, availability now sits in a raised pill with a soft glow, instead of a chip among the others.
 
 ## 2. What can and can't be edited
 
@@ -40,11 +40,14 @@ The list of fields, their limits and their Monday formats live in one place, `li
 | 4 | `readColumns` reads the changed columns from Monday now | 502 `monday_error`, nothing written |
 | 5 | Each field's Monday value is compared with `base` | 409 `conflict` with Monday's current values |
 | 6 | Fields already equal to Monday are dropped; if none are left | 200, nothing written (`noop`) |
-| 7 | `changeColumns` → Monday `change_multiple_column_values` (one mutation, labels never created) | 502 `monday_error`, nothing mirrored |
+| 7 | `changeColumns` → Monday `change_multiple_column_values` (one mutation, labels never created) | 502 `monday_error` "Monday may not have saved this. Reopen the property to check before trying again", nothing mirrored |
+| 7b | The same columns are read back from Monday; a field counts as confirmed only if Monday now shows the new value | Unconfirmed fields are left out of the mirror and the note and returned as `unconfirmed`; the panel names them and keeps them in the draft |
 | 8 | Dry run (`MONDAY_DRY_RUN=1`) stops here: the response shows the values but nothing is stored | — |
 | 9 | The log row is marked `monday_ok`; `listing_edit_mirror` copies **that row's logged values** into `properties` (the generated `move_in_total` recalculates) | `mirrored: false`; the Monday webhook brings them in seconds |
 | 10 | `createUpdate` posts "✏️ Edited on the map by Will on 2026-10-28: • Monthly rent: $2,200 → $2,400 …" (HTML-escaped) | `noted: false`; the edit stands |
 | 11 | The log row is marked `applied` with Monday's before-values. Every other path also closes its row (`conflict`, `noop`, `failed`, `dry_run`), so none stays pending | — |
+
+Every Monday call has a 10-second timeout inside a 22-second budget, and the route is capped at 25 seconds, so a hung Monday can't hold a save past the 30-second *busy* window. A field Monday already holds at the new value (for example after a save that timed out but landed) counts as done, not as a conflict, and the map is caught up from it.
 
 The response is the property as the map now has it, built by the same code as `GET /api/properties/[id]` (`lib/property-detail.ts`).
 
@@ -87,6 +90,10 @@ The map has no login: it is embedded in Monday and anyone with the URL can open 
 Rotate by changing both values and redeploying. Until both are set, editing stays off.
 
 The SQL was also run against an embedded Postgres during development (wrong and missing secrets, invalid values, the mirror only after Monday, caps on saved edits only, busy); those checks aren't in the repo.
+
+### Unsaved changes
+
+The draft lives in the page, not in one copy of the panel, so a window resize across the desktop/phone width keeps it. It is also saved in the browser tab's session storage per property as the user types: if Monday reloads the embedded map, reopening *Edit* restores it ("Restored your unsaved changes", with *Start over*), unless the property changed in Monday since, in which case it is dropped with a note. Closing the panel, picking another property or switching claims with unsaved changes asks *Discard N changes?*; doing it while a save is running waits for the save.
 
 Undoing an edit: edit the field back on the map or in Monday. The Monday note lists the old values.
 
