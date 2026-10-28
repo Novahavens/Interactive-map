@@ -360,9 +360,11 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   await report.click();
   const form = panel(root).getByRole("form", { name: "Report bad link" });
   check("report form: name prefilled from nh-reporter-name", (await form.getByLabel("Your name").inputValue()) === "Tester");
+  await form.locator(":focus").waitFor(); // the form moves focus in on the next frame; Escape before that goes to the page
   await p.keyboard.press("Escape");
   check("report form: Escape cancels", (await form.count()) === 0 && (await report.evaluate((e) => e === document.activeElement)));
   await report.click();
+  await form.locator(":focus").waitFor(); // let the form's own focus move land before typing, or it moves mid-fill
   await form.getByLabel("Your name").fill("Lou");
   await form.getByLabel(/What's wrong/).fill("Listing 404s");
   s.state.flag.status = 429;
