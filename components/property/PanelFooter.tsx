@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Check, Phone, Loader2, Ban } from "lucide-react";
+import { Plus, Check, Loader2, Ban } from "lucide-react";
 import type { ApiError, ClaimOption, PropertyDetail } from "@/lib/types";
 import { reasonText, type MapStatus } from "@/lib/status";
 import { cn, MONDAY_BOARDS, mondayItemUrl } from "@/lib/utils";
@@ -18,7 +18,7 @@ interface Props {
   onAttached: (propertyId: string, subitemId: string) => void;
 }
 
-/** Add to claim (with the already-on-another-claim confirm), then the Phase 2 call and text slots. */
+/** Add to claim, with the already-on-another-claim confirm. Call and Text sit by each number in the Contacts card. */
 export default function PanelFooter({ propertyId, detail, status, claim, otherClaims, attached, onAttached }: Props) {
   // The panel is keyed by claim + property, so a claim switch unmounts it; this stops a late
   // add response from reporting into the next claim's state.
@@ -173,33 +173,6 @@ export default function PanelFooter({ propertyId, detail, status, claim, otherCl
           </p>
         </>
       )}
-
-      <div className="mt-0.5 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          title="Call the owner through Quo — Phase 2"
-          className="inline-flex h-9 cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-dashed border-line2 bg-transparent text-[13px] text-muted"
-        >
-          <Phone className="h-3 w-3" />
-          <span>Call via Quo</span>
-          <span className="rounded border border-line px-1 text-[10px] tracking-wide">P2</span>
-        </button>
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          title="Text the owner through Quo — Phase 2"
-          className="inline-flex h-9 cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-dashed border-line2 bg-transparent text-[13px] text-muted"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-          <span>Text via Quo</span>
-          <span className="rounded border border-line px-1 text-[10px] tracking-wide">P2</span>
-        </button>
-      </div>
     </div>
   );
 }
