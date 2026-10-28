@@ -1021,6 +1021,7 @@ if (process.argv[2] === "serve") {
   check("setup with the wrong secret: 403", su.status === 403);
   s = await since(m0);
   check("…neither reached Quo or the database", s.length === 0, J(s.map((x) => x.path ?? x.fn)));
+  await sleep(1_100); // setup reads the config "fresh", which happens at most once a second
   m0 = await mark();
   su = await setup({ "x-map-secret": SECRET });
   let sb = await su.json();
@@ -1028,34 +1029,51 @@ if (process.argv[2] === "serve") {
   d = await dbNow();
   const created = s.find((x) => x.api === "quo" && x.method === "POST" && x.path === "/webhooks");
   check("setup: 200 action 'created', the mode in force", su.status === 200 && sb.ok === true && sb.action === "created" && sb.webhookId === "123" && sb.keyStored === true && sb.mode === "live" && /\/api\/quo\/webhook$/.test(sb.url ?? ""), J(sb));
+  check("…the URL is the request's origin (not on Vercel)", sb.url === `${new URL(BASE).origin}/api/quo/webhook`, sb.url);
   check("…POST /webhooks with the 4 events, resourceIds ['*'], this deployment's URL, enabled", same(sorted(created?.body?.events), sorted(EVENTS4)) && same(created?.body?.resourceIds, ["*"]) && created?.body?.url === sb.url && created?.body?.status === "enabled", J(created?.body));
   check("…dated API: no /v1 in the path, Quo-Api-Version 2026-03-30 and the key on every call", s.filter((x) => x.api === "quo").every((x) => x.version === "2026-03-30" && x.auth === "test" && x.path.startsWith("/webhooks")), J(s.filter((x) => x.api === "quo").map((x) => [x.method, x.path, x.version])));
   const wh = d.quo.webhooks[0];
   check("…the key Quo returned is stored first, the previous one kept; webhook id stored", JSON.parse(d.config.QUO_WEBHOOK_KEYS)[0] === wh?.key && JSON.parse(d.config.QUO_WEBHOOK_KEYS).length === 2 && d.config.QUO_WEBHOOK_ID === "123", d.config.QUO_WEBHOOK_KEYS);
+  await sleep(1_100);
   r = await deliver(call("EVsetup1", { other: PH.unmatched, callId: "ACsetup1" }), { key: wh.key });
-  check("…a delivery signed with the new key verifies straight away", r.status === 200, J(r));
+  check("…a delivery signed with the new key verifies (a second after setup)", r.status === 200, J(r));
   m0 = await mark();
   su = await setup({ "x-map-secret": SECRET });
   sb = await su.json();
   s = await since(m0);
-  check("setup again: 'existing', nothing created or rotated, keys unchanged", sb.action === "existing" && sb.webhookId === "123" && !s.some((x) => x.api === "quo" && x.method === "POST") && rpcs(s, "quo_set_webhook").length === 0, J(sb));
+  check("setup again: 'existing' (key stored for this webhook id), nothing created or rotated", sb.action === "existing" && sb.webhookId === "123" && !s.some((x) => x.api === "quo" && x.method === "POST") && rpcs(s, "quo_set_webhook").length === 0, J(sb));
+
+  // Keys stored, but for another webhook (QUO_WEBHOOK_ID differs): rotate this one.
+  await mockPost("/__patch", { config: { QUO_WEBHOOK_ID: "999" } });
+  await sleep(1_100);
+  m0 = await mark();
+  su = await setup({ "x-map-secret": SECRET });
+  sb = await su.json();
+  s = await since(m0);
+  d = await dbNow();
+  check("setup when the stored keys belong to another webhook: 'rotated', now this webhook's id and key first", sb.action === "rotated" && sb.webhookId === "123" && s.some((x) => x.api === "quo" && x.method === "POST" && x.path === "/webhooks/123/rotate") && d.config.QUO_WEBHOOK_ID === "123" && JSON.parse(d.config.QUO_WEBHOOK_KEYS)[0] === d.quo.webhooks[0].key, J([sb, d.config.QUO_WEBHOOK_ID]));
+
   await mockPost("/__patch", { config: { QUO_WEBHOOK_KEYS: "[]" } });
+  await sleep(1_100);
   m0 = await mark();
   su = await setup({ "x-map-secret": SECRET });
   sb = await su.json();
   s = await since(m0);
   d = await dbNow();
   check("setup with the keys cleared: 'rotated' via POST /webhooks/123/rotate, the new key stored", sb.action === "rotated" && s.some((x) => x.api === "quo" && x.method === "POST" && x.path === "/webhooks/123/rotate") && same(JSON.parse(d.config.QUO_WEBHOOK_KEYS), [d.quo.webhooks[0].key]) && d.quo.webhooks.length === 1, J([sb, d.config.QUO_WEBHOOK_KEYS]));
+  await sleep(1_100);
   r = await deliver(call("EVsetup2", { other: PH.unmatched, callId: "ACsetup2" }), { key: d.quo.webhooks[0].key });
   check("…a delivery signed with the rotated key verifies", r.status === 200, J(r));
+
   // A webhook to this URL that covers only one of the numbers.
   const setupUrl = sb.url;
   await mockPost("/__patch", { config: { QUO_WEBHOOK_KEYS: "[]" }, quo: { webhooks: [{ id: "200", orgId: "OR1", label: "old", status: "enabled", url: setupUrl, createdAt: iso(NOW), updatedAt: iso(NOW), apiVersion: "2026-03-30", events: EVENTS4, resourceIds: ["PNmain"], key: whsec("narrow") }] } });
+  await sleep(1_100);
   su = await setup({ "x-map-secret": SECRET });
   sb = await su.json();
   d = await dbNow();
   const kept = d.quo.webhooks.find((w) => w.id === d.config.QUO_WEBHOOK_ID);
-  check("[doc] setup ensures a webhook 'for every number': one that only covers PNmain is not taken as it", same(kept?.resourceIds, ["*"]), `action=${sb.action} webhookId=${sb.webhookId} resourceIds=${J(kept?.resourceIds)}`);
+  check("setup ensures a webhook 'for every number': one that covers only PNmain is passed over and a ['*'] one created", sb.action === "created" && same(kept?.resourceIds, ["*"]), `action=${sb.action} webhookId=${sb.webhookId} resourceIds=${J(kept?.resourceIds)}`);
 
   // ---------------------------------------------------------------------------------------------------
   section("Backfill");
