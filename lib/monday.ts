@@ -46,7 +46,8 @@ export const DRY_RUN = process.env.MONDAY_DRY_RUN === "1";
 const API_VERSION = "2024-10";
 
 export class MondayError extends Error {
-  constructor(message: string, public readonly details?: unknown) {
+  /** `status`: Monday's HTTP status when it answered with one other than 200. */
+  constructor(message: string, public readonly details?: unknown, public readonly status?: number) {
     super(message);
     this.name = "MondayError";
   }
@@ -95,7 +96,9 @@ const RETRY_PAUSE_MS = 1200;
 
 /** Monday was busy or answered badly (429, 5xx, rate limit, complexity budget, not JSON): nothing was wrong with the request. */
 export function isTransientMondayError(e: unknown): boolean {
-  return e instanceof MondayError && (/\b(429|50\d)\b/.test(e.message) || /rate limit|complexity|timeout|non-JSON/i.test(e.message));
+  if (!(e instanceof MondayError)) return false;
+  if (e.status === 429 || (e.status ?? 0) >= 500) return true;
+  return /\b(429|50\d)\b/.test(e.message) || /rate limit|complexity|timeout|non-JSON/i.test(e.message);
 }
 
 /**
@@ -103,7 +106,7 @@ export function isTransientMondayError(e: unknown): boolean {
  * gateway answered 5xx or not JSON. A GraphQL refusal (errors, a rate limit, the complexity budget) means it wasn't.
  */
 export function mayHaveLanded(e: unknown): boolean {
-  return !(e instanceof MondayError) || /timed out|non-JSON|\b50\d\b/i.test(e.message);
+  return !(e instanceof MondayError) || (e.status ?? 0) >= 500 || /timed out|non-JSON|\b50\d\b/i.test(e.message);
 }
 
 const isAbort = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
@@ -140,7 +143,7 @@ async function mondayOnce<T>(query: string, variables: Record<string, unknown>, 
   }
 
   if (!res.ok) {
-    throw new MondayError(json.error_message ?? `Monday HTTP ${res.status}`, json);
+    throw new MondayError(json.error_message ?? `Monday HTTP ${res.status}`, json, res.status);
   }
   if (json.errors?.length) {
     throw new MondayError(json.errors.map((e) => e.message).join("; "), json.errors);

@@ -4,7 +4,7 @@ import { isAnswered } from "@/lib/contact";
 import { holdsSecret, quoTimeZone } from "@/lib/quo-config";
 import { lastLoggable, localDay, type Match } from "@/lib/quo-events";
 import { conversationHistory, conversationsPage, quoEnabled } from "@/lib/quo";
-import { LAST_CONTACT_COL, isTransientMondayError, mayHaveLanded, setDates } from "@/lib/monday";
+import { LAST_CONTACT_COL, MondayError, isTransientMondayError, mayHaveLanded, readColumns, setDates } from "@/lib/monday";
 import { supabase } from "@/lib/supabase";
 import { errorText as errText } from "@/lib/utils";
 
@@ -53,7 +53,15 @@ export async function POST(req: NextRequest) {
           await setDates(LAST_CONTACT_COL, [r], { signal: AbortSignal.timeout(5_000) });
           written.push(r);
         } catch (one) {
-          refused.push({ id: r.id, error: errText(one), retry: retryable(one) });
+          // Monday answers a write to an item that no longer exists with a 500 too: look before retrying for ever.
+          let retry = retryable(one);
+          if (retry && one instanceof MondayError && (one.status ?? 0) >= 500) {
+            retry = await readColumns(r.id, [LAST_CONTACT_COL], { signal: AbortSignal.timeout(5_000) }).then(
+              () => true,
+              (gone) => !(gone instanceof MondayError && /not found/i.test(gone.message)),
+            );
+          }
+          refused.push({ id: r.id, error: errText(one), retry });
         }
       }
       if (!written.length && refused.every((r) => r.retry)) {

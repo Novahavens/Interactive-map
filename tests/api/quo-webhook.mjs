@@ -17,12 +17,8 @@
 // ~1 s pauses for the once-a-second config re-read, and ~8 s for a Monday note that lands late. Exit code 0
 // only when every check passes. Checks marked [doc] test what a doc comment promises where the code was seen to
 // do something else.
-// Result on 28 Oct 2026 (code as of 16:00 UTC, after the first round of fixes): 126 PASS, 2 FAIL, the same on
-// two runs. Both FAILs are bugs in the routes:
-//   - a note Monday saved but answered "504 Gateway Time-out" is posted again on the retry (only a timeout on
-//     our side keeps the claim);
-//   - backfill apply marks rows 'failed' for good when Monday rate-limits every write (ComplexityException):
-//     its "transient" test (timed out / 429 / 50x) is narrower than lib/monday.ts's own.
+// Result on 28 Oct 2026, after the fixes this test found (MondayError keeps the HTTP status, so a note answered
+// 500 keeps its claim): 135 PASS, 0 FAIL.
 import http from "node:http";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 
@@ -62,7 +58,7 @@ if (process.argv[2] === "serve") {
     // dateFail: item → refusals left ("Item not found"); datesDown: the next n date mutations fail whole, either
     // as an outage ("http503": a non-JSON 503 page) or as Monday's rate limit ("complexity"); dateComplexity:
     // item → how many more requests that include it Monday rejects whole with its complexity-budget error.
-    inject: { noteFail: {}, dateFail: {}, noteDelayMs: {}, noteHangMs: {}, noteGateway504: {}, callFail: {}, rpcFail: {}, datesDown: { kind: null, n: 0 }, dateComplexity: {} },
+    inject: { noteFail: {}, dateFail: {}, noteDelayMs: {}, noteHangMs: {}, noteGateway504: {}, noteJson500: {}, callFail: {}, rpcFail: {}, datesDown: { kind: null, n: 0 }, dateComplexity: {} },
     quo: { users: [], phoneNumbers: [], calls: {}, conversations: {}, history: {}, webhooks: [], nextWebhookId: 123 },
   });
   let db = blank();
@@ -446,6 +442,12 @@ if (process.argv[2] === "serve") {
             res.writeHead(504, { "content-type": "text/html" });
             return res.end("<html><body>504 Gateway Time-out</body></html>");
           }
+          if (db.inject.noteJson500[item] > 0) {
+            // Saved, then Monday's own 500, in the JSON shape its docs and forum show for HTTP 500.
+            db.inject.noteJson500[item]--;
+            rec.json500 = true;
+            return send(500, { error_message: "Internal server error", status_code: 500 });
+          }
           return send(200, { data: { create_update: { id } } });
         }
         if (kind === "change") {
@@ -574,13 +576,13 @@ if (process.argv[2] === "serve") {
   const PH = {
     shared: "+19185550101", text: "+19185550102", attempt: "+19185550103", noteFail: "+19185550104", dateFail: "+19185550105",
     busy: "+19185550106", shadow: "+19185550107", pilot: "+19185550108", summary: "+19185550109", summary2: "+19185550110",
-    missed: "+19185550111", summary3: "+19185550112", hang: "+19185550113", matchFail: "+19185550114", gateway: "+19185550115", unmatched: "+19185550199",
+    missed: "+19185550111", summary3: "+19185550112", hang: "+19185550113", matchFail: "+19185550114", gateway: "+19185550115", json500: "+19185550116", unmatched: "+19185550199",
     bf1: "+19185550120", bf2: "+19185550121", bf3: "+19185550122", bf4: "+19185550123", bfNone: "+19185550125",
   };
   const P = {
     shared1: "2001", shared2: "2002", shared3: "2003", shared4: "2004", text: "2005", attempt: "2006", noteFail: "2007", dateFail: "2008",
     busy: "2009", shadow1: "2010", shadow2: "2011", pilot: "2012", harvard: "2013", elm: "2014", oak: "2015", birch: "2016", missed: "2017",
-    cedar: "2018", hang: "2019", matchFail: "2030", gateway: "2031", bf20: "2020", bf21: "2021", bf22: "2022", bf23: "2023", bf24: "2024", bf25: "2025",
+    cedar: "2018", hang: "2019", matchFail: "2030", gateway: "2031", json500: "2032", bf20: "2020", bf21: "2021", bf22: "2022", bf23: "2023", bf24: "2024", bf25: "2025",
     bf27: "2027", // deleted in Monday: every date write to it is refused
     bf28: "2028", // on the same number as 2023; meets Monday's rate limit in one test
   };
@@ -618,6 +620,7 @@ if (process.argv[2] === "serve") {
       prop(P.hang, { owner: PH.hang, last: addDays(DAY, -5) }),
       prop(P.matchFail, { owner: PH.matchFail, last: addDays(DAY, -5) }),
       prop(P.gateway, { owner: PH.gateway, last: addDays(DAY, -5) }),
+      prop(P.json500, { owner: PH.json500, last: addDays(DAY, -5) }),
       prop(P.bf20, { owner: PH.bf1, last: addDays(DAY, -30) }),
       prop(P.bf24, { owner: PH.bf1 }),
       prop(P.bf25, { owner: "(918) 555-7001", landlord: PH.bf1 }),
@@ -947,7 +950,14 @@ if (process.argv[2] === "serve") {
   const G1 = call("EVgateway1", { other: PH.gateway, callId: "ACgateway1" });
   const g1 = await deliver(G1);
   const g2 = g1.status === 200 ? g1 : await deliver(G1);
-  check("[doc] a note answered '504 Gateway Time-out' (saved by Monday) isn't posted again on the retry", (await updatesOn(P.gateway)).length === 1, `first ${g1.status} ${J(g1.body)}, then ${g2.status}; ${(await updatesOn(P.gateway)).length} notes on the property`);
+  check("a note answered '504 Gateway Time-out' (saved by Monday) isn't posted again on the retry", (await updatesOn(P.gateway)).length === 1, `first ${g1.status} ${J(g1.body)}, then ${g2.status}; ${(await updatesOn(P.gateway)).length} notes on the property`);
+  // Monday saves the note, then answers its documented HTTP 500 body (JSON, so not "non-JSON", and the message
+  // is "Internal server error", without the status): lib/monday.ts says a 5xx answer may have landed.
+  await mockPost("/__patch", { inject: { noteJson500: { [P.json500]: 1 } } });
+  const X1 = call("EVjson500", { other: PH.json500, callId: "ACjson500" });
+  const x1 = await deliver(X1);
+  const x2 = x1.status === 200 ? x1 : await deliver(X1);
+  check("[doc] a note answered HTTP 500 {error_message:'Internal server error'} (saved by Monday) isn't posted again on the retry", (await updatesOn(P.json500)).length === 1, `first ${x1.status} ${J(x1.body)}, then ${x2.status}; ${(await updatesOn(P.json500)).length} notes on the property`);
 
   // ---------------------------------------------------------------------------------------------------
   section("Pilot");
@@ -1050,7 +1060,7 @@ if (process.argv[2] === "serve") {
   d = await dbNow();
   const created = s.find((x) => x.api === "quo" && x.method === "POST" && x.path === "/webhooks");
   check("setup: 200 action 'created', the mode in force", su.status === 200 && sb.ok === true && sb.action === "created" && sb.webhookId === "123" && sb.keyStored === true && sb.mode === "live" && /\/api\/quo\/webhook$/.test(sb.url ?? ""), J(sb));
-  check("…the URL is the request's origin (not on Vercel)", sb.url === `${new URL(BASE).origin}/api/quo/webhook`, sb.url);
+  check("…the URL is the request's origin (not on Vercel); no other webhook to this URL to report", sb.url === `${new URL(BASE).origin}/api/quo/webhook` && !("otherWebhooksToThisUrl" in sb), J(sb));
   check("…POST /webhooks with the 4 events, resourceIds ['*'], this deployment's URL, enabled", same(sorted(created?.body?.events), sorted(EVENTS4)) && same(created?.body?.resourceIds, ["*"]) && created?.body?.url === sb.url && created?.body?.status === "enabled", J(created?.body));
   check("…dated API: no /v1 in the path, Quo-Api-Version 2026-03-30 and the key on every call", s.filter((x) => x.api === "quo").every((x) => x.version === "2026-03-30" && x.auth === "test" && x.path.startsWith("/webhooks")), J(s.filter((x) => x.api === "quo").map((x) => [x.method, x.path, x.version])));
   const wh = d.quo.webhooks[0];
@@ -1095,6 +1105,7 @@ if (process.argv[2] === "serve") {
   d = await dbNow();
   const kept = d.quo.webhooks.find((w) => w.id === d.config.QUO_WEBHOOK_ID);
   check("setup ensures a webhook 'for every number': one that covers only PNmain is passed over and a ['*'] one created", sb.action === "created" && same(kept?.resourceIds, ["*"]), `action=${sb.action} webhookId=${sb.webhookId} resourceIds=${J(kept?.resourceIds)}`);
+  check("…and names the webhook it passed over: otherWebhooksToThisUrl [{id 200, enabled, ['PNmain']}]", same(sb.otherWebhooksToThisUrl, [{ id: "200", status: "enabled", resourceIds: ["PNmain"] }]), J(sb.otherWebhooksToThisUrl));
 
   // ---------------------------------------------------------------------------------------------------
   section("Backfill");
