@@ -40,7 +40,6 @@ const EVENTS4 = ["call.completed", "message.received", "message.delivered", "cal
 
 const localDay = (at) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(at));
 const localWhen = (at) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(at));
-const monthDay = (at) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, month: "short", day: "numeric" }).format(new Date(at));
 const addDays = (day, n) => new Date(Date.parse(`${day}T12:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 const whsec = (seed) => `whsec_${createHash("sha256").update(seed).digest("base64")}`;
 const pgTs = (iso) => new Date(iso).toISOString().replace(/\.\d{3}Z$/, "+00:00"); // how Postgres writes a timestamptz in jsonb
@@ -67,7 +66,6 @@ if (process.argv[2] === "serve") {
   });
   let db = blank();
   const VOID = Symbol("void");
-  const pgErr = (status, code, message, hint = null) => Object.assign(new Error(message), { pg: { code, message, details: null, hint }, status });
 
   const keyOk = (s) => typeof s === "string" && s !== "" && s === db.config.MAP_EDIT_KEY; // listing_edit_key_ok
   const today = () => new Date().toISOString().slice(0, 10); // current_date (UTC on Supabase)
@@ -466,7 +464,6 @@ if (process.argv[2] === "serve") {
           const out = await impl(a);
           return out === VOID ? send(204) : send(200, out);
         } catch (e) {
-          if (e.pg) return send(e.status ?? 400, e.pg);
           return send(500, { code: "XX000", message: String(e?.message ?? e), details: null, hint: null });
         }
       }
@@ -1078,6 +1075,7 @@ if (process.argv[2] === "serve") {
   // ---------------------------------------------------------------------------------------------------
   section("Backfill");
   const backfill = (b, h = { "x-map-secret": SECRET }) => fetch(`${BASE}/api/quo/backfill`, { method: "POST", headers: { "content-type": "application/json", ...h }, body: J(b) });
+  const states = (d, ids) => ids.map((id) => d.backfill[id]?.state);
   let bf = await backfill({ mode: "scan" }, {});
   check("backfill without x-map-secret: 403", bf.status === 403);
   m0 = await mark();
@@ -1085,33 +1083,61 @@ if (process.argv[2] === "serve") {
   let bb = await bf.json();
   s = await since(m0);
   d = await dbNow();
-  check("scan: 200 with counts and the next page token", bf.status === 200 && bb.ok === true && bb.conversations === 4 && bb.matched === 2 && bb.read === 1 && bb.recorded === 3 && bb.next === "page2", J(bb));
+  check("scan: 200 with counts and the next page token", bf.status === 200 && bb.ok === true && bb.conversations === 5 && bb.matched === 3 && bb.read === 2 && bb.recorded === 4 && bb.next === "page2", J(bb));
+  check("…asks Quo for pages of 50 conversations", s.find((x) => x.api === "quo" && x.path === "/v1/conversations")?.query?.maxResults === "50", J(s.find((x) => x.path === "/v1/conversations")?.query));
   const histReads = s.filter((x) => x.api === "quo" && (x.path === "/v1/calls" || x.path === "/v1/messages"));
-  check("…history read only where Quo is newer than the map (one conversation: PNmain, bf1)", histReads.length === 2 && histReads.every((x) => x.query.phoneNumberId === "PNmain" && x.query.participants === PH.bf1), J(histReads.map((x) => x.query)));
-  const want = [P.bf20, P.bf24, P.bf25];
+  check("…history read only where Quo is newer than the map (PNmain with bf1 and bf4)", histReads.length === 4 && histReads.every((x) => x.query.phoneNumberId === "PNmain" && [PH.bf1, PH.bf4].includes(x.query.participants)), J(histReads.map((x) => x.query)));
+  const want = [P.bf20, P.bf24, P.bf25, P.bf27];
   check("…proposes rows only for properties whose date is older than Quo's newest answered call or text", same(sorted(Object.keys(d.backfill)), sorted(want)), J(Object.keys(d.backfill)));
-  check("…each row: the newest answered call (not the later unanswered one), its day, kind, teammate, Monday's day", want.every((id) => d.backfill[id].state === "proposed" && d.backfill[id].quo_at === BF_CALL_AT && d.backfill[id].quo_day === BF_DAY && d.backfill[id].kind === "call" && d.backfill[id].teammate === "Will" && d.backfill[id].phone === PH.bf1 && d.backfill[id].monday_day === (d.props[id].last_contact ?? null)), J(want.map((id) => d.backfill[id])));
+  check("…each row: the newest answered call (not the later unanswered one), its day, kind, teammate, Monday's day", want.every((id) => d.backfill[id].state === "proposed" && d.backfill[id].quo_at === BF_CALL_AT && d.backfill[id].quo_day === BF_DAY && d.backfill[id].kind === "call" && d.backfill[id].teammate === "Will" && d.backfill[id].phone === (id === P.bf27 ? PH.bf4 : PH.bf1) && d.backfill[id].monday_day === (d.props[id].last_contact ?? null)), J(want.map((id) => d.backfill[id])));
   check("…scan wrote nothing to Monday", s.filter((x) => x.api === "monday").length === 0);
 
   await mockPost("/__patch", { props: { [P.bf25]: { last_contact: DAY } } }); // the map caught up meanwhile
-  m0 = await mark();
+  // Monday is down (a 503 page): nothing is written, and nothing may be marked failed.
+  await mockPost("/__patch", { inject: { datesDown: { kind: "http503", n: 99 } } });
   bf = await backfill({ mode: "apply" });
+  bb = await bf.json();
+  d = await dbNow();
+  check("apply while Monday is down (503): 502, every row still proposed (none marked failed)", bf.status === 502 && bb.ok === false && /Monday/.test(bb.error ?? "") && same(states(d, [P.bf20, P.bf24, P.bf27]), ["proposed", "proposed", "proposed"]) && d.backfill[P.bf25].state === "skipped", J([bf.status, bb, states(d, want)]));
+  await mockPost("/__patch", { inject: { datesDown: { kind: null, n: 0 } } });
+
+  m0 = await mark();
+  bf = await backfill({ mode: "apply", limit: 2 });
   bb = await bf.json();
   s = await since(m0);
   d = await dbNow();
   dates = datesIn(s);
-  check("apply: 200, applied 2 (the caught-up row is skipped)", bf.status === 200 && bb.ok === true && bb.applied === 2 && d.backfill[P.bf25].state === "skipped", J([bb, d.backfill[P.bf25]?.state]));
+  check("apply (limit 2): 200, applied 2, failed 0", bf.status === 200 && bb.ok === true && bb.applied === 2 && bb.failed === 0, J(bb));
   check("…both written in ONE aliased Monday mutation with their days", dates.length === 1 && same(sorted(dates[0].items.map((i) => i.id)), [P.bf20, P.bf24]) && dates[0].items.every((i) => same(i.values, { [LAST_CONTACT_COL]: { date: BF_DAY } })), J(dates.map((x) => x.items)));
   check("…marked applied, and the map's dates moved", [P.bf20, P.bf24].every((id) => d.backfill[id].state === "applied" && d.props[id].last_contact === BF_DAY && d.monday[id][LAST_CONTACT_COL] === BF_DAY));
+
+  // 2027 was deleted in Monday: Monday refuses it every time.
+  await mockPost("/__patch", { inject: { dateFail: { [P.bf27]: 99 } } });
   m0 = await mark();
   bf = await backfill({ mode: "apply" });
   bb = await bf.json();
   s = await since(m0);
-  check("…apply again: applied 0, done, no Monday call", bb.ok === true && bb.applied === 0 && bb.done === true && s.filter((x) => x.api === "monday").length === 0, J(bb));
+  d = await dbNow();
+  check("apply with a row Monday refuses (deleted item): 200, applied 0, failed 1, the row marked failed with Monday's error", bf.status === 200 && bb.ok === true && bb.applied === 0 && bb.failed === 1 && d.backfill[P.bf27].state === "failed" && /Item not found/.test(d.backfill[P.bf27].error ?? ""), J([bb, d.backfill[P.bf27]]));
+  m0 = await mark();
+  bf = await backfill({ mode: "apply" });
+  bb = await bf.json();
+  s = await since(m0);
+  check("…apply again: applied 0, done, no Monday call (the failed row isn't retried)", bb.ok === true && bb.applied === 0 && bb.done === true && s.filter((x) => x.api === "monday").length === 0, J(bb));
+
   bf = await backfill({ mode: "scan", pageToken: "page2" });
   bb = await bf.json();
   d = await dbNow();
-  check("[doc] scan: one number with conversations in two inboxes (one property) records the newest contact once", bf.status === 200 && bb.recorded === 1 && d.backfill[P.bf23]?.quo_at === BF_CALL_AT && d.backfill[P.bf23]?.teammate === "Lou", `${bf.status} ${J(bb)}`);
+  check("scan: one number with conversations in two inboxes (one property) records the newest contact once", bf.status === 200 && bb.recorded === 1 && d.backfill[P.bf23]?.quo_at === BF_CALL_AT && d.backfill[P.bf23]?.teammate === "Lou", `${bf.status} ${J(bb)}`);
+
+  // Monday's rate limit (a ComplexityException, HTTP 200) on every attempt: transient, like an outage.
+  await mockPost("/__patch", { inject: { datesDown: { kind: "complexity", n: 99 } } });
+  bf = await backfill({ mode: "apply" });
+  bb = await bf.json();
+  d = await dbNow();
+  check("[doc] apply while Monday rate-limits every write (ComplexityException): 502, the row still proposed, not marked failed", bf.status === 502 && d.backfill[P.bf23].state === "proposed", J([bf.status, bb, d.backfill[P.bf23]?.state, d.backfill[P.bf23]?.error]));
+  await mockPost("/__patch", { inject: { datesDown: { kind: null, n: 0 } } });
+
   await mockPost("/__patch", { inject: { rpcFail: { quo_match: 1 } } });
   bf = await backfill({ mode: "scan" });
   bb = await bf.json();
