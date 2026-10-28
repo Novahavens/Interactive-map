@@ -7,6 +7,7 @@ import {
 } from "@/lib/listing-edit";
 import { BOARDS, DRY_RUN, EDIT_CALL_TIMEOUT_MS, changeColumns, createUpdate, readColumns } from "@/lib/monday";
 import { loadPropertyDetail } from "@/lib/property-detail";
+import { quoTimeZone } from "@/lib/quo-config";
 import { supabase } from "@/lib/supabase";
 import type { ApiError, EditConflictResponse, EditListingResponse, PropertyDetail } from "@/lib/types";
 
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
   const parsed = parseEditRequest(raw);
   if (!parsed.ok) return fail(400, "bad_request", parsed.error);
-  const { editor, changes, base } = parsed;
+  const { editor, changes, base, source } = parsed;
   const keys = Object.keys(changes) as EditKey[];
   const columns = keys.map((k) => fieldOf(k).column);
   const asValues = (texts: Record<string, string | null>): EditChanges =>
@@ -156,11 +157,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (error) console.error("edit: could not record the outcome", id, status, error.message);
   };
 
-  // Monday's values now (for the conflict check and the note) and the record as the map has it (for the answer).
-  const [mondayRead, detailRead] = await Promise.allSettled([
+  // Monday's values now (for the conflict check and the note), the record as the map has it (for the answer),
+  // and, when the form was filled in from a call summary, that call (for the note; a bad one is just ignored).
+  const [mondayRead, detailRead, sourceRead] = await Promise.allSettled([
     readColumns(id, columns, { signal: mondaySignal() }),
     loadPropertyDetail(id),
+    source ? sb.rpc("quo_summary_source", { p_secret: secret, p_call_id: source.callId, p_property_item_id: id }) : Promise.resolve(null),
   ]);
+  const call = sourceRead.status === "fulfilled" && sourceRead.value && !sourceRead.value.error ? (sourceRead.value.data as { at?: string; by?: string | null } | null) : null;
+  const fromCall = source && call?.at ? { callId: source.callId, at: call.at, by: call.by ?? null } : null;
   if (mondayRead.status === "rejected") {
     console.error("edit: Monday read failed", id, errText(mondayRead.reason));
     await finish("failed");
@@ -216,9 +221,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       // One bullet per field on its own line; a multi-line note value is folded onto its bullet.
       const date = new Date().toISOString().slice(0, 10);
       // When Monday couldn't be read back, the note says so: it records what was sent, not what Monday kept.
+      // Filled in from a call summary ("Owner said"): the note says whose call, so Monday shows where the values came from.
+      const via = fromCall && !opts.noteOwed
+        ? `, from ${fromCall.by ? `${fromCall.by}'s` : "a"} call on ${new Intl.DateTimeFormat("en-US", { timeZone: quoTimeZone(), month: "short", day: "numeric" }).format(new Date(fromCall.at))}`
+        : "";
       const head = opts.unverified
-        ? `✏️ Edited on the map by ${opts.noteEditor} on ${date} (Monday didn't confirm these; check the values):`
-        : `✏️ Edited on the map by ${opts.noteEditor} on ${date}:`;
+        ? `✏️ Edited on the map by ${opts.noteEditor} on ${date}${via} (Monday didn't confirm these; check the values):`
+        : `✏️ Edited on the map by ${opts.noteEditor} on ${date}${via}:`;
       const note = escapeHtml(`${head}\n${lines.join("\n")}`).replace(/\n/g, "<br>");
       try {
         await createUpdate(id, note, { signal: mondaySignal() });
@@ -226,6 +235,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       } catch (e) {
         console.error("edit: note failed after the edit was saved", id, errText(e));
       }
+    }
+
+    // The call's card on the panel now says who applied it.
+    if (fromCall && confirmed.length) {
+      const { error } = await sb.rpc("quo_summary_applied", { p_secret: secret, p_call_id: fromCall.callId, p_property_item_id: id, p_editor: editor, p_fields: confirmed });
+      if (error) console.error("edit: could not mark the call summary applied", id, error.message);
     }
 
     // The mirror already marks its row applied; this closes the row when the mirror didn't (a no-op otherwise).

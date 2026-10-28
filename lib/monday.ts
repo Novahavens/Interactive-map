@@ -500,3 +500,37 @@ export async function changeColumns(
   );
   if (!data.change_multiple_column_values?.id) throw new MondayError("change_multiple_column_values returned no id");
 }
+
+// ---------- Contact log (Quo) ----------
+
+/** Property board "Last Contact Date". */
+export const LAST_CONTACT_COL = "date_mm5yh71z";
+
+/**
+ * Sets one date column on several property items in one request (one aliased change_multiple_column_values
+ * each, at most 25). All or nothing as far as the caller knows: Monday reports any failed alias as an error,
+ * and setting the same date again is harmless, so the caller simply retries the whole set. Not retried here.
+ */
+export async function setDates(
+  columnId: string,
+  items: { id: string; day: string }[],
+  opts: { signal?: AbortSignal } = {},
+): Promise<void> {
+  if (!items.length) return;
+  if (items.length > 25) throw new MondayError("setDates takes at most 25 items");
+  if (DRY_RUN) {
+    console.info("[monday dry-run] set dates", { columnId, items });
+    return;
+  }
+  const vars: Record<string, unknown> = { board: BOARDS.property };
+  const decl = ["$board: ID!"];
+  const body = items.map((it, i) => {
+    decl.push(`$i${i}: ID!`, `$v${i}: JSON!`);
+    vars[`i${i}`] = it.id;
+    vars[`v${i}`] = JSON.stringify({ [columnId]: { date: it.day } });
+    return `d${i}: change_multiple_column_values(board_id: $board, item_id: $i${i}, column_values: $v${i}) { id }`;
+  });
+  await monday(`mutation (${decl.join(", ")}) { ${body.join(" ")} }`, vars, {
+    signal: opts.signal ?? AbortSignal.timeout(EDIT_CALL_TIMEOUT_MS),
+  });
+}
