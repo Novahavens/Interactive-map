@@ -4,7 +4,7 @@ import { isAnswered } from "@/lib/contact";
 import { holdsSecret, quoTimeZone } from "@/lib/quo-config";
 import { lastLoggable, localDay, type Match } from "@/lib/quo-events";
 import { conversationHistory, conversationsPage, quoEnabled } from "@/lib/quo";
-import { LAST_CONTACT_COL, setDates } from "@/lib/monday";
+import { LAST_CONTACT_COL, isTransientMondayError, mayHaveLanded, setDates } from "@/lib/monday";
 import { supabase } from "@/lib/supabase";
 import { errorText as errText } from "@/lib/utils";
 
@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const E164_US = /^\+1[2-9]\d{2}[2-9]\d{6}$/;
-/** Monday errors that say nothing about the row (the same ones lib/monday.ts retries reads on). */
-const TRANSIENT = /\b(429|50\d)\b|rate limit|complexity|timed? ?out|non-JSON/i;
+/** A date write that failed like this says nothing about the row, and setting a date twice is harmless: retry it. */
+const retryable = (e: unknown) => isTransientMondayError(e) || mayHaveLanded(e);
 
 /**
  * POST /api/quo/backfill (x-map-secret) — the one-off fill of Last Contact Date from Quo's history.
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     const rows = (Array.isArray(data) ? data : []) as { id: string; day: string }[];
     if (!rows.length) return NextResponse.json({ ok: true, applied: 0, done: true });
     let written = rows;
-    const refused: { id: string; error: string }[] = [];
+    const refused: { id: string; error: string; retry: boolean }[] = [];
     try {
       await setDates(LAST_CONTACT_COL, rows, { signal: AbortSignal.timeout(15_000) });
     } catch (e) {
@@ -53,15 +53,15 @@ export async function POST(req: NextRequest) {
           await setDates(LAST_CONTACT_COL, [r], { signal: AbortSignal.timeout(5_000) });
           written.push(r);
         } catch (one) {
-          refused.push({ id: r.id, error: errText(one) });
+          refused.push({ id: r.id, error: errText(one), retry: retryable(one) });
         }
       }
-      if (!written.length && refused.every((r) => TRANSIENT.test(r.error))) {
+      if (!written.length && refused.every((r) => r.retry)) {
         return NextResponse.json({ ok: false, error: `Monday: ${errText(e)}` }, { status: 502 }); // Monday is busy or down, not the rows
       }
     }
     // Only a row Monday refuses for itself is failed; one that hit a busy Monday stays proposed for the next run.
-    const failed = refused.filter((r) => !TRANSIENT.test(r.error));
+    const failed = refused.filter((r) => !r.retry);
     const mark = (ids: string[], state: string, error?: string) => sb.rpc("quo_backfill_mark", { p_secret: secret, p_ids: ids, p_state: state, p_error: error ?? null });
     const { data: n, error: markError } = written.length ? await mark(written.map((r) => r.id), "applied") : { data: 0, error: null };
     for (const r of failed) await mark([r.id], "failed", r.error);

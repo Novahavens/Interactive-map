@@ -230,17 +230,21 @@ export async function ensureWebhook(
   storedId: string | null,
   haveKey: boolean,
   signal: AbortSignal,
-): Promise<{ id: string; key: string | null; action: "created" | "rotated" | "existing" }> {
+): Promise<{ id: string; key: string | null; action: "created" | "rotated" | "existing"; others: { id: string; status: string; resourceIds: string[] }[] }> {
   const list = await quoDated<{ data: (Webhook & { resourceIds?: string[] })[] }>("GET", "/webhooks", undefined, signal);
+  // Any other webhook to this address (a narrower or older one) is reported, not touched: its deliveries fail
+  // the signature check, so disable it in Quo.
+  const othersThan = (id: string) =>
+    (list.data ?? []).filter((w) => w.url === url && w.id !== id).map((w) => ({ id: w.id, status: w.status, resourceIds: w.resourceIds ?? [] }));
   const found = (list.data ?? []).find(
     (w) =>
       w.url === url && w.status === "enabled" && QUO_EVENTS.every((e) => w.events?.includes(e)) &&
       (w.apiVersion ?? QUO_API_VERSION) === QUO_API_VERSION && (w.resourceIds ?? ["*"]).length === 1 && (w.resourceIds ?? ["*"])[0] === "*",
   );
   if (found) {
-    if (haveKey && storedId === found.id) return { id: found.id, key: null, action: "existing" };
+    if (haveKey && storedId === found.id) return { id: found.id, key: null, action: "existing", others: othersThan(found.id) };
     const rotated = await quoDated<{ data: Webhook }>("POST", `/webhooks/${encodeURIComponent(found.id)}/rotate`, undefined, signal);
-    return { id: found.id, key: rotated.data?.key ?? null, action: "rotated" };
+    return { id: found.id, key: rotated.data?.key ?? null, action: "rotated", others: othersThan(found.id) };
   }
   const made = await quoDated<{ data: Webhook }>(
     "POST",
@@ -248,7 +252,7 @@ export async function ensureWebhook(
     { url, events: QUO_EVENTS, resourceIds: ["*"], label: "Property map: log calls and texts in Monday", status: "enabled" },
     signal,
   );
-  return { id: made.data.id, key: made.data.key ?? null, action: "created" };
+  return { id: made.data.id, key: made.data.key ?? null, action: "created", others: othersThan(made.data.id) };
 }
 
 /** A teammate's first name from their Quo user id (null when Quo doesn't name them). */

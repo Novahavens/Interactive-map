@@ -84,9 +84,7 @@ export async function monday<T>(
   try {
     return await mondayOnce<T>(query, variables, opts.signal);
   } catch (e) {
-    const transient =
-      e instanceof MondayError && (/\b(429|50\d)\b/.test(e.message) || /rate limit|complexity|timeout|non-JSON/i.test(e.message));
-    if (!retry || !transient || opts.signal?.aborted) throw e;
+    if (!retry || !isTransientMondayError(e) || opts.signal?.aborted) throw e;
     // The pause before the retry ends with the signal: a caller's deadline is never overrun by the wait.
     if (!(await sleep(RETRY_PAUSE_MS, opts.signal))) throw new MondayError("Monday timed out (no time left to retry)");
     return await mondayOnce<T>(query, variables, opts.signal);
@@ -94,6 +92,19 @@ export async function monday<T>(
 }
 
 const RETRY_PAUSE_MS = 1200;
+
+/** Monday was busy or answered badly (429, 5xx, rate limit, complexity budget, not JSON): nothing was wrong with the request. */
+export function isTransientMondayError(e: unknown): boolean {
+  return e instanceof MondayError && (/\b(429|50\d)\b/.test(e.message) || /rate limit|complexity|timeout|non-JSON/i.test(e.message));
+}
+
+/**
+ * A mutation that failed like this may still have been applied: it timed out, the connection broke, or Monday's
+ * gateway answered 5xx or not JSON. A GraphQL refusal (errors, a rate limit, the complexity budget) means it wasn't.
+ */
+export function mayHaveLanded(e: unknown): boolean {
+  return !(e instanceof MondayError) || /timed out|non-JSON|\b50\d\b/i.test(e.message);
+}
 
 const isAbort = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
 

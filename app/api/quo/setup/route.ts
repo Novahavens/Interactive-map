@@ -25,7 +25,10 @@ export async function POST(req: NextRequest) {
       const { data, error } = await supabase().rpc("quo_set_webhook", { p_secret: editSecret(), p_webhook_id: hook.id, p_key: hook.key });
       if (error || data !== true) throw new Error(`could not store the signing key: ${error?.message ?? data}`);
     }
-    return NextResponse.json({ ok: true, url, webhookId: hook.id, action: hook.action, keyStored: !!hook.key || config.keys.length > 0, mode: config.mode });
+    return NextResponse.json({
+      ok: true, url, webhookId: hook.id, action: hook.action, keyStored: !!hook.key || config.keys.length > 0, mode: config.mode,
+      ...(hook.others.length && { otherWebhooksToThisUrl: hook.others }),
+    });
   } catch (e) {
     const status = e instanceof QuoError ? e.status : 0;
     console.error("quo-setup: failed", errorText(e));

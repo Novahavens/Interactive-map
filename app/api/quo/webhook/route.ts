@@ -8,7 +8,7 @@ import {
 } from "@/lib/quo-events";
 import { verifyQuoSignature } from "@/lib/quo-signature";
 import { callDetails, teammateName } from "@/lib/quo";
-import { LAST_CONTACT_COL, MondayError, createUpdate, setDates } from "@/lib/monday";
+import { LAST_CONTACT_COL, createUpdate, mayHaveLanded, setDates } from "@/lib/monday";
 import { supabase } from "@/lib/supabase";
 import { errorText as errText } from "@/lib/utils";
 
@@ -215,11 +215,11 @@ export async function POST(req: NextRequest) {
     try {
       updateId = await createUpdate(id, html, { signal: signal() });
     } catch (e) {
-      // A post that timed out may still land in Monday: the claim stays, so a retry can't post it a second
-      // time (one missing note is better than two). A definite error frees the slot for the retry.
-      if (e instanceof MondayError && /timed out/i.test(e.message)) {
+      // A post that timed out or got a gateway error may still be in Monday: the claim stays, so a retry can't
+      // post it a second time (one missing note is better than two). A refusal frees the slot for the retry.
+      if (mayHaveLanded(e)) {
         updateId = "unknown";
-        console.error("quo-webhook: note timed out; not posting it again", event.eventId, id);
+        console.error("quo-webhook: note may or may not have posted; not posting it again", event.eventId, id, errText(e));
       } else problems.push(`note ${id}: ${errText(e)}`);
     }
     const { error: doneError } = await sb.rpc("quo_note_done", {

@@ -60,8 +60,9 @@ if (process.argv[2] === "serve") {
     editLog: [], // listing_edit_log
     // noteHangMs: the note lands in Monday, but only after the caller has given up; rpcFail: fn → failures left;
     // dateFail: item → refusals left ("Item not found"); datesDown: the next n date mutations fail whole, either
-    // as an outage ("http503": a non-JSON 503 page) or as Monday's rate limit ("complexity").
-    inject: { noteFail: {}, dateFail: {}, noteDelayMs: {}, noteHangMs: {}, noteGateway504: {}, callFail: {}, rpcFail: {}, datesDown: { kind: null, n: 0 } },
+    // as an outage ("http503": a non-JSON 503 page) or as Monday's rate limit ("complexity"); dateComplexity:
+    // item → how many more requests that include it Monday rejects whole with its complexity-budget error.
+    inject: { noteFail: {}, dateFail: {}, noteDelayMs: {}, noteHangMs: {}, noteGateway504: {}, callFail: {}, rpcFail: {}, datesDown: { kind: null, n: 0 }, dateComplexity: {} },
     quo: { users: [], phoneNumbers: [], calls: {}, conversations: {}, history: {}, webhooks: [], nextWebhookId: 123 },
   });
   let db = blank();
@@ -401,6 +402,12 @@ if (process.argv[2] === "serve") {
             // Monday's rate limit: HTTP 200 with a ComplexityException.
             return send(200, { errors: [{ message: "Complexity budget exhausted, query cost 30001 budget remaining 29999 out of 1000000 reset in 13 seconds", extensions: { code: "ComplexityException" } }] });
           }
+          const hot = rec.items.find((it) => db.inject.dateComplexity[it.id] > 0);
+          if (hot) {
+            db.inject.dateComplexity[hot.id]--;
+            rec.failed = "complexity";
+            return send(200, { errors: [{ message: "Complexity budget exhausted, query cost 30001 budget remaining 29999 out of 1000000 reset in 13 seconds", extensions: { code: "ComplexityException" } }] });
+          }
           const data = {};
           const errors = [];
           rec.items.forEach((it, i) => {
@@ -575,6 +582,7 @@ if (process.argv[2] === "serve") {
     busy: "2009", shadow1: "2010", shadow2: "2011", pilot: "2012", harvard: "2013", elm: "2014", oak: "2015", birch: "2016", missed: "2017",
     cedar: "2018", hang: "2019", matchFail: "2030", gateway: "2031", bf20: "2020", bf21: "2021", bf22: "2022", bf23: "2023", bf24: "2024", bf25: "2025",
     bf27: "2027", // deleted in Monday: every date write to it is refused
+    bf28: "2028", // on the same number as 2023; meets Monday's rate limit in one test
   };
   const prop = (id, o) => ({
     monday_item_id: id, name: (o.address ?? `${id} Test St`).split(",")[0], address: o.address ?? `${id} Test St, Tulsa, OK`,
@@ -617,6 +625,7 @@ if (process.argv[2] === "serve") {
       prop(P.bf22, { owner: PH.bf2, last: DAY }),
       prop(P.bf23, { owner: PH.bf3, last: addDays(DAY, -30) }),
       prop(P.bf27, { owner: PH.bf4, last: addDays(DAY, -30) }),
+      prop(P.bf28, { owner: "(918) 555-7002", landlord: PH.bf3, last: addDays(DAY, -20) }),
     ],
     quo: {
       users: [{ id: "USwill", firstName: "Will", email: "will@example.com" }, { id: "USlou", firstName: "Lou", email: "lou@example.com" }, { id: "USgaby", firstName: "Gaby", email: "gaby@example.com" }],
@@ -1133,7 +1142,7 @@ if (process.argv[2] === "serve") {
   bb = await bf.json();
   s = await since(m0);
   d = await dbNow();
-  check("apply with a row Monday refuses (deleted item): 200, applied 0, failed 1, the row marked failed with Monday's error", bf.status === 200 && bb.ok === true && bb.applied === 0 && bb.failed === 1 && d.backfill[P.bf27].state === "failed" && /Item not found/.test(d.backfill[P.bf27].error ?? ""), J([bb, d.backfill[P.bf27]]));
+  check("apply with a row Monday refuses (deleted item): 200, applied 0, failed 1, retryLater 0, the row marked failed with Monday's error", bf.status === 200 && bb.ok === true && bb.applied === 0 && bb.failed === 1 && bb.retryLater === 0 && d.backfill[P.bf27].state === "failed" && /Item not found/.test(d.backfill[P.bf27].error ?? ""), J([bb, d.backfill[P.bf27]]));
   m0 = await mark();
   bf = await backfill({ mode: "apply" });
   bb = await bf.json();
@@ -1143,15 +1152,33 @@ if (process.argv[2] === "serve") {
   bf = await backfill({ mode: "scan", pageToken: "page2" });
   bb = await bf.json();
   d = await dbNow();
-  check("scan: one number with conversations in two inboxes (one property) records the newest contact once", bf.status === 200 && bb.recorded === 1 && d.backfill[P.bf23]?.quo_at === BF_CALL_AT && d.backfill[P.bf23]?.teammate === "Lou", `${bf.status} ${J(bb)}`);
+  check("scan: one number with conversations in two inboxes records each of its properties once, with the newest contact", bf.status === 200 && bb.recorded === 2 && [P.bf23, P.bf28].every((id) => d.backfill[id]?.quo_at === BF_CALL_AT && d.backfill[id]?.teammate === "Lou" && d.backfill[id]?.state === "proposed"), `${bf.status} ${J(bb)} ${J([P.bf23, P.bf28].map((id) => d.backfill[id]))}`);
 
-  // Monday's rate limit (a ComplexityException, HTTP 200) on every attempt: transient, like an outage.
+  // Monday's rate limit (a ComplexityException, HTTP 200) on every write: Monday is busy, not the rows.
   await mockPost("/__patch", { inject: { datesDown: { kind: "complexity", n: 99 } } });
   bf = await backfill({ mode: "apply" });
   bb = await bf.json();
   d = await dbNow();
-  check("[doc] apply while Monday rate-limits every write (ComplexityException): 502, the row still proposed, not marked failed", bf.status === 502 && d.backfill[P.bf23].state === "proposed", J([bf.status, bb, d.backfill[P.bf23]?.state, d.backfill[P.bf23]?.error]));
+  check("apply while Monday rate-limits every write (ComplexityException): 502, both rows still proposed", bf.status === 502 && bb.ok === false && same(states(d, [P.bf23, P.bf28]), ["proposed", "proposed"]), J([bf.status, bb, states(d, [P.bf23, P.bf28])]));
   await mockPost("/__patch", { inject: { datesDown: { kind: null, n: 0 } } });
+
+  // The rate limit on one row only: the batch and that row's own retry meet it, the other row goes through.
+  await mockPost("/__patch", { inject: { dateComplexity: { [P.bf28]: 2 } } });
+  m0 = await mark();
+  bf = await backfill({ mode: "apply" });
+  bb = await bf.json();
+  s = await since(m0);
+  d = await dbNow();
+  check("apply with a complexity-budget error on one row: 200, applied 1, failed 0, retryLater 1", bf.status === 200 && bb.ok === true && bb.applied === 1 && bb.failed === 0 && bb.retryLater === 1 && bb.done === false, J(bb));
+  check("…the other row is applied (Monday and the map), the rate-limited one stays proposed with no error and no date", d.backfill[P.bf23].state === "applied" && d.monday[P.bf23][LAST_CONTACT_COL] === BF_DAY && d.props[P.bf23].last_contact === BF_DAY && d.backfill[P.bf28].state === "proposed" && d.backfill[P.bf28].error === null && d.monday[P.bf28][LAST_CONTACT_COL] === addDays(DAY, -20), J([d.backfill[P.bf23], d.backfill[P.bf28], d.monday[P.bf28]]));
+  check("…Monday saw the batch, then each row alone", same(datesIn(s).map((x) => x.items.map((i) => i.id).sort()), [[P.bf23, P.bf28], [P.bf23], [P.bf28]]), J(datesIn(s).map((x) => x.items.map((i) => i.id))));
+  bf = await backfill({ mode: "apply" });
+  bb = await bf.json();
+  d = await dbNow();
+  check("…the next apply writes it once Monday has budget again: applied 1, retryLater 0", bf.status === 200 && bb.applied === 1 && bb.failed === 0 && bb.retryLater === 0 && d.backfill[P.bf28].state === "applied" && d.monday[P.bf28][LAST_CONTACT_COL] === BF_DAY, J([bb, d.backfill[P.bf28]?.state]));
+  bf = await backfill({ mode: "apply" });
+  bb = await bf.json();
+  check("…and then: applied 0, done", bb.ok === true && bb.applied === 0 && bb.done === true, J(bb));
 
   await mockPost("/__patch", { inject: { rpcFail: { quo_match: 1 } } });
   bf = await backfill({ mode: "scan" });
