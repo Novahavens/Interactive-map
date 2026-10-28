@@ -142,7 +142,16 @@ export default function EditListing({ draft, session }: Props) {
       session.saved(
         propertyId,
         json.detail,
-        { noted: json.noted !== false, mirrored: json.mirrored !== false, dryRun: !!json.dryRun, unconfirmed, sent: Object.keys(changes).length },
+        {
+          noted: json.noted !== false,
+          mirrored: json.mirrored !== false,
+          dryRun: !!json.dryRun,
+          unconfirmed,
+          sent: Object.keys(changes).length,
+          keys: Object.keys(changes) as EditKey[],
+          // read defensively: older servers don't send it
+          alreadySaved: (json as { alreadySaved?: unknown }).alreadySaved === true,
+        },
         body,
       );
       return;

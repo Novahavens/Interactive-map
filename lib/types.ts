@@ -267,6 +267,12 @@ export interface EditListingResponse {
    * failed). They are not mirrored and not in the note; reopen the property to see what Monday holds. Usually [].
    */
   unconfirmed: string[];
+  /**
+   * Every requested value was already in Monday before this request wrote anything (a repeat of a save that
+   * landed, or someone made the same edit): nothing was written to Monday. `noted` then only says whether this
+   * request posted a note (one owed by an earlier save that failed before its note); false is not a failure.
+   */
+  alreadySaved: boolean;
   dryRun?: boolean;
 }
 

@@ -89,7 +89,7 @@ The map has no login: it is embedded in Monday and anyone with the URL can open 
 
 Rotate by changing both values and redeploying. Until both are set, editing stays off.
 
-The SQL was also run against an embedded Postgres during development (wrong and missing secrets, invalid values, the mirror only after Monday, caps on saved edits only, busy); those checks aren't in the repo.
+The migration is applied to production (28 Oct 2026). `tests/sql/listing-edit-rollback.sql` checks it on the real database inside a transaction that rolls back: wrong and missing secrets are refused, invalid or non-whitelisted values are refused, a second save is *busy*, the mirror refuses before Monday is confirmed and with a wrong secret, then applies exactly once (rent and move-in total move together), finished rows don't move backwards, and the anon role can't read the log, the secret or the key check. It ran clean on 28 Oct and left no rows behind.
 
 ### Unsaved changes
 

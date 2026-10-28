@@ -101,7 +101,10 @@ async function open(browser, { w = 1440, h = 900, theme = "light", touch = false
   await ctx.route("**/api/claims/active**", (r) => r.fulfill({ json: { claims, count: 1 } }));
   await ctx.route(/\/api\/claim\/\d+$/, (r) => r.fulfill({ json: { ...claim, id: r.request().url().split("/").pop() } }));
   await ctx.route("**/api/properties?**", (r) => r.fulfill({ json: { pins, coverage: { mappable: 90, unmapped: 10 } } }));
+  state.gets = {};
   await ctx.route(/\/api\/properties\/\d+$/, async (r) => {
+    const gid = r.request().url().split("/").pop();
+    state.gets[gid] = (state.gets[gid] ?? 0) + 1;
     if (state.detailDelay) await new Promise((res) => setTimeout(res, state.detailDelay));
     await r.fulfill({ json: details.get(r.request().url().split("/").pop()) });
   });
@@ -118,8 +121,10 @@ async function open(browser, { w = 1440, h = 900, theme = "light", touch = false
       const unconfirmed = reply.unconfirmed === true ? Object.keys(body.changes) : reply.unconfirmed ?? [];
       const applied = Object.fromEntries(Object.entries(body.changes).filter(([k]) => !unconfirmed.includes(k)));
       const next = { ...details.get(id), ...applied };
-      details.set(id, next);
-      return r.fulfill({ json: { ok: true, detail: next, noted: reply.noted ?? true, mirrored: unconfirmed.length === 0, unconfirmed, ...(reply.dryRun ? { dryRun: true } : {}) } });
+      // mirror:false — the mirror didn't take it yet: the answer carries the values, a GET still reads the old ones
+      if (reply.mirror !== false) details.set(id, next);
+      const extra = { ...(reply.dryRun ? { dryRun: true } : {}), ...(reply.alreadySaved ? { alreadySaved: true } : {}) };
+      return r.fulfill({ json: { ok: true, detail: next, noted: reply.noted ?? true, mirrored: reply.mirror !== false && unconfirmed.length === 0, unconfirmed, ...extra } });
     }
     return r.fulfill({ status: reply.status, json: reply.json });
   });
@@ -768,6 +773,62 @@ for (const dev of [
   check("unconfirmed (all): the panel doesn't claim the new values", !(await facts()).includes("$2,111"));
   await P.getByRole("button", { name: "Dismiss" }).click();
   check("unconfirmed: the warning can be dismissed", (await P.getByText(full, { exact: true }).count()) === 0);
+  await s.ctx.close();
+}
+
+// ===================================================================================================
+// 3f. Already saved; an unmirrored save rechecked; a recheck overtaken by a newer save
+// ===================================================================================================
+{
+  const s = await open(browser, { reporter: "Pat Tester" });
+  const { p, state } = s;
+  const P = panel(p);
+  const form = () => P.getByRole("form", { name: "Edit listing details" });
+  const field = (label) => form().getByLabel(label, { exact: true });
+  const editBtn = P.getByRole("button", { name: "Edit", exact: true });
+  const stored = (id) => p.evaluate((k) => sessionStorage.getItem(k), `nh-edit-draft:${id}`);
+  const facts = () => text(P.locator('[aria-label="Key facts"]'));
+  const saveWith = async (reply) => {
+    state.replies.push(reply);
+    await form().getByRole("button", { name: /^Save/ }).click();
+    await form().waitFor({ state: "detached" });
+  };
+  await selectRow(s, "4005");
+
+  for (const noted of [false, true]) {
+    await editBtn.click();
+    await field("Square feet").fill(String(2000 + Number(noted)));
+    await saveWith({ status: 200, alreadySaved: true, noted });
+    check(`alreadySaved (noted:${noted}): 'Already saved in Monday.' and no note clause`, (await P.getByText("Already saved in Monday.", { exact: true }).count()) === 1 && (await P.getByText(/note couldn't be posted|Saved to Monday/).count()) === 0);
+    check(`alreadySaved (noted:${noted}): the stored draft is cleared`, (await stored("4005")) === null);
+  }
+
+  // confirmed rent, unconfirmed pets, mirror behind: the recheck must not take the rent back
+  await editBtn.click();
+  await field("Monthly rent").fill("2500");
+  await form().getByRole("radiogroup", { name: "Pets allowed" }).getByRole("radio", { name: "No" }).click();
+  await saveWith({ status: 200, unconfirmed: ["pet_status"], mirror: false });
+  check("unmirrored: the panel shows the confirmed rent at once", (await facts()).includes("$2,500"), await facts());
+  state.details.set("4005", { ...state.details.get("4005"), bedrooms: 4 }); // the webhook brought something else meanwhile
+  const getsBefore = state.gets["4005"] ?? 0;
+  await p.waitForTimeout(3700);
+  check("unmirrored recheck: it ran (the panel took the new bedrooms)", (state.gets["4005"] ?? 0) > getsBefore && (await facts()).includes("Beds 4"), await facts());
+  check("unmirrored recheck: the confirmed rent stays (panel and list row)", (await facts()).includes("$2,500") && (await text(row(p, "4005"))).includes("$2,500"), await text(row(p, "4005")));
+
+  // a recheck still in flight when a newer save lands is dropped
+  await editBtn.click();
+  await field("Monthly rent").fill("2600");
+  await saveWith({ status: 200, unconfirmed: ["pet_status"], mirror: false });
+  state.detailDelay = 2500; // the recheck's read will be slow
+  const g0 = state.gets["4005"] ?? 0;
+  for (let i = 0; i < 60 && (state.gets["4005"] ?? 0) === g0; i++) await p.waitForTimeout(100);
+  check("stale recheck: the first save's recheck went out", (state.gets["4005"] ?? 0) > g0);
+  await editBtn.click();
+  await field("Monthly rent").fill("2700");
+  await saveWith({ status: 200, mirror: false });
+  state.detailDelay = 0;
+  await p.waitForTimeout(3000); // the slow read answers (with the mirror's old rent)
+  check("stale recheck: its answer is dropped; the newer save's rent stays", (await facts()).includes("$2,700") && (await text(row(p, "4005"))).includes("$2,700"), await facts());
   await s.ctx.close();
 }
 

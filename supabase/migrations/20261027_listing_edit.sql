@@ -251,10 +251,10 @@ grant execute on function public.listing_edit_mirror(text, text, bigint) to anon
 
 -- 8. A change note still owed. A write that failed or timed out may have landed in Monday anyway; its log row is
 --    'failed' with `before` set (only rows that attempted the write have it), and no note was posted. When the
---    same edit is tried again and Monday already holds it, the route posts that note. Answers the `before` of
---    the newest such row for this property with exactly these changes, from the last 10 minutes, unless a later
---    row with the same changes was already applied (that one posted the note); null otherwise or for a wrong
---    secret. Call it while the current row is still pending.
+--    same edit is tried again and Monday already holds it, the route posts that note, credited to whoever made
+--    the failed save. Answers {before, editor} of the newest such row for this property with exactly these
+--    changes, from the last 10 minutes, unless a later row with the same changes was already applied (that one
+--    posted the note); null otherwise or for a wrong secret. Call it while the current row is still pending.
 create or replace function public.listing_edit_owed_note(p_secret text, p_property_item_id text, p_changes jsonb)
 returns jsonb
 language plpgsql
@@ -262,10 +262,10 @@ stable
 security definer
 set search_path to 'public'
 as $$
-declare v_id bigint; v_before jsonb;
+declare v_id bigint; v_before jsonb; v_editor text;
 begin
   if not public.listing_edit_key_ok(p_secret) then return null; end if;
-  select id, before into v_id, v_before from public.listing_edit_log
+  select id, before, editor into v_id, v_before, v_editor from public.listing_edit_log
   where property_item_id = p_property_item_id and status = 'failed' and before is not null
     and changes = p_changes and at > now() - interval '10 minutes'
   order by id desc limit 1;
@@ -274,7 +274,7 @@ begin
              where property_item_id = p_property_item_id and id > v_id and status = 'applied' and changes = p_changes) then
     return null;
   end if;
-  return v_before;
+  return jsonb_build_object('before', v_before, 'editor', v_editor);
 end;
 $$;
 

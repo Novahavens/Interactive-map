@@ -84,9 +84,10 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : e);
  * mirrored nor noted. Nothing is mirrored unless the write succeeded and was read back, and never in a dry run.
  * Every path finishes its log row. The Monday webhook later re-reads the item and confirms the mirror.
  *
- * When Monday already holds every requested value: if the map does too, it is a no-op (no note). If the map
- * is behind (typically a save that timed out but landed), the row goes monday_ok with every field confirmed and
- * is mirrored so the map catches up, and the change note that the failed save never posted is posted now.
+ * When Monday already holds every requested value (`alreadySaved`): if the map does too and no note is owed, it
+ * is a no-op. Otherwise (the map is behind, typically a save that timed out but landed, or an earlier failed
+ * save of this exact edit never posted its note) the row goes monday_ok with every field confirmed and is
+ * mirrored so the map catches up, and the owed note is posted, credited to whoever made the failed save.
  *
  * Every Monday call has a timeout and all of them end within MONDAY_BUDGET_MS, so a hung Monday can't keep a
  * save running past the guard's 30 s busy window.
@@ -188,7 +189,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   // After the write: mirror the confirmed fields, answer with the record as the map now has it, post the note
   // (noteKeys against noteBefore), close the row. Shared by a normal save and a no-op that catches the map up.
-  const settle = async (confirmed: EditKey[], noteKeys: EditKey[], noteBefore: EditChanges, unconfirmed: EditKey[]) => {
+  const settle = async (
+    confirmed: EditKey[], noteKeys: EditKey[], noteBefore: EditChanges, unconfirmed: EditKey[],
+    opts: { alreadySaved: boolean; noteEditor: string },
+  ) => {
     let mirrored = false;
     if (confirmed.length) {
       const { data, error } = await sb.rpc("listing_edit_mirror", { p_secret: secret, p_property_item_id: id, p_log_id: logId });
@@ -211,7 +215,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (lines.length && timeLeft() > 500) {
       // One bullet per field on its own line; a multi-line note value is folded onto its bullet.
       const date = new Date().toISOString().slice(0, 10);
-      const note = escapeHtml(`✏️ Edited on the map by ${editor} on ${date}:\n${lines.join("\n")}`).replace(/\n/g, "<br>");
+      const note = escapeHtml(`✏️ Edited on the map by ${opts.noteEditor} on ${date}:\n${lines.join("\n")}`).replace(/\n/g, "<br>");
       try {
         await createUpdate(id, note, { signal: mondaySignal() });
         noted = true;
@@ -222,32 +226,40 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     // The mirror already marks its row applied; this closes the row when the mirror didn't (a no-op otherwise).
     await finish("applied");
-    return NextResponse.json<EditListingResponse>({ ok: true, detail, noted, mirrored, unconfirmed });
+    return NextResponse.json<EditListingResponse>({ ok: true, detail, noted, mirrored, unconfirmed, alreadySaved: opts.alreadySaved });
   };
 
   const remainingKeys = keys.filter((k) => !sameValue(changes[k], current[k]));
   if (remainingKeys.length === 0) {
-    // Monday already holds every requested value. If the map does too, there is nothing to do.
+    // Monday already holds every requested value: nothing will be written to it.
     const row = before as unknown as Record<string, unknown>;
     const behind = keys.filter((k) => !sameValue(currentValue(fieldOf(k), row), changes[k]));
-    if (!behind.length) {
-      await finish("noop");
-      return NextResponse.json<EditListingResponse>({ ok: true, detail: before, noted: false, mirrored: true, unconfirmed: [] });
-    }
     if (DRY_RUN) {
-      await finish("dry_run");
-      return NextResponse.json<EditListingResponse>({ ok: true, detail: overlayDetail(before, changes), noted: false, mirrored: false, unconfirmed: [], dryRun: true });
+      await finish(behind.length ? "dry_run" : "noop");
+      return NextResponse.json<EditListingResponse>({
+        ok: true, detail: behind.length ? overlayDetail(before, changes) : before, noted: false, mirrored: !behind.length,
+        unconfirmed: [], alreadySaved: true, ...(behind.length > 0 && { dryRun: true }),
+      });
     }
-    // The map is behind Monday. Asked while this row is still pending: was this exact edit tried a moment ago,
-    // written to Monday, and failed before its note went out?
-    let owed: EditChanges | null = null;
+    // Asked while this row is still pending: was this exact edit tried a moment ago, written to Monday, and
+    // failed before its note went out? (Whether or not the webhook has since caught the map up.)
+    let owed: { before: EditChanges; editor: string } | null = null;
     {
       const { data, error } = await sb.rpc("listing_edit_owed_note", { p_secret: secret, p_property_item_id: id, p_changes: changes });
+      const o = data as { before?: unknown; editor?: unknown } | null;
       if (error) console.error("edit: could not check for an owed note", id, error.message);
-      else if (data && typeof data === "object" && !Array.isArray(data)) owed = data as EditChanges;
+      else if (o && typeof o === "object" && o.before && typeof o.before === "object" && !Array.isArray(o.before)) {
+        owed = { before: o.before as EditChanges, editor: typeof o.editor === "string" && o.editor ? o.editor : editor };
+      }
     }
+    if (!behind.length && !owed) {
+      await finish("noop");
+      return NextResponse.json<EditListingResponse>({ ok: true, detail: before, noted: false, mirrored: true, unconfirmed: [], alreadySaved: true });
+    }
+    // The map is behind, or a note is owed: monday_ok → mirror (the map catches up) → note → applied. Applied
+    // also tells listing_edit_owed_note that this edit's note has now been posted.
     await finish("monday_ok", { before: current, confirmed: keys });
-    return settle(keys, owed ? keys : [], owed ?? current, []);
+    return settle(keys, owed ? keys : [], owed?.before ?? current, [], { alreadySaved: true, noteEditor: owed?.editor ?? editor });
   }
   const remaining = pick(changes, remainingKeys);
 
@@ -269,7 +281,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   // Dry run: Monday was not written, so the mirror must not take the values either.
   if (DRY_RUN) {
     await finish("dry_run");
-    return NextResponse.json<EditListingResponse>({ ok: true, detail: overlayDetail(before, remaining), noted: false, mirrored: false, unconfirmed: [], dryRun: true });
+    return NextResponse.json<EditListingResponse>({ ok: true, detail: overlayDetail(before, remaining), noted: false, mirrored: false, unconfirmed: [], alreadySaved: false, dryRun: true });
   }
 
   // Read back what Monday holds now. Confirmed = every requested field Monday shows at the editor's value
@@ -292,5 +304,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   // The note lists what Monday took: every written field, less the ones the read-back showed it ignored
   // (when the read-back itself failed, the write's success is all there is to go on).
   await finish("monday_ok", { before: current, confirmed });
-  return settle(confirmed, readBack ? remainingKeys.filter((k) => confirmed.includes(k)) : remainingKeys, current, unconfirmed);
+  return settle(confirmed, readBack ? remainingKeys.filter((k) => confirmed.includes(k)) : remainingKeys, current, unconfirmed, {
+    alreadySaved: false, noteEditor: editor,
+  });
 }

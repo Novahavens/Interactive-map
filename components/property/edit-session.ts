@@ -56,6 +56,10 @@ export interface SavedOutcome {
   unconfirmed: EditKey[];
   /** How many fields were sent, so "every field unconfirmed" can be told apart from "some". */
   sent: number;
+  /** The fields sent. */
+  keys: EditKey[];
+  /** Every field already held these values in Monday (a stale panel, a second tab, a retry of a save that landed). */
+  alreadySaved: boolean;
 }
 
 /** What the save sent: the changed fields and the values they started from. */
@@ -95,6 +99,8 @@ const listLabels = (keys: EditKey[]) => {
 /** The line after a save, and whether it is a warning (kept until dismissed) rather than a confirmation. */
 export function savedText(o: SavedOutcome): { text: string; warn: boolean } {
   if (o.dryRun) return { text: "Dry run: nothing was written to Monday.", warn: false };
+  // Nothing was written, so there was no note to post either.
+  if (o.alreadySaved) return { text: "Already saved in Monday.", warn: false };
   if (o.unconfirmed.length > 0 && o.unconfirmed.length >= o.sent) return { text: "Monday may not have saved this. Reopen the property to check.", warn: true };
   if (o.unconfirmed.length > 0) return { text: `Saved, but Monday didn't confirm ${listLabels(o.unconfirmed)}. Reopen the property to check.`, warn: true };
   return { text: o.noted ? "Saved to Monday." : "Saved to Monday. The Monday note couldn't be posted.", warn: false };
@@ -335,7 +341,7 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
       const action = pending.current;
       if (draftRef.current?.propertyId === propertyId) close();
       else clearStored(propertyId);
-      if (outcome.unconfirmed.length > 0 && !outcome.dryRun) storeUnconfirmed(propertyId, sent, outcome.unconfirmed);
+      if (outcome.unconfirmed.length > 0 && !outcome.dryRun && !outcome.alreadySaved) storeUnconfirmed(propertyId, sent, outcome.unconfirmed);
       setNote({ propertyId, ...savedText(outcome) });
       onSavedRef.current(detail, outcome);
       action?.();

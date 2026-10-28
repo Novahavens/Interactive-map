@@ -90,18 +90,30 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   }, []);
   // When Monday didn't confirm every field, read the property once more a few seconds later: by then the
   // Monday webhook has brought what Monday really holds into the mirror, and the panel and list show that.
+  // The fields Monday did confirm keep the save's values (an unmirrored save's are not in that read yet), and
+  // a read made for an older save is dropped once a newer save of the same property has landed.
   const recheckTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const saveSeq = useRef(new Map<string, number>());
   useEffect(() => () => recheckTimers.current.forEach(clearTimeout), []);
   const handleEdited = useCallback(
     (d: PropertyDetail, outcome: SavedOutcome) => {
+      const id = d.monday_item_id;
+      const seq = (saveSeq.current.get(id) ?? 0) + 1;
+      saveSeq.current.set(id, seq);
       applyDetail(d);
       if (outcome.unconfirmed.length === 0 || outcome.dryRun) return;
-      const id = d.monday_item_id;
+      const confirmed = outcome.keys.filter((k) => !outcome.unconfirmed.includes(k));
+      const keep: Partial<PropertyDetail> = Object.fromEntries(confirmed.map((k) => [k, d[k]]));
+      if (!outcome.mirrored) keep.move_in_total = d.move_in_total; // follows the confirmed costs
+      const current = () => saveSeq.current.get(id) === seq;
       recheckTimers.current.push(
         setTimeout(() => {
+          if (!current()) return;
           fetch(`/api/properties/${id}`, { cache: "no-store" })
             .then((r) => (r.ok ? (r.json() as Promise<PropertyDetail>) : null))
-            .then((fresh) => fresh && fresh.monday_item_id === id && applyDetail(fresh))
+            .then((fresh) => {
+              if (fresh && fresh.monday_item_id === id && current()) applyDetail({ ...fresh, ...keep });
+            })
             .catch(() => undefined);
         }, RECHECK_MS),
       );
