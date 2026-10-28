@@ -91,6 +91,19 @@ Rotate by changing both values and redeploying. Until both are set, editing stay
 
 The migration is applied to production (28 Oct 2026). `tests/sql/listing-edit-rollback.sql` checks it on the real database inside a transaction that rolls back: wrong and missing secrets are refused, invalid or non-whitelisted values are refused, a second save is *busy*, the mirror refuses before Monday is confirmed and with a wrong secret, then applies exactly once (rent and move-in total move together), finished rows don't move backwards, and the anon role can't read the log, the secret or the key check. It ran clean on 28 Oct and left no rows behind.
 
+### What the editor sees after Save
+
+| Outcome | Message |
+|---|---|
+| Saved and confirmed | Saved to Monday. |
+| Saved, note failed | Saved to Monday. The Monday note couldn't be posted. |
+| Some fields not confirmed by Monday | Saved, but Monday didn't confirm *Pets allowed*. Reopen the property to check. (amber, stays until dismissed; those fields stay in the draft) |
+| Nothing confirmed | Monday may not have saved this. Reopen the property to check. |
+| Monday already had these values | Already saved in Monday. (plus "The Monday note couldn't be posted." if an earlier save's owed note failed again) |
+| Dry run | Dry run: nothing was written to Monday. |
+| Conflict | *Monday now* next to *You entered*, with *Use Monday's values* / *Save mine anyway* |
+| Busy, rate limit, too large, editing off, Monday down | The server's message in the form footer; nothing typed is lost |
+
 ### Unsaved changes
 
 The draft lives in the page, not in one copy of the panel, so a window resize across the desktop/phone width keeps it. It is also saved in the browser tab's session storage per property as the user types: if Monday reloads the embedded map, reopening *Edit* restores it ("Restored your unsaved changes", with *Start over*), unless the property changed in Monday since, in which case it is dropped with a note. Closing the panel, picking another property or switching claims with unsaved changes asks *Discard N changes?*; doing it while a save is running waits for the save.

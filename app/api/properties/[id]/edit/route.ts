@@ -191,7 +191,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   // (noteKeys against noteBefore), close the row. Shared by a normal save and a no-op that catches the map up.
   const settle = async (
     confirmed: EditKey[], noteKeys: EditKey[], noteBefore: EditChanges, unconfirmed: EditKey[],
-    opts: { alreadySaved: boolean; noteEditor: string },
+    opts: { alreadySaved: boolean; noteEditor: string; noteOwed?: boolean },
   ) => {
     let mirrored = false;
     if (confirmed.length) {
@@ -226,7 +226,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     // The mirror already marks its row applied; this closes the row when the mirror didn't (a no-op otherwise).
     await finish("applied");
-    return NextResponse.json<EditListingResponse>({ ok: true, detail, noted, mirrored, unconfirmed, alreadySaved: opts.alreadySaved });
+    return NextResponse.json<EditListingResponse>({
+      ok: true, detail, noted, mirrored, unconfirmed, alreadySaved: opts.alreadySaved, ...(opts.noteOwed && { noteOwed: true }),
+    });
   };
 
   const remainingKeys = keys.filter((k) => !sameValue(changes[k], current[k]));
@@ -257,9 +259,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       return NextResponse.json<EditListingResponse>({ ok: true, detail: before, noted: false, mirrored: true, unconfirmed: [], alreadySaved: true });
     }
     // The map is behind, or a note is owed: monday_ok → mirror (the map catches up) → note → applied. Applied
-    // also tells listing_edit_owed_note that this edit's note has now been posted.
+    // also tells listing_edit_owed_note not to offer this note again: it was posted, or, when posting failed,
+    // the response says so (noteOwed with noted:false) and the editor is told the note couldn't be posted.
     await finish("monday_ok", { before: current, confirmed: keys });
-    return settle(keys, owed ? keys : [], owed?.before ?? current, [], { alreadySaved: true, noteEditor: owed?.editor ?? editor });
+    return settle(keys, owed ? keys : [], owed?.before ?? current, [], { alreadySaved: true, noteEditor: owed?.editor ?? editor, noteOwed: !!owed });
   }
   const remaining = pick(changes, remainingKeys);
 

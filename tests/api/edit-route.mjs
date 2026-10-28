@@ -34,7 +34,7 @@ const SEED_ROW = {
   move_in_total: 2700, updated_at: "2026-10-26T00:00:00Z",
 };
 
-const OK = ["1001", "1002", "1003", "1004", "1005", "1006", "5021", "5022", "5023", "5024", "5030", "5031", "5032", "5033", "5034", "5035", "5036", "1007", "5037"];
+const OK = ["1001", "1002", "1003", "1004", "1005", "1006", "5021", "5022", "5023", "5024", "5030", "5031", "5032", "5033", "5034", "5035", "5036", "1007", "5037", "5038"];
 const SECRET = "test-secret"; // the mock's sync_config MAP_EDIT_KEY
 const GUARD_SAYS = { "429001": "ip_limit", "429002": "property_limit", "429003": "daily_cap", "400400": "invalid", "409409": "busy" };
 const GUARD_ERRORS = "500500";
@@ -53,6 +53,7 @@ const HANG_MS = 12_000;
 const LATE_429 = "5035"; // the first read answers 429 after 9.3 s: the 1.2 s retry pause would overrun the 10 s timeout
 const QUICK_429 = "5036"; // the first read answers 429 at once: the retry goes ahead and works
 const LANDS_THEN_WEBHOOK = "5037"; // like HANG_WRITE_LANDS, then the Monday webhook catches the map up
+const LANDS_NOTE_FAILS = "5038"; // like HANG_WRITE_LANDS, and every change note on it fails
 const MAP_BEHIND = "1007"; // Monday already has rent 2400 (changed there directly); the mirror still says 2200 // property_map_status errors: GET answers 502 db_error
 
 if (process.argv[2] === "serve") {
@@ -138,11 +139,11 @@ if (process.argv[2] === "serve") {
           if (id === MONDAY_WRITE_FAILS) return send(200, { errors: [{ message: "boom (write)" }] });
           const values = JSON.parse(v.values);
           for (const [col, val] of Object.entries(values)) if (!(id === IGNORES_PETS && col === C.pet_status)) monday[id][col] = mondayText(val);
-          if (id === HANG_WRITE_LANDS || id === LANDS_THEN_WEBHOOK) await new Promise((r) => setTimeout(r, HANG_MS));
+          if (id === HANG_WRITE_LANDS || id === LANDS_THEN_WEBHOOK || id === LANDS_NOTE_FAILS) await new Promise((r) => setTimeout(r, HANG_MS));
           return send(200, { data: { change_multiple_column_values: { id } } });
         }
         if (kind === "update") {
-          if (String(v.item) === NOTE_FAILS) return send(200, { errors: [{ message: "boom (note)" }] });
+          if (String(v.item) === NOTE_FAILS || String(v.item) === LANDS_NOTE_FAILS) return send(200, { errors: [{ message: "boom (note)" }] });
           return send(200, { data: { create_update: { id: "upd_1" } } });
         }
         return send(200, { errors: [{ message: "not mocked" }] });
@@ -443,12 +444,12 @@ if (process.argv[2] === "serve") {
     check("retry of a save that had landed: 200 alreadySaved, no conflict, no Monday write", r.status === 200 && r.body?.alreadySaved === true && s.filter((x) => x.kind === "change").length === 0, JSON.stringify(r.body).slice(0, 200));
     check("…the map catches up: monday_ok with every field confirmed, mirrored, detail has the values", r.body?.mirrored === true && same(r.body?.unconfirmed, []) && rpcs(s, "listing_edit_mirror").length === 1 && same(caught?.finishes, ["monday_ok"]) && caught?.status === "applied" && same(caught?.confirmed, ["monthly_rate", "next_availability", "pet_status", "notes", "bedrooms"]) && r.body?.detail?.monthly_rate === 2400 && (await state()).rows[HANG_WRITE_LANDS].pet_status === "Yes", JSON.stringify(caught));
     const owedNote = s.find((x) => x.kind === "update")?.variables?.body ?? "";
-    check("…and the note the failed save never posted is posted now, against Monday's values before it", r.body?.noted === true && owedNote.includes("Monthly rent: $2,200 → $2,400") && owedNote.includes("Pets allowed: No → Yes") && !owedNote.includes("Bedrooms"), owedNote);
+    check("…and the note the failed save never posted is posted now, against Monday's values before it", r.body?.noted === true && r.body?.noteOwed === true && owedNote.includes("Monthly rent: $2,200 → $2,400") && owedNote.includes("Pets allowed: No → Yes") && !owedNote.includes("Bedrooms"), owedNote);
     check("…credited to whoever made the failed save, not the person retrying", owedNote.startsWith("✏️ Edited on the map by Will &lt;b&gt;Tester&lt;/b&gt; on ") && !owedNote.includes("Gaby"), owedNote);
     m0 = await mark();
     r = await edit(HANG_WRITE_LANDS, HAPPY);
     s = await since(m0);
-    check("a third try: Monday and the map agree and the note was posted, a true no-op (alreadySaved, no mirror, no note)", r.status === 200 && r.body?.alreadySaved === true && r.body?.noted === false && r.body?.mirrored === true && rpcs(s, "listing_edit_mirror").length === 0 && !s.some((x) => x.kind === "update") && (await logOf(HANG_WRITE_LANDS))?.status === "noop", JSON.stringify(r.body).slice(0, 200));
+    check("a third try: Monday and the map agree and the note was posted, a true no-op (alreadySaved, no mirror, no note)", r.status === 200 && r.body?.alreadySaved === true && r.body?.noted === false && r.body?.noteOwed === undefined && r.body?.mirrored === true && rpcs(s, "listing_edit_mirror").length === 0 && !s.some((x) => x.kind === "update") && (await logOf(HANG_WRITE_LANDS))?.status === "noop", JSON.stringify(r.body).slice(0, 200));
 
     // ---- A write that landed, the webhook caught the map up, then the same save again: the note is still owed ----
     t = Date.now();
@@ -469,6 +470,17 @@ if (process.argv[2] === "serve") {
     r = await edit(LANDS_THEN_WEBHOOK, HAPPY);
     s = await since(m0);
     check("…and once more: the note isn't posted twice (a true no-op)", r.status === 200 && r.body?.alreadySaved === true && r.body?.noted === false && !s.some((x) => x.kind === "update") && (await logOf(LANDS_THEN_WEBHOOK))?.status === "noop", JSON.stringify(r.body).slice(0, 200));
+
+    // ---- A write that landed, and the owed note then fails to post on the retry: the editor is told ----
+    t = Date.now();
+    r = await edit(LANDS_NOTE_FAILS, HAPPY);
+    took = Date.now() - t;
+    check("landed write (note fails): first try 502", r.status === 502 && r.body?.code === "monday_error");
+    await new Promise((res) => setTimeout(res, HANG_MS - took + 300));
+    m0 = await mark();
+    r = await edit(LANDS_NOTE_FAILS, { ...HAPPY, editor: "Gaby" });
+    s = await since(m0);
+    check("…retry: 200 alreadySaved with noteOwed and noted:false (the UI says the note couldn't be posted)", r.status === 200 && r.body?.alreadySaved === true && r.body?.noteOwed === true && r.body?.noted === false && s.some((x) => x.kind === "update"), JSON.stringify(r.body).slice(0, 200));
 
     // ---- Monday already has the value but the map is behind (changed in Monday, webhook not here yet) ----
     m0 = await mark();

@@ -151,6 +151,7 @@ export default function EditListing({ draft, session }: Props) {
           keys: Object.keys(changes) as EditKey[],
           // read defensively: older servers don't send it
           alreadySaved: json.alreadySaved === true,
+          noteOwed: json.noteOwed === true,
         },
         body,
       );

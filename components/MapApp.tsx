@@ -10,6 +10,8 @@ import SummarySheet from "./SummarySheet";
 import { useTheme } from "@/lib/useTheme";
 import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, type PropertyDetail } from "@/lib/types";
 import { EDIT_FIELDS } from "@/lib/listing-edit";
+
+const COST_KEYS = new Set<string>(EDIT_FIELDS.filter((f) => f.group === "costs").map((f) => f.key));
 import { readHealth } from "./property/health";
 import { useEditSession, type SavedOutcome } from "./property/edit-session";
 import { STATUS_ORDER, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
@@ -102,9 +104,13 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       saveSeq.current.set(id, seq);
       applyDetail(d);
       if (outcome.unconfirmed.length === 0 || outcome.dryRun) return;
-      const confirmed = outcome.keys.filter((k) => !outcome.unconfirmed.includes(k));
+      // Only when the mirror didn't take the confirmed fields does the refetch need them laid back over it;
+      // when it did, the fresh read is the truth. The move-in total is kept only if every cost field this save
+      // touched was confirmed (otherwise the fresh total is the consistent one).
+      const confirmed = outcome.mirrored ? [] : outcome.keys.filter((k) => !outcome.unconfirmed.includes(k));
       const keep: Partial<PropertyDetail> = Object.fromEntries(confirmed.map((k) => [k, d[k]]));
-      if (!outcome.mirrored) keep.move_in_total = d.move_in_total; // follows the confirmed costs
+      const costKeys = outcome.keys.filter((k) => COST_KEYS.has(k));
+      if (confirmed.length && costKeys.length && costKeys.every((k) => confirmed.includes(k))) keep.move_in_total = d.move_in_total;
       const current = () => saveSeq.current.get(id) === seq;
       recheckTimers.current.push(
         setTimeout(() => {

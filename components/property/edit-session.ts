@@ -60,6 +60,8 @@ export interface SavedOutcome {
   keys: EditKey[];
   /** Every field already held these values in Monday (a stale panel, a second tab, a retry of a save that landed). */
   alreadySaved: boolean;
+  /** With alreadySaved: a change note was owed from an earlier save; with noted:false it couldn't be posted. */
+  noteOwed: boolean;
 }
 
 /** What the save sent: the changed fields and the values they started from. */
@@ -99,8 +101,12 @@ const listLabels = (keys: EditKey[]) => {
 /** The line after a save, and whether it is a warning (kept until dismissed) rather than a confirmation. */
 export function savedText(o: SavedOutcome): { text: string; warn: boolean } {
   if (o.dryRun) return { text: "Dry run: nothing was written to Monday.", warn: false };
-  // Nothing was written, so there was no note to post either.
-  if (o.alreadySaved) return { text: "Already saved in Monday.", warn: false };
+  // Nothing was written, so no note was due, unless an earlier save landed without one and posting it failed.
+  if (o.alreadySaved) {
+    return o.noteOwed && !o.noted
+      ? { text: "Already saved in Monday. The Monday note couldn't be posted.", warn: false }
+      : { text: "Already saved in Monday.", warn: false };
+  }
   if (o.unconfirmed.length > 0 && o.unconfirmed.length >= o.sent) return { text: "Monday may not have saved this. Reopen the property to check.", warn: true };
   if (o.unconfirmed.length > 0) return { text: `Saved, but Monday didn't confirm ${listLabels(o.unconfirmed)}. Reopen the property to check.`, warn: true };
   return { text: o.noted ? "Saved to Monday." : "Saved to Monday. The Monday note couldn't be posted.", warn: false };

@@ -273,6 +273,9 @@ export interface EditListingResponse {
    * request posted a note (one owed by an earlier save that failed before its note); false is not a failure.
    */
   alreadySaved: boolean;
+  /** With alreadySaved: this request owed a change note from an earlier save that landed without one. With
+   *  noted:false it means that note couldn't be posted (and won't be offered again). */
+  noteOwed?: boolean;
   dryRun?: boolean;
 }
 

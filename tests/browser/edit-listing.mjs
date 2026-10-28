@@ -123,7 +123,7 @@ async function open(browser, { w = 1440, h = 900, theme = "light", touch = false
       const next = { ...details.get(id), ...applied };
       // mirror:false — the mirror didn't take it yet: the answer carries the values, a GET still reads the old ones
       if (reply.mirror !== false) details.set(id, next);
-      const extra = { ...(reply.dryRun ? { dryRun: true } : {}), ...(reply.alreadySaved ? { alreadySaved: true } : {}) };
+      const extra = { ...(reply.dryRun ? { dryRun: true } : {}), ...(reply.alreadySaved ? { alreadySaved: true } : {}), ...(reply.noteOwed ? { noteOwed: true } : {}) };
       return r.fulfill({ json: { ok: true, detail: next, noted: reply.noted ?? true, mirrored: reply.mirror !== false && unconfirmed.length === 0, unconfirmed, ...extra } });
     }
     return r.fulfill({ status: reply.status, json: reply.json });
@@ -802,6 +802,16 @@ for (const dev of [
     check(`alreadySaved (noted:${noted}): 'Already saved in Monday.' and no note clause`, (await P.getByText("Already saved in Monday.", { exact: true }).count()) === 1 && (await P.getByText(/note couldn't be posted|Saved to Monday/).count()) === 0);
     check(`alreadySaved (noted:${noted}): the stored draft is cleared`, (await stored("4005")) === null);
   }
+
+  // an earlier save landed without its note, and posting the owed note now failed: say so
+  await editBtn.click();
+  await field("Square feet").fill("2010");
+  await saveWith({ status: 200, alreadySaved: true, noteOwed: true, noted: false });
+  check("alreadySaved + owed note not posted: 'Already saved in Monday. The Monday note couldn't be posted.'", (await P.getByText("Already saved in Monday. The Monday note couldn't be posted.", { exact: true }).count()) === 1);
+  await editBtn.click();
+  await field("Square feet").fill("2011");
+  await saveWith({ status: 200, alreadySaved: true, noteOwed: true, noted: true });
+  check("alreadySaved + owed note posted: just 'Already saved in Monday.'", (await P.getByText("Already saved in Monday.", { exact: true }).count()) === 1 && (await P.getByText(/note couldn't be posted/).count()) === 0);
 
   // confirmed rent, unconfirmed pets, mirror behind: the recheck must not take the rent back
   await editBtn.click();
