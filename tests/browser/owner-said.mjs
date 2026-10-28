@@ -359,7 +359,8 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   const ring = await updateBtn(p).evaluate((e) => ({ focused: e === document.activeElement, style: getComputedStyle(e).outlineStyle, width: getComputedStyle(e).outlineWidth }));
   check("button: Tab reaches it and it shows a 2px focus ring", ring.focused && ring.style === "solid" && ring.width === "2px", JSON.stringify(ring));
   const ub = await updateBtn(p).boundingBox();
-  check("button: h-8 with a mouse", Math.round(ub.height) === 32, String(ub.height));
+  const eb = await panel(p).getByRole("button", { name: "Edit", exact: true }).boundingBox();
+  check("button: as tall as the panel's Edit button with a mouse", Math.abs(ub.height - eb.height) < 0.5, `${ub.height}/${eb.height}`);
 
   // earlier calls
   const earlier = C.getByRole("button", { name: "2 earlier calls" });
@@ -435,8 +436,10 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   const lt = await longFrom.innerText();
   check("evidence: a long sentence is cut to about 140 characters, full text in title", lt.length <= 140 + "From the call: “”".length && lt.endsWith("…”") && (await longFrom.getAttribute("title")) === LONG, `${lt.length}: ${lt}`);
   check("evidence: only the prefilled fields carry one", (await F.locator('p[id$="-from"]').count()) === 6);
-  const muted = await rentFrom.first().evaluate((e) => ({ c: getComputedStyle(e).color, size: getComputedStyle(e).fontSize }));
-  check("evidence: small muted text", muted.size === "12px" && muted.c === "rgb(102, 102, 102)", JSON.stringify(muted));
+  const look = (e) => ({ c: getComputedStyle(e).color, size: getComputedStyle(e).fontSize });
+  const muted = await rentFrom.first().evaluate(look);
+  const was = await F.locator('p[id$="-was"]').first().evaluate(look);
+  check("evidence: small muted text, like the 'was' line", JSON.stringify(muted) === JSON.stringify(was) && muted.c === "rgb(102, 102, 102)", `${JSON.stringify(muted)} vs ${JSON.stringify(was)}`);
   check("form open: no Update Monday anywhere in the page", (await anyUpdate(p).count()) === 0);
   const fb = await panel(p).boundingBox();
   await p.screenshot({ path: `${OUT}/form-desktop-light.png`, clip: fb });
