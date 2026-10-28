@@ -515,6 +515,8 @@ if (process.argv[2] === "serve") {
     s = await since(m0);
     check("read-back failed: 200, mirrored false, every written field unconfirmed", r.status === 200 && r.body?.mirrored === false && same(r.body?.unconfirmed, ["monthly_rate", "next_availability", "pet_status", "notes"]), JSON.stringify(r.body).slice(0, 300));
     check("…nothing mirrored, row closed applied with nothing confirmed", rpcs(s, "listing_edit_mirror").length === 0 && (await state()).rows[REREAD_FAILS].monthly_rate === 2200 && same((await logOf(REREAD_FAILS))?.confirmed, []) && (await logOf(REREAD_FAILS))?.status === "applied");
+    const unverifiedNote = s.find((x) => x.kind === "update")?.variables?.body ?? "";
+    check("…the note says Monday didn't confirm the values", unverifiedNote.includes("(Monday didn&#39;t confirm these; check the values):") && unverifiedNote.includes("Monthly rent: $2,200 → $2,400"), unverifiedNote);
     check("…the detail is the record as it is (the webhook brings Monday's truth)", r.body?.detail?.monthly_rate === 2200);
 
     // ---- Bad requests never reach the guard ----

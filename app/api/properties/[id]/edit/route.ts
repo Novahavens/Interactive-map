@@ -191,7 +191,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   // (noteKeys against noteBefore), close the row. Shared by a normal save and a no-op that catches the map up.
   const settle = async (
     confirmed: EditKey[], noteKeys: EditKey[], noteBefore: EditChanges, unconfirmed: EditKey[],
-    opts: { alreadySaved: boolean; noteEditor: string; noteOwed?: boolean },
+    opts: { alreadySaved: boolean; noteEditor: string; noteOwed?: boolean; unverified?: boolean },
   ) => {
     let mirrored = false;
     if (confirmed.length) {
@@ -215,7 +215,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (lines.length && timeLeft() > 500) {
       // One bullet per field on its own line; a multi-line note value is folded onto its bullet.
       const date = new Date().toISOString().slice(0, 10);
-      const note = escapeHtml(`✏️ Edited on the map by ${opts.noteEditor} on ${date}:\n${lines.join("\n")}`).replace(/\n/g, "<br>");
+      // When Monday couldn't be read back, the note says so: it records what was sent, not what Monday kept.
+      const head = opts.unverified
+        ? `✏️ Edited on the map by ${opts.noteEditor} on ${date} (Monday didn't confirm these; check the values):`
+        : `✏️ Edited on the map by ${opts.noteEditor} on ${date}:`;
+      const note = escapeHtml(`${head}\n${lines.join("\n")}`).replace(/\n/g, "<br>");
       try {
         await createUpdate(id, note, { signal: mondaySignal() });
         noted = true;
@@ -304,10 +308,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const unconfirmed = remainingKeys.filter((k) => !confirmed.includes(k));
   if (readBack && unconfirmed.length) console.error("edit: Monday did not take", id, unconfirmed.join(","));
 
-  // The note lists what Monday took: every written field, less the ones the read-back showed it ignored
-  // (when the read-back itself failed, the write's success is all there is to go on).
+  // The note lists what Monday took: every written field, less the ones the read-back showed it ignored.
+  // When the read-back itself failed, it lists every written field and says Monday didn't confirm them.
   await finish("monday_ok", { before: current, confirmed });
   return settle(confirmed, readBack ? remainingKeys.filter((k) => confirmed.includes(k)) : remainingKeys, current, unconfirmed, {
-    alreadySaved: false, noteEditor: editor,
+    alreadySaved: false, noteEditor: editor, unverified: !readBack,
   });
 }
