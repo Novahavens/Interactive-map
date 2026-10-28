@@ -90,10 +90,15 @@ export async function POST(req: NextRequest) {
   // Summaries: fill in what the event couldn't say from the call itself, then store for the card.
   let details: Awaited<ReturnType<typeof callDetails>> = null;
   if (event.kind === "summary" && event.summary.length) {
+    let lookupFailed = false;
     details = await callDetails(event.resourceId, signal()).catch((e) => {
       console.error("quo-webhook: call lookup failed", event.resourceId, errText(e));
+      lookupFailed = true;
       return null;
     });
+    // With no numbers of its own, the summary can only be placed through its call: have Quo send it again
+    // rather than drop it. (A call Quo doesn't know, a 404, is final and ends as "no outside number" below.)
+    if (lookupFailed && !event.numbers.length) return later("couldn't look up the call");
     if (!event.numbers.length && details) event.numbers = details.numbers;
     if (details?.at) event.at = new Date(details.at).toISOString();
     if (details?.durationSec != null) event.durationSec = details.durationSec;
