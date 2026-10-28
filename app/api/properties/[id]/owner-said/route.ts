@@ -42,5 +42,5 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json<ApiError>({ error: "Could not load call summaries", code: "db_error" }, { status: 502 });
   }
   const calls = (Array.isArray(data) ? data : []).map(toCall).filter((c): c is OwnerSaidCall => !!c);
-  return NextResponse.json<OwnerSaidResponse>({ enabled: data !== null, calls }, { headers: { "Cache-Control": "private, max-age=30" } });
+  return NextResponse.json<OwnerSaidResponse>({ enabled: data !== null, calls }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -6,22 +6,24 @@ import { lastLoggable, localDay, type Match } from "@/lib/quo-events";
 import { conversationHistory, conversationsPage, quoEnabled } from "@/lib/quo";
 import { LAST_CONTACT_COL, setDates } from "@/lib/monday";
 import { supabase } from "@/lib/supabase";
+import { errorText as errText } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const E164_US = /^\+1[2-9]\d{2}[2-9]\d{6}$/;
-const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
  * POST /api/quo/backfill (x-map-secret) — the one-off fill of Last Contact Date from Quo's history.
  *
- *   { "mode": "scan", "pageToken"?: string }  reads one page of conversations (100), matches their numbers to
+ *   { "mode": "scan", "pageToken"?: string }  reads one page of conversations (50), matches their numbers to
  *     properties, reads the history only where Quo has activity newer than the map's date, and records the
  *     newest answered call or text per property in contact_backfill ('proposed'). Writes nothing to Monday.
  *     Answers `next` (the page to scan after this one, null at the end).
  *   { "mode": "apply", "limit"?: number }  writes up to `limit` (≤ 25) proposed dates to Monday in one request
- *     and marks them applied (the map's date follows). Rows the map has meanwhile caught up with are skipped.
+ *     and marks them applied (the map's date follows). Rows the map has meanwhile caught up with are skipped. If
+ *     Monday refuses the batch, each row is tried on its own and the ones it still refuses (a deleted item) are
+ *     marked failed, so one bad row never blocks the rest.
  *
  * Driven by hand: scan to the end, export contact_backfill as the report, then apply once it's approved.
  */
@@ -37,21 +39,36 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 502 });
     const rows = (Array.isArray(data) ? data : []) as { id: string; day: string }[];
     if (!rows.length) return NextResponse.json({ ok: true, applied: 0, done: true });
+    let written = rows;
+    const refused: { id: string; error: string }[] = [];
     try {
-      await setDates(LAST_CONTACT_COL, rows, { signal: AbortSignal.timeout(20_000) });
+      await setDates(LAST_CONTACT_COL, rows, { signal: AbortSignal.timeout(15_000) });
     } catch (e) {
-      return NextResponse.json({ ok: false, error: `Monday: ${errText(e)}`, ids: rows.map((r) => r.id) }, { status: 502 });
+      written = [];
+      for (const r of rows) {
+        try {
+          await setDates(LAST_CONTACT_COL, [r], { signal: AbortSignal.timeout(5_000) });
+          written.push(r);
+        } catch (one) {
+          refused.push({ id: r.id, error: errText(one) });
+        }
+      }
+      if (!written.length && refused.every((r) => /timed out|429|50\d/i.test(r.error))) {
+        return NextResponse.json({ ok: false, error: `Monday: ${errText(e)}` }, { status: 502 }); // Monday is down, not the rows
+      }
     }
-    const { data: n, error: markError } = await sb.rpc("quo_backfill_mark", { p_secret: secret, p_ids: rows.map((r) => r.id), p_state: "applied" });
+    const mark = (ids: string[], state: string, error?: string) => sb.rpc("quo_backfill_mark", { p_secret: secret, p_ids: ids, p_state: state, p_error: error ?? null });
+    const { data: n, error: markError } = written.length ? await mark(written.map((r) => r.id), "applied") : { data: 0, error: null };
+    for (const r of refused) await mark([r.id], "failed", r.error);
     if (markError) return NextResponse.json({ ok: false, error: `written to Monday, not marked: ${markError.message}` }, { status: 502 });
-    return NextResponse.json({ ok: true, applied: n, done: false });
+    return NextResponse.json({ ok: true, applied: n, failed: refused.length, done: false });
   }
 
   if (body.mode !== "scan") return NextResponse.json({ ok: false, error: 'mode must be "scan" or "apply"' }, { status: 400 });
   const signal = AbortSignal.timeout(50_000);
   const tz = quoTimeZone();
   try {
-    const page = await conversationsPage(body.pageToken || undefined, signal);
+    const page = await conversationsPage(body.pageToken || undefined, signal, 50);
     const pairs = page.items.flatMap((c) =>
       c.participants.filter((p) => E164_US.test(p)).map((phone) => ({ inbox: c.phoneNumberId, phone, last: c.lastActivityAt })),
     );
@@ -64,24 +81,34 @@ export async function POST(req: NextRequest) {
       for (const m of (Array.isArray(data) ? data : []) as Match[]) byNumber.set(m.number, [...(byNumber.get(m.number) ?? []), m]);
     }
 
-    const rows: Record<string, unknown>[] = [];
-    let read = 0;
-    for (const p of pairs) {
+    // Only conversations with activity after the oldest date the map shows for their properties are read. The
+    // reads run together; lib/quo.ts paces them under Quo's 10 a second.
+    const due = pairs.filter((p) => {
       const matches = byNumber.get(p.phone) ?? [];
-      // Only conversations with activity after the oldest date the map shows for their properties are read.
-      if (!matches.length || !p.last) continue;
+      if (!matches.length || !p.last) return false;
       const lastDay = localDay(p.last, tz);
-      if (!matches.some((m) => !m.lastContact || m.lastContact < lastDay)) continue;
-      read++;
-      const h = await conversationHistory(p.inbox, p.phone, signal);
-      const found = lastLoggable(h.calls, h.messages, isAnswered, h.names);
-      if (!found) continue;
-      const day = localDay(found.at, tz);
-      for (const m of matches) {
+      return matches.some((m) => !m.lastContact || m.lastContact < lastDay);
+    });
+    const found = await Promise.all(
+      due.map(async (p) => {
+        const h = await conversationHistory(p.inbox, p.phone, signal);
+        return { p, last: lastLoggable(h.calls, h.messages, isAnswered, h.names) };
+      }),
+    );
+    // One row per property: the newest contact across its numbers and inboxes.
+    const newest = new Map<string, Record<string, unknown> & { at: string }>();
+    for (const { p, last } of found) {
+      if (!last) continue;
+      const day = localDay(last.at, tz);
+      for (const m of byNumber.get(p.phone) ?? []) {
         if (m.lastContact && m.lastContact >= day) continue;
-        rows.push({ id: m.id, phone: p.phone, at: found.at, day, kind: found.kind, teammate: found.teammate, mondayDay: m.lastContact });
+        const prev = newest.get(m.id);
+        if (prev && Date.parse(prev.at) >= Date.parse(last.at)) continue;
+        newest.set(m.id, { id: m.id, phone: p.phone, at: last.at, day, kind: last.kind, teammate: last.teammate, mondayDay: m.lastContact });
       }
     }
+    const rows = [...newest.values()];
+    const read = due.length;
     let recorded = 0;
     if (rows.length) {
       const { data, error } = await sb.rpc("quo_backfill_upsert", { p_secret: secret, p_rows: rows });

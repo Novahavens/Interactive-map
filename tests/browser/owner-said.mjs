@@ -385,9 +385,10 @@ const browser = await chromium.launch({ executablePath: fs.existsSync(CHROME) ? 
   check(`light: every text in the card is AA (lowest ${cr.ratio.toFixed(2)})`, cr.ratio >= 4.5, JSON.stringify(cr));
 
   await C.scrollIntoViewIfNeeded();
-  const pb = await panel(p).boundingBox();
-  await p.screenshot({ path: `${OUT}/card-desktop-light.png`, clip: pb });
-  if (DOCS) await p.screenshot({ path: `${DOCS}/owner-said.png`, clip: pb });
+  await p.screenshot({ path: `${OUT}/card-desktop-light.png`, clip: await panel(p).boundingBox() });
+  // the README shot: the card alone with a little room around it, like quo-digest.png
+  const cb = await C.boundingBox();
+  if (DOCS) await p.screenshot({ path: `${DOCS}/owner-said.png`, clip: { x: cb.x - 12, y: cb.y - 12, width: cb.width + 24, height: cb.height + 24 } });
 
   // reopening within the minute asks nothing again
   await closePanel(s);

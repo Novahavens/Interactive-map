@@ -14,16 +14,21 @@ export interface QuoConfig {
   mode: "shadow" | "live" | "off";
   liveUsers: string;
   keys: string[];
+  /** The Quo webhook the stored keys belong to. */
+  webhookId: string | null;
 }
 
 const TTL_MS = 5_000;
+/** `fresh` (a key that just rotated) still reads at most this often, so unsigned junk can't drive database reads. */
+const FRESH_MIN_MS = 1_000;
 let cached: { at: number; value: QuoConfig } | null = null;
 
 /** Null when the secret is missing or the database refuses it. Cached per instance for 5 s. */
 export async function quoConfig(fresh = false): Promise<QuoConfig | null> {
   const secret = editSecret();
   if (!secret) return null;
-  if (!fresh && cached && Date.now() - cached.at < TTL_MS) return cached.value;
+  const age = cached ? Date.now() - cached.at : Infinity;
+  if (cached && age < (fresh ? FRESH_MIN_MS : TTL_MS)) return cached.value;
   const { data, error } = await supabase().rpc("quo_config", { p_secret: secret });
   if (error) throw error;
   if (!data || typeof data !== "object") return null;
@@ -33,9 +38,19 @@ export async function quoConfig(fresh = false): Promise<QuoConfig | null> {
     mode,
     liveUsers: typeof d.liveUsers === "string" ? d.liveUsers : "",
     keys: Array.isArray(d.keys) ? d.keys.filter((k): k is string => typeof k === "string" && k.startsWith("whsec_")) : [],
+    webhookId: typeof d.webhookId === "string" && d.webhookId ? d.webhookId : null,
   };
   cached = { at: Date.now(), value };
   return value;
+}
+
+/**
+ * Where Quo sends events: always the production address on Vercel, so running setup from a preview can't point
+ * Quo at the preview. Locally and in tests, the address the request came to.
+ */
+export function webhookUrl(requestUrl: string): string {
+  const prod = process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview" ? process.env.VERCEL_PROJECT_PRODUCTION_URL : undefined;
+  return `${prod ? `https://${prod}` : new URL(requestUrl).origin}/api/quo/webhook`;
 }
 
 /** The team's time zone for dates and note times (Tulsa). */

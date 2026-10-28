@@ -128,6 +128,9 @@ interface Stored {
   name: string;
   raw: Partial<Raw>;
   base: Partial<Values>;
+  /** A draft filled in from a call keeps the call, so a save after a reload still names it. */
+  source?: { callId: string; label: string };
+  evidence?: Partial<Record<EditKey, string>>;
 }
 function readStored(id: string): Stored | null {
   try {
@@ -148,7 +151,8 @@ function writeStored(d: EditDraft, keys: EditKey[]) {
       raw[k] = d.raw[k];
       base[k] = d.base[k];
     }
-    sessionStorage.setItem(storeKey(d.propertyId), JSON.stringify({ name: d.name, raw, base } satisfies Stored));
+    const evidence = d.evidence && Object.fromEntries(keys.flatMap((k) => (d.evidence?.[k] ? [[k, d.evidence[k]]] : [])));
+    sessionStorage.setItem(storeKey(d.propertyId), JSON.stringify({ name: d.name, raw, base, ...(d.source && { source: d.source, evidence }) } satisfies Stored));
   } catch {
     // blocked storage: the draft still lives for this page
   }
@@ -268,6 +272,7 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
     let raw = rawOf(base);
     let name = readReporterName();
     let notice: EditDraft["notice"] = null;
+    let restoredSource: Pick<Prefill, "source" | "evidence"> | null = null;
     if (prefill) {
       // The call's values replace a stored draft: the form shows what the owner said, not older typing.
       clearStored(id);
@@ -286,6 +291,10 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
         raw = { ...raw, ...Object.fromEntries(storedKeys.map((k) => [k, String(stored.raw[k] ?? "")])) };
         if (typeof stored.name === "string" && stored.name.trim()) name = stored.name;
         notice = "restored";
+        const s = stored.source;
+        if (s && typeof s.callId === "string" && typeof s.label === "string") {
+          restoredSource = { source: { callId: s.callId, label: s.label }, evidence: stored.evidence && typeof stored.evidence === "object" ? stored.evidence : {} };
+        }
       } else {
         clearStored(id);
         notice = "stale";
@@ -293,7 +302,7 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
     }
     const next: EditDraft = {
       propertyId: id, raw, base, name, shown: {}, nameError: null, confirming: false, askSeq: 0, status: { kind: "idle" }, notice, autofocus: true,
-      ...(prefill && { source: prefill.source, evidence: prefill.evidence }),
+      ...(prefill ? { source: prefill.source, evidence: prefill.evidence } : restoredSource ?? {}),
     };
     draftRef.current = next;
     setDraft(next);

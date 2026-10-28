@@ -164,7 +164,8 @@ begin
   return jsonb_build_object(
     'mode', coalesce((select lower(trim(value)) from public.sync_config where key = 'QUO_LOG_MODE'), 'shadow'),
     'liveUsers', coalesce((select value from public.sync_config where key = 'QUO_LIVE_USERS'), ''),
-    'keys', case when jsonb_typeof(v_keys) = 'array' then v_keys else '[]'::jsonb end
+    'keys', case when jsonb_typeof(v_keys) = 'array' then v_keys else '[]'::jsonb end,
+    'webhookId', (select value from public.sync_config where key = 'QUO_WEBHOOK_ID')
   );
 end;
 $$;
@@ -289,7 +290,8 @@ revoke all on function public.quo_event_begin(text, jsonb) from public;
 
 grant execute on function public.quo_event_begin(text, jsonb) to anon, authenticated, service_role;
 
--- 10. Closes an event with what happened to it.
+-- 10. Closes an event with what happened to it. The ids are added to the ones a failed earlier delivery
+--     recorded, so a retry that has less left to do doesn't erase what the first attempt did.
 create or replace function public.quo_event_finish(p_secret text, p_event_id text, p_state text, p_property_ids text[],
                                                    p_note_ids text[], p_date_ids text[], p_error text default null)
 returns boolean
@@ -302,7 +304,9 @@ begin
   if p_state not in ('shadow', 'done', 'unmatched', 'ignored', 'failed', 'retry') then return false; end if;
   update public.contact_events
      set state = p_state,
-         property_ids = coalesce(p_property_ids, '{}'), note_ids = coalesce(p_note_ids, '{}'), date_ids = coalesce(p_date_ids, '{}'),
+         property_ids = array(select distinct x from unnest(property_ids || coalesce(p_property_ids, '{}')) as x order by x),
+         note_ids = array(select distinct x from unnest(note_ids || coalesce(p_note_ids, '{}')) as x order by x),
+         date_ids = array(select distinct x from unnest(date_ids || coalesce(p_date_ids, '{}')) as x order by x),
          error = left(p_error, 500),
          done_at = case when p_state = 'retry' then null else now() end
    where event_id = p_event_id;
@@ -501,11 +505,14 @@ declare v_n integer;
 begin
   if not public.listing_edit_key_ok(p_secret) then return 0; end if;
   if jsonb_typeof(p_rows) <> 'array' then return 0; end if;
+  -- One row per property (the newest), since one insert can't touch the same row twice.
   insert into public.contact_backfill as b (property_item_id, phone, quo_at, quo_day, kind, teammate, monday_day)
-  select left(r->>'id', 20), left(r->>'phone', 40), (r->>'at')::timestamptz, (r->>'day')::date, left(r->>'kind', 20),
+  select distinct on (left(r->>'id', 20))
+         left(r->>'id', 20), left(r->>'phone', 40), (r->>'at')::timestamptz, (r->>'day')::date, left(r->>'kind', 20),
          left(r->>'teammate', 80), (r->>'mondayDay')::date
   from jsonb_array_elements(p_rows) as r
   where coalesce(r->>'id', '') <> '' and (r->>'day') is not null
+  order by left(r->>'id', 20), (r->>'at')::timestamptz desc
   on conflict (property_item_id) do update set
     phone = excluded.phone, quo_at = excluded.quo_at, quo_day = excluded.quo_day, kind = excluded.kind,
     teammate = excluded.teammate, monday_day = excluded.monday_day, scanned_at = now()

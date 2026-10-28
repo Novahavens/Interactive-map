@@ -8,6 +8,7 @@ import {
 import { BOARDS, DRY_RUN, EDIT_CALL_TIMEOUT_MS, changeColumns, createUpdate, readColumns } from "@/lib/monday";
 import { loadPropertyDetail } from "@/lib/property-detail";
 import { quoTimeZone } from "@/lib/quo-config";
+import { localDay } from "@/lib/quo-events";
 import { supabase } from "@/lib/supabase";
 import type { ApiError, EditConflictResponse, EditListingResponse, PropertyDetail } from "@/lib/types";
 
@@ -223,7 +224,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       // When Monday couldn't be read back, the note says so: it records what was sent, not what Monday kept.
       // Filled in from a call summary ("Owner said"): the note says whose call, so Monday shows where the values came from.
       const via = fromCall && !opts.noteOwed
-        ? `, from ${fromCall.by ? `${fromCall.by}'s` : "a"} call on ${new Intl.DateTimeFormat("en-US", { timeZone: quoTimeZone(), month: "short", day: "numeric" }).format(new Date(fromCall.at))}`
+        ? `, from ${fromCall.by ? `${fromCall.by}'s` : "a"} call on ${localDay(fromCall.at, quoTimeZone())}`
         : "";
       const head = opts.unverified
         ? `✏️ Edited on the map by ${opts.noteEditor} on ${date}${via} (Monday didn't confirm these; check the values):`

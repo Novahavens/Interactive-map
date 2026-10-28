@@ -221,20 +221,24 @@ type Webhook = { id: string; url: string; status: string; events: string[]; apiV
 
 /**
  * Makes sure one enabled webhook sends QUO_EVENTS for every number to `url`, and returns its signing key when
- * Quo hands one out: on create, or on a rotation when the webhook exists but `haveKey` is false (Quo shows a
- * key only then). Idempotent: a matching webhook is left alone.
+ * Quo hands one out: on create, or on a rotation when the webhook exists but the stored keys aren't its own
+ * (`storedId` is the webhook they belong to; Quo shows a key only on create and rotate). Idempotent: a
+ * matching webhook whose key is stored is left alone.
  */
 export async function ensureWebhook(
   url: string,
+  storedId: string | null,
   haveKey: boolean,
   signal: AbortSignal,
 ): Promise<{ id: string; key: string | null; action: "created" | "rotated" | "existing" }> {
-  const list = await quoDated<{ data: Webhook[] }>("GET", "/webhooks", undefined, signal);
+  const list = await quoDated<{ data: (Webhook & { resourceIds?: string[] })[] }>("GET", "/webhooks", undefined, signal);
   const found = (list.data ?? []).find(
-    (w) => w.url === url && w.status === "enabled" && QUO_EVENTS.every((e) => w.events?.includes(e)) && (w.apiVersion ?? QUO_API_VERSION) === QUO_API_VERSION,
+    (w) =>
+      w.url === url && w.status === "enabled" && QUO_EVENTS.every((e) => w.events?.includes(e)) &&
+      (w.apiVersion ?? QUO_API_VERSION) === QUO_API_VERSION && (w.resourceIds ?? ["*"]).length === 1 && (w.resourceIds ?? ["*"])[0] === "*",
   );
   if (found) {
-    if (haveKey) return { id: found.id, key: null, action: "existing" };
+    if (haveKey && storedId === found.id) return { id: found.id, key: null, action: "existing" };
     const rotated = await quoDated<{ data: Webhook }>("POST", `/webhooks/${encodeURIComponent(found.id)}/rotate`, undefined, signal);
     return { id: found.id, key: rotated.data?.key ?? null, action: "rotated" };
   }
@@ -288,10 +292,11 @@ export async function callDetails(
 export async function conversationsPage(
   pageToken: string | undefined,
   signal: AbortSignal,
+  pageSize = PAGE,
 ): Promise<{ items: { phoneNumberId: string; participants: string[]; lastActivityAt: string | null }[]; next: string | null }> {
   const page = await quo<Page<{ phoneNumberId?: string; participants?: string[]; lastActivityAt?: string | null }>>(
     "/conversations",
-    { maxResults: PAGE, pageToken },
+    { maxResults: Math.min(PAGE, pageSize), pageToken },
     signal,
   );
   return {

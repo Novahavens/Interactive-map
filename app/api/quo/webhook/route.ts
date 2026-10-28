@@ -8,8 +8,9 @@ import {
 } from "@/lib/quo-events";
 import { verifyQuoSignature } from "@/lib/quo-signature";
 import { callDetails, teammateName } from "@/lib/quo";
-import { LAST_CONTACT_COL, createUpdate, setDates } from "@/lib/monday";
+import { LAST_CONTACT_COL, MondayError, createUpdate, setDates } from "@/lib/monday";
 import { supabase } from "@/lib/supabase";
+import { errorText as errText } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 20;
@@ -21,7 +22,6 @@ const MAX_BODY = 256_000;
 const ok = (detail: string) => NextResponse.json({ ok: true, detail });
 /** Not handled yet: Quo delivers the event again later (8 attempts over about 27 hours). */
 const later = (detail: string) => NextResponse.json({ ok: false, detail }, { status: 503, headers: { "Retry-After": "60" } });
-const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
  * POST /api/quo/webhook — every call, text and call summary from Quo (one webhook for all numbers, created by
@@ -32,8 +32,8 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * properties (quo_match) → in live mode, move Last Contact Date on every matched property that shows an
  * older date (one Monday request, then the map's mirror) and post one note per property, day and slot on the
  * smart-picked properties (claimed first, so a retry never posts twice) → quo_event_finish. In shadow mode it
- * records what it would have done and writes nothing. A summary is stored for the "Owner said" card in every
- * mode; it never writes Monday.
+ * records what it would have done and writes nothing. A summary is stored for the "Owner said" card in shadow
+ * and live mode alike; it never writes Monday. Mode off ignores everything.
  *
  * Anything that fails part-way answers 503 so Quo retries; whatever already happened is not repeated (dates
  * are idempotent, notes are claimed). The rules live in lib/quo-events.ts; the design in
@@ -215,7 +215,12 @@ export async function POST(req: NextRequest) {
     try {
       updateId = await createUpdate(id, html, { signal: signal() });
     } catch (e) {
-      problems.push(`note ${id}: ${errText(e)}`);
+      // A post that timed out may still land in Monday: the claim stays, so a retry can't post it a second
+      // time (one missing note is better than two). A definite error frees the slot for the retry.
+      if (e instanceof MondayError && /timed out/i.test(e.message)) {
+        updateId = "unknown";
+        console.error("quo-webhook: note timed out; not posting it again", event.eventId, id);
+      } else problems.push(`note ${id}: ${errText(e)}`);
     }
     const { error: doneError } = await sb.rpc("quo_note_done", {
       p_secret: secret, p_property_item_id: id, p_day: day, p_slot: slot, p_event_id: event.eventId, p_update_id: updateId,
