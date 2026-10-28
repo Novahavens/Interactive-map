@@ -779,6 +779,7 @@ for (const dev of [
   const { p } = s;
   const mq = await p.evaluate(() => ({ px: matchMedia("(min-width: 1024px)").matches, rem: matchMedia("(min-width: 64rem)").matches }));
   check("font 20px: the emulation took (1100px is >= 1024px but < 64rem)", mq.px && !mq.rem, JSON.stringify(mq));
+  s.phone = true; // the results live in the phone sheet at this size
   await selectRow(s, "4001");
   const P = panel(p);
   check("font 20px: the panel on screen is the sheet copy", await P.evaluate((e) => !!e.closest(".lg\\:hidden")));
