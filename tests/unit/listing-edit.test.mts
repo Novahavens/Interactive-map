@@ -125,3 +125,13 @@ test("diff lines for the Monday note, conflicts for the 409", () => {
   assert.deepEqual(conflicts({ monthly_rate: 2200, bedrooms: 3 }, { monthly_rate: 2300, bedrooms: 3 }), ["monthly_rate"]);
   assert.equal(displayValue(f("notes"), "x".repeat(80)).length <= 62, true);
 });
+
+test("request source: a Quo call id is kept; anything else is dropped without failing the edit", () => {
+  const ok = parseEditRequest({ editor: "Will", changes: { monthly_rate: 2400 }, source: { kind: "quo_call", callId: "ACa29ee906a4e04312" } });
+  assert.deepEqual(ok.ok && ok.source, { kind: "quo_call", callId: "ACa29ee906a4e04312" });
+  for (const source of [{ kind: "quo_call", callId: "not a call" }, { kind: "other", callId: "ACa29ee906a4e04312" }, "AC123", null]) {
+    const p = parseEditRequest({ editor: "Will", changes: { monthly_rate: 2400 }, source });
+    assert.equal(p.ok, true);
+    assert.equal(p.ok && "source" in p, false);
+  }
+});

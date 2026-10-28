@@ -1,14 +1,14 @@
 # Quo integration — technical reference
 
-How the property map talks to Quo (formerly OpenPhone): the read-only **contact history** on the owner card, and the **Call / Text** buttons that open Quo on the user's own device. For the user-facing description see the README (*Using the map → 2 · Find the right home → Tap a property*).
+How the property map talks to Quo (formerly OpenPhone): the read-only **contact history** on the owner card, the **Call / Text** buttons that open Quo on the user's own device, the **contact log** that puts every call and text in Monday by itself, and **Owner said**, Quo's AI call summary on the panel. For the user-facing description see the README (*Using the map → 2 · Find the right home → Tap a property*).
 
-Last updated: 27 Oct 2026 · Owner: Fazal Abed (fazal@novahavens.com) · Shipped in [#15](https://github.com/Novahavens/Interactive-map/pull/15) (contact history) and [#16](https://github.com/Novahavens/Interactive-map/pull/16) (Call / Text).
+Last updated: 28 Oct 2026 · Owner: Fazal Abed (fazal@novahavens.com) · Shipped in [#15](https://github.com/Novahavens/Interactive-map/pull/15) (contact history), [#16](https://github.com/Novahavens/Interactive-map/pull/16) (Call / Text) and [#18](https://github.com/Novahavens/Interactive-map/pull/18) (contact log, Owner said, backfill).
 
 Words used below: **E.164** is the international phone format `+1 918 740 9628` written as `+19187409628`. A **deep link** is a URL with a custom scheme (`openphone://…`) that the operating system hands to the app that registered it. **Rail** is the property panel on the right of the desktop map; **sheet** is the same panel sliding up on a phone; **drawer** is a collapsed section inside it. **PM** is a property manager. **Inbox** is a Quo phone number shared by teammates. The Quo API spec is at https://www.quo.com/docs; Vercel environment variables and logs are under *Settings → Environment Variables* and *Logs* for the `nova-havens-map` project.
 
 ## 1. What it does, in one paragraph
 
-Every property's panel has a Contacts card with the owner's and the landlord/PM's phone numbers. The map reads Quo once, server-side, to show a digest of calls and texts with those numbers (*Last call Oct 24 · William · 3 min · 3 calls · 1 unanswered · 4 sent · 1 reply*, plus the last text). Next to each number, **Call** and **Text** open the Quo app on whatever device the user is holding, signed in as them, so the call or text goes out from the Quo number they have selected in their app and shows up in the same history. The map itself never places a call or sends a message.
+Every property's panel has a Contacts card with the owner's and the landlord/PM's phone numbers. The map reads Quo once, server-side, to show a digest of calls and texts with those numbers (*Last call Oct 24 · William · 3 min · 3 calls · 1 unanswered · 4 sent · 1 reply*, plus the last text). Next to each number, **Call** and **Text** open the Quo app on whatever device the user is holding, signed in as them, so the call or text goes out from the Quo number they have selected in their app and shows up in the same history. The map itself never places a call or sends a message. Quo also tells the map about every call and text as it happens (one webhook): the map moves the property's **Last Contact Date** in Monday and leaves one short note there (§8), and after an answered call it shows Quo's AI summary as **Owner said**, with an **Update Monday** button that opens the Edit form already filled in from the call (§9).
 
 ## 2. The two halves and why they're different
 
@@ -86,7 +86,9 @@ The drawer (`ContactDigest.tsx`) is closed by default and asks the route only wh
 | Variable | Where | Value |
 |---|---|---|
 | `QUO_API_KEY` | Vercel → nova-havens-map → Settings → Environment Variables, **Secret**, Production (+ Preview for preview deployments) | Quo → Settings → *API* → Generate API key (Business plan; owner/admin). The key takes effect on the next deployment. |
-| `QUO_API_BASE` | Local tests only | `http://127.0.0.1:3099/v1` points the route at the mock Quo |
+| `QUO_API_BASE` | Local tests only | `http://127.0.0.1:3099/v1` points the route at the mock Quo (the webhook tests use `:3097`) |
+| `QUO_TIMEZONE` | Optional | Days and note times for the contact log; default `America/Chicago` |
+| `MAP_EDIT_SECRET` | Already set for listing edits | Also gates the contact log's database functions and the setup and backfill routes (`x-map-secret`). The webhook's signing key is not an env var: setup stores it in sync_config |
 
 Key rotation, no downtime: generate a new key in Quo (the old one keeps working), replace the value in Vercel for Production and Preview, redeploy, open a property with calls and check the drawer, then revoke the old key in Quo. A revoked key hides the drawer and logs `Quo … returned 401` once; nothing else in the map is affected. Quo's API needs the Business plan and an owner or admin to create the key; on a lower plan there is no *API* page and the drawer stays off.
 
@@ -97,6 +99,8 @@ Key rotation, no downtime: generate a new key in Quo (the old one keeps working)
 - The last text's first 90 characters are shown to anyone who can open the map. The map URL has no login (it's embedded in Monday); if that's too much, hide the preview by returning `null` from `preview()` in `lib/contact.ts`.
 - Nothing is written to Quo. The buttons hand off to the Quo app; the user confirms the call or sends the text there.
 - The reporter name in `localStorage` stays on the device and is only used to sign the draft.
+- The contact log stores who, when, how long and which properties, never a text's words; call summaries are stored as Quo wrote them and shown to anyone with the map (decided 28 Oct, like the last-text preview). Recordings and transcripts are never fetched.
+- Every webhook delivery is signature-checked before anything is read; the tables are RLS-locked and every function checks the server secret.
 
 ## 7. Tests
 
@@ -109,10 +113,83 @@ Key rotation, no downtime: generate a new key in Quo (the old one keeps working)
 
 `BASE` is the URL of a running build of the app (`npm run build && npx next start -p 3012` → `BASE=http://localhost:3012`), started with `SUPABASE_URL` and `SUPABASE_KEY` because the browser tests read real property records; they mock the claims, health and contact routes, need no Quo key, and write nothing. Headless Chromium freezes input after an unanswered custom-scheme navigation, so `contact-actions.mjs` stops the links from navigating and checks the hrefs, clipboard, draft and hints instead; real browsers don't freeze.
 
+| `npm run test:unit` | Also `tests/unit/quo-events.test.mts` (payloads, what counts, smart pick, street names, note wording, pilot), `owner-said.test.mts` (dates, money, pets, furnished, conflicts) and `quo-signature.test.mts` |
+| `node tests/api/quo-webhook.mjs serve`, the app against it, then `node tests/api/quo-webhook.mjs` | The webhook, setup, backfill, owner-said and the edit route's call source against one mock playing Quo, Monday and Supabase (header of the file has the exact commands) |
+| `BASE=… node tests/browser/owner-said.mjs` | The Owner said card in every state, the prefilled Edit form, desktop and phone, light and dark |
+| `tests/sql/quo-contact-log-rollback.sql` | Every contact-log function against the real database, inside a transaction that rolls back |
+
 After changing the draft wording: update the expected strings in `tests/unit/quo-links.test.mts` and `tests/browser/contact-actions.mjs`, run `npm run test:unit`, then the browser test as above.
 
-## 8. Known limits and what's next
+## 8. Calls and texts log themselves (the contact log)
+
+Quo posts every call, text and call summary to `POST /api/quo/webhook`. One Quo webhook covers every number (`resourceIds: ["*"]`), on Quo's dated API `2026-03-30` (payloads carry `data.resource` and `data.context`; [event payloads](https://www.quo.com/docs/2026-03-30/webhooks-event-payloads)). Files: `app/api/quo/webhook/route.ts` (the order of work), `lib/quo-events.ts` (every rule, pure and unit-tested), `lib/quo-signature.ts`, `lib/quo-config.ts`, `supabase/migrations/20261028_quo_contact_log.sql`.
+
+**Per event, in order.** Verify the signature (Standard Webhooks: HMAC-SHA256 over `webhook-id.webhook-timestamp.body` with the `whsec_` key; deliveries older than 5 minutes are refused, and Quo re-signs every retry) → parse → `quo_event_begin` (one `contact_events` row per Quo event id: a re-delivery of a handled event answers 200 and does nothing; one being handled right now answers 503) → `quo_match` the other party's number to properties → in **live** mode, write Monday; in **shadow** mode, record what would have been written → `quo_event_finish`.
+
+**What counts (decided 28 Oct).**
+
+| Event | Last Contact Date | Note in Monday |
+|---|---|---|
+| Answered call, either way | moves to the call's day (never backwards) | one per call: *📞 Will called the owner · 3 min* / *📞 The owner called · Will answered · 3 min* |
+| Outgoing call, no answer | no | one a day: *📞 Will tried to call the owner · no answer* |
+| Incoming call, missed | no | one a day: *📞 The owner called · missed · left a voicemail* |
+| Text we sent / they sent | moves | one a day each way: *💬 Will texted the owner* / *💬 The owner texted* |
+| Failed or unknown call, summary | no | none |
+
+The second line of every note is *Oct 27, 2:14 PM · (918) 555-0100 · logged from Quo*: when, which number, and that it was automatic. Notes never quote a text. Days and times are Tulsa's (`QUO_TIMEZONE`, default `America/Chicago`). "Answered" is Quo's `status: answered` (or a forwarded call that ran); Quo marks an outgoing call answered when voicemail picks up too, so a voicemail can read as *called · 1 min*.
+
+**Which properties.** A number is matched against the owner and landlord/PM phones of every property (`quo_phone_keys()`: every North American number in the cell, the same rule as `toE164List`, behind a GIN index; 36 properties for the busiest owner take a few milliseconds). The date moves on every matched property that shows an older one. The note goes on the smart pick: properties that are options on an active claim (`claim_options`), else up to five of them, most recently contacted first. A number on no property is stored as `unmatched`.
+
+**Monday writes.** Dates: one request with an aliased `change_multiple_column_values` per property (25 at most), then `quo_mirror_last_contact` so the map shows the date at once (the Monday webhook confirms it). Notes: `create_update`, posted by the map's Monday token, so they show the token's owner as author and name the teammate in the text. Each note slot (property, day, slot) is claimed in `contact_notes` before posting, so a retried event never posts twice; a post that times out keeps its claim (one missing note beats two).
+
+**Failures.** Anything that fails part-way answers 503 and Quo delivers the event again (8 attempts over about 27 hours); what already happened isn't repeated (dates are idempotent, notes are claimed, and the event row keeps the ids of everything done). A bad signature is 401; an event type the map doesn't use is 200 and ignored.
+
+**The switches** (sync_config, take effect within 5 seconds, no deploy):
+
+| Key | Values |
+|---|---|
+| `QUO_LOG_MODE` | `shadow` (default: record only), `live` (write Monday), `off` (ignore every event) |
+| `QUO_LIVE_USERS` | Optional pilot: comma-separated Quo user ids or first names; in live mode only their events write, everyone else's stay shadow |
+
+```sql
+insert into sync_config (key, value) values ('QUO_LOG_MODE', 'live')    -- 'shadow' / 'off' (the kill switch) the same way
+  on conflict (key) do update set value = excluded.value, updated_at = now();
+select * from contact_events_daily order by day desc limit 7;        -- the daily check
+select state, type, numbers, property_ids, note_ids, date_ids, error from contact_events order by received_at desc limit 20;
+```
+
+## 9. Owner said
+
+After an answered, recorded call, Quo writes an AI summary (`call.summary.completed`; recording and AI summaries must be on for the number). The webhook stores it in `call_summaries` with the facts read from it, and the panel shows it under the contact history (`components/property/OwnerSaid.tsx`, `GET /api/properties/:id/owner-said`).
+
+**Reading the summary** (`lib/owner-said.ts`, decided 28 Oct: Quo's summaries only, no model). Plain rules over the summary sentences pick out: next availability (*available November 1st*, *available now*, *12/15*, *in December*, *end of November*), monthly rent, security deposit, pet deposit / fee / rent, pets yes/no, furnished yes/no. A money amount takes the nearest word naming a cost with no other amount in between (*$2,400 a month with a $500 deposit* → rent 2,400, deposit 500), and amounts nearest a cost the form doesn't take (utilities, cleaning, application, admin) are left alone. A fact said two different ways is dropped, not guessed. Every fact keeps its sentence.
+
+**Which property.** A summary that names a street goes to that property (*the house on Elm Street*, *4512 Harvard*); otherwise the same smart pick as notes. When the number is on more than one property, the card says so: *This number is on N properties. Check the call was about this one.*
+
+**Update Monday** opens the existing Edit form ([LISTING-EDITS.md](LISTING-EDITS.md)) prefilled with the facts, each with *From the call: “…”* under it and *Filled in from Will's call on Oct 27* at the top. Nothing reaches Monday until the person checks the values and presses Save; the save goes through the same edit route (conflict check, read-back, mirror, note), with `source: { kind: "quo_call", callId }`, so the Monday note reads *✏️ Edited on the map by Fazal on 2026-10-28, from Will's call on 2026-10-27* and the card then shows *Applied to Monday by Fazal*. The availability status stays the monitor's; the button hides when Monday already has every value.
+
+## 10. Backfill (one-off)
+
+`POST /api/quo/backfill` with header `x-map-secret: <MAP_EDIT_SECRET>` fills *Last Contact Date* from Quo's history where Monday is blank or older.
+
+1. `{"mode":"scan"}`, then `{"mode":"scan","pageToken":"<next>"}` until `next` is null. Each call reads 50 Quo conversations (`GET /v1/conversations`), matches their numbers, reads the history only where Quo has activity after the map's date, and stores the newest answered call or text per property in `contact_backfill` as `proposed`. Nothing is written to Monday.
+2. The report: `select property_item_id, phone, quo_day, kind, teammate, monday_day from contact_backfill where state = 'proposed' order by quo_day desc;` exported as a CSV for approval.
+3. `{"mode":"apply"}` repeatedly until `applied: 0, done: true`. Each call writes up to 25 dates in one Monday request and marks them `applied` (the map follows). A row Monday refuses on its own is marked `failed` and doesn't block the rest; one that only met a busy Monday (rate limit, complexity budget, timeout) stays proposed for the next call (`retryLater`); rows the map has meanwhile caught up with are `skipped`.
+
+## 11. Setting it up and checking it
+
+1. In Quo, turn on call recording and AI call summaries for every number the team calls from (done 28 Oct).
+2. `POST /api/quo/setup` with `x-map-secret: <MAP_EDIT_SECRET>` on the production URL. It creates the one webhook (or keeps a matching one; rotates it if the stored key isn't its own), stores the `whsec_` key in sync_config `QUO_WEBHOOK_KEYS` and its id in `QUO_WEBHOOK_ID`, and answers the mode in force. On Vercel it always registers the production address. No Vercel variable to add: the key lives in the database, behind the same server secret as listing edits.
+3. Shadow for two or three days: the daily check above, compared with what the team logged by hand.
+4. Live: `QUO_LIVE_USERS` set to one person for a day, then cleared.
+5. Backfill: scan, report, apply (§10).
+
+Health: `contact_events` rows arrive within seconds of a call or text; `state` is `shadow`/`done`/`unmatched`/`ignored`, and `retry` rows say what failed in `error`. Quo's side: `GET https://api.quo.com/webhooks/<id>/events` (header `Quo-Api-Version: 2026-03-30`) lists deliveries and their answers.
+
+## 12. Known limits and what's next
 
 - **Unconfirmed on real laptops:** whether the Quo desktop app fills the composer from `openphone://message`. If it opens empty, the number is on the clipboard. Check on a Mac and a Windows laptop with Quo installed and record the result here.
 - The hints rely on the window losing focus; a browser that keeps focus while an external app opens would show a hint it didn't need. Harmless, but tell the user it's safe to ignore.
-- Not built: an AI one-line summary of the conversation (placeholder in the panel), and a "blacklist from the claim board" flow (separate brief).
+- Not built: a "blacklist from the claim board" flow (separate brief).
+- The contact log can't tell a person from voicemail on an outgoing call Quo marks answered (above). Dates are compared with the map's copy of Monday, which is seconds behind; a date typed in Monday in those seconds could be overwritten by an older call.
+- Owner said only reads what the summary says outright; facts in a call Quo didn't summarise, or summarised vaguely, are not there.

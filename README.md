@@ -77,6 +77,8 @@ Nova Havens places families displaced by insurance claims into temporary housing
 | ☎️ | **Call and Text from the panel, through your own Quo.** Each owner and landlord/PM number has a **Call** and a **Text** button that open Quo on *your* laptop or phone, so the call or text goes from your Quo account and lands in the contact history. The text comes pre-written ("Hi Jane, it's Will from Nova Havens about 12 Elm St."). Tap the number to copy it. No set-up in the map: the device you're on is who you are. | [#16](https://github.com/Novahavens/Interactive-map/pull/16) |
 | ✏️ | **Edit listing details from the map.** *Edit* on the property panel opens a form for next availability, beds, baths, square feet, pets / furnished / fenced yard, rent and every fee, the listing link and notes. *Save* writes Monday (the source of truth) and the map at once, and posts "✏️ Edited on the map by Will: Monthly rent $2,200 → $2,400" on the Monday item. If someone changed the same field in Monday meanwhile, the map asks before overwriting. | [#17](https://github.com/Novahavens/Interactive-map/pull/17) |
 | 🟢 | **Availability on top.** A raised, softly glowing pill at the top of the property panel: *Available soon · from Nov 1 · checked Oct 22*, in the status colour, with a **date passed** warning when the next-availability date is out of date. | [#17](https://github.com/Novahavens/Interactive-map/pull/17) |
+| 📒 | **Calls and texts log themselves in Monday.** Every Quo call or text with an owner or landlord/PM moves the property's **Last Contact Date** (answered calls and any text) and leaves one short note: *📞 Will called the owner · 3 min*, *💬 The owner texted*, *📞 Will tried to call the owner · no answer*. One note per property per day for texts and tries; the note goes on the property that's on an active claim, else up to five of the owner's. Starts in shadow mode (records, writes nothing) and has an off switch. | [#18](https://github.com/Novahavens/Interactive-map/pull/18) |
+| 🗣️ | **Owner said.** After an answered call, Quo's AI summary shows on the property panel with what the owner said: *Available Nov 1 · $2,400/mo · Deposit $500 · Pets OK*. **Update Monday** opens *Edit* already filled in from the call, each value with the sentence it came from; nothing changes until you press Save. | [#18](https://github.com/Novahavens/Interactive-map/pull/18) |
 | 📱 | **Phone results sheet** with collapsed / half / expanded states: the list gets most of the screen, search and filters fold into one row, and the sheet and the list no longer fight over scrolling. The desktop rail no longer squeezes the list to a few pixels at short windows (Lou's scroll bug). | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
 | 🛠️ | **Fixes:** new options now arrive as **To Do** (not *Ready to Submit*); the claim's bedroom and bathroom needs were read from each other's columns; "% of database mappable" counted only the search circle; red properties can't be added to a claim whether the group *or* the owner says do not use. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
 
@@ -129,6 +131,18 @@ Picking a claim fills the search box with its loss address, recentres the map, l
        <img alt="Owner card with (918) 555-0100 and (918) 555-0199, each with Call and Text buttons" src="docs/screenshots/quo-call-text.png" width="380">
        &nbsp;
        <img alt="The same card on a phone in dark mode, with 44px Call and Text buttons" src="docs/screenshots/quo-call-text-phone.png" width="200">
+     </p>
+
+   - **Last Contact Date keeps itself up to date.** Every Quo call or text with the owner or landlord/PM moves it (answered calls and any text; a call nobody answered doesn't), and the Monday item gets one short note saying who, when and which number, e.g. *📞 Will called the owner · 3 min · Oct 27, 2:14 PM · (918) 555-0100 · logged from Quo*. Texts and unanswered tries make at most one note a day each way. No need to log calls by hand.
+   - **Owner said** — under the contact history, after an answered call: Quo's AI summary of the call (*Oct 27 · Will's call · 3 min*), with chips for what the owner said (*Available Nov 1*, *$2,400/mo*, *Deposit $500*, *Pets OK*, *Furnished*). Tap a chip to see the sentence it came from; *More* shows the rest and Quo's next steps.
+     - **Update Monday** opens *Edit* already filled in with those values, each with *From the call: “…”* under it. Check them, change anything that's wrong, and *Save*: Monday's note then says the values came from Will's call, and the card shows *Applied to Monday by …*. Nothing is ever written without your Save.
+     - *This number is on 6 properties* means the owner has several; check the call was about this one before saving. When the summary names a street, it shows on that property.
+     - Calls Quo didn't summarise (recording or AI summaries off for that number, very short calls) have no card.
+
+     <p>
+       <img alt="Owner said card: Oct 27 · Will's call · 3 min, summary text, chips Available Nov 1, $2,400/mo, Deposit $500, Pets OK, Pet rent $35/mo, Furnished, and an Update Monday button" src="docs/screenshots/owner-said.png" width="380">
+       &nbsp;
+       <img alt="The Edit form filled in from Will's call on Oct 27, each changed field with the sentence it came from" src="docs/screenshots/owner-said-form.png" width="260">
      </p>
 
    - **Edit** — top right of the panel. Change any of: next availability, bedrooms, bathrooms, square feet, pets allowed, furnished, fenced yard, monthly rent, security deposit, cleaning, admin, application and move-in fees, pet deposit, pet fee, monthly pet rent, the listing link, and terms and notes. Changed fields show what they were. Type your name once (shared with *Report bad link*) and **Save N changes**:
@@ -306,6 +320,7 @@ sequenceDiagram
 │   ├── summary.ts                # pure buildSummary() + parseEmails()
 │   ├── contact.ts · quo.ts       # Quo contact history: pure digest rules, server-only client (docs/QUO-INTEGRATION.md)
 │   ├── quo-links.ts              # openphone:// and tel: links for the Call / Text buttons, the text draft
+│   ├── quo-events.ts · owner-said.ts · quo-signature.ts · quo-config.ts  # the contact log's rules, reading summaries, webhook signatures, switches
 │   ├── status.ts                 # green / yellow / red: names, colours, shapes, reasons (the rule is in the database)
 │   ├── supabase.ts · google.ts · types.ts · utils.ts · useTheme.ts
 ├── supabase/                     # edge functions (property-locate, used-before-sync, landlord-webhook) + migrations
@@ -323,7 +338,11 @@ sequenceDiagram
 | `GET /api/properties?lat=&lng=&miles=` | `{ pins, coverage }`, every pin has `map_status`, `availability`, `link_status`, `last_contact` and `other_claims` | `properties_within_radius_v4`, `database_coverage` |
 | `GET /api/properties/[id]` | Full property record plus `map_status`, `map_reason` and `other_claims` | `property_detail`, `property_map_status`, `property_claim_options` |
 | `GET /api/properties/[id]/contact` | `{ enabled, numbers, digest }`: calls and texts with the property's owner and landlord/PM phones. `enabled: false` with no Quo key; 502 `quo_error` if Quo can't be read; 120 per IP per minute; cached 10 min per phone; a refused key shows nothing (logged) | Quo `GET /v1/calls`, `/v1/messages`, `/v1/phone-numbers`, `/v1/users` — see [docs/QUO-INTEGRATION.md](docs/QUO-INTEGRATION.md) |
-| `POST /api/properties/[id]/edit` | `{ ok, detail, noted, mirrored }`. Body `{ editor, changes, base }`. Validates, rate-limits (30 per IP per 10 min, 20 saved edits per property per hour, 500 a day), re-reads Monday and answers 409 `conflict` with Monday's values if they changed, writes Monday, mirrors Supabase, posts the change note. 409 `busy`, 413, 429, 502 `monday_error`, 403/503 `editing_off`. See [docs/LISTING-EDITS.md](docs/LISTING-EDITS.md) | `listing_edit_guard` / `_mirror` / `_finish` + Monday `change_multiple_column_values`, `create_update` |
+| `POST /api/properties/[id]/edit` | `{ ok, detail, noted, mirrored }`. Body `{ editor, changes, base, source? }` (`source` names the Quo call an Owner said prefill came from). Validates, rate-limits (30 per IP per 10 min, 20 saved edits per property per hour, 500 a day), re-reads Monday and answers 409 `conflict` with Monday's values if they changed, writes Monday, mirrors Supabase, posts the change note. 409 `busy`, 413, 429, 502 `monday_error`, 403/503 `editing_off`. See [docs/LISTING-EDITS.md](docs/LISTING-EDITS.md) | `listing_edit_guard` / `_mirror` / `_finish` + Monday `change_multiple_column_values`, `create_update` |
+| `GET /api/properties/[id]/owner-said` | `{ enabled, calls }`: the property's last 3 Quo call summaries (180 days) with the facts read from them and who applied them. Not cached | `quo_owner_said` |
+| `POST /api/quo/webhook` | Quo's one webhook (API version 2026-03-30): calls, texts, call summaries. Signature-checked; moves Last Contact Date and posts the note in live mode, records only in shadow mode; stores summaries. 401 bad signature, 503 = Quo retries. See [docs/QUO-INTEGRATION.md](docs/QUO-INTEGRATION.md) §8 | `quo_*` functions + Monday `change_multiple_column_values`, `create_update` |
+| `POST /api/quo/setup` | Header `x-map-secret`. Creates (or keeps) the Quo webhook and stores its signing key in sync_config | Quo `POST /webhooks`, `quo_set_webhook` |
+| `POST /api/quo/backfill` | Header `x-map-secret`. `{"mode":"scan"}` proposes Last Contact Dates from Quo's history; `{"mode":"apply"}` writes approved ones. §10 of the Quo doc | Quo `GET /v1/conversations`, `/v1/calls`, `/v1/messages`; `quo_backfill_*` |
 | `POST /api/properties/[id]/flag-link` | `{ ok, alreadyFlagged, noted }`. Sets *ZZ.Status = BAD LINK* and posts an update on the property. 409 if reported in the last 24 h, 429 over 10 per IP per 10 min or 300 a day, 400 without a listing link | `flag_link_guard` / `flag_link_undo` + Monday `change_column_value`, `create_update` |
 | `GET /api/claims/active?q=&includeTest=&fresh=` | `{ claims, count }` with each claim's `accountManager` — cached 60 s per instance | Monday `items_page` / `next_items_page` per group |
 | `GET /api/claim/[claimId]` | Loss address, needs, claim brief, attached options + pins | Monday + `properties_by_ids_v2` |
@@ -395,7 +414,7 @@ npm run dev                  # http://localhost:3000
 | `npm run build` | Production build (also type-checks) |
 | `npm run start` | Serve the production build |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run test:unit` | Pure rules (`tests/unit`: phone parsing, the contact digest, the Quo links and text draft, listing-edit validation and Monday formats, the availability pill) |
+| `npm run test:unit` | Pure rules (`tests/unit`: phone parsing, the contact digest, the Quo links and text draft, listing-edit validation and Monday formats, the availability pill, the contact log's rules and note wording, reading Owner said from a summary, webhook signatures) |
 
 Browser and API checks run against a server on `BASE` (default `http://localhost:3012`); they mock Monday and write nothing:
 
@@ -406,6 +425,8 @@ Browser and API checks run against a server on `BASE` (default `http://localhost
 | `node tests/browser/edit-listing.mjs` | The availability pill in every state (light, dark, desktop, phone) and the edit form: validation, the exact request, success, conflicts, errors, discard prompts, keyboard use |
 | `node tests/api/edit-route.mjs` | The edit route against one mock of Monday and Supabase: start `node tests/api/edit-route.mjs serve` and the app with `SUPABASE_URL=http://127.0.0.1:3098 SUPABASE_KEY=test MONDAY_API_URL=http://127.0.0.1:3098/v2 MONDAY_API_TOKEN=test MAP_EDIT_SECRET=test` first |
 | `node tests/browser/contact-actions.mjs` | The Call / Text buttons on a laptop and on an iPhone: links, clipboard, draft text, the "Quo didn't open" hints |
+| `node tests/browser/owner-said.mjs` | The Owner said card in every state and the Edit form filled in from a call, desktop and phone, light and dark |
+| `node tests/api/quo-webhook.mjs` | The Quo webhook, setup, backfill and the edit route's call source against one mock of Quo, Monday and Supabase (exact commands in the file's header) |
 | `node tests/api/contact-route.mjs` | The contact route against a mock Quo: start `node tests/api/contact-route.mjs serve` and the app with `QUO_API_KEY=test-key QUO_API_BASE=http://127.0.0.1:3099/v1` first |
 
 ### Environment variables
@@ -417,10 +438,11 @@ Browser and API checks run against a server on `BASE` (default `http://localhost
 | `SUPABASE_URL` · `SUPABASE_KEY` | Server | Project URL and publishable key. |
 | `MONDAY_API_TOKEN` | Server | Sub-items and updates are created **as the token's owner**. |
 | `MONDAY_PROPERTY_BOARD_ID` · `MONDAY_CLAIM_BOARD_ID` · `MONDAY_CLAIM_SUBITEM_BOARD_ID` | Server | `18415735059` · `9030696652` · `9205253360` |
-| `MAP_EDIT_SECRET` | Server | Turns on listing edits. Must equal the `MAP_EDIT_KEY` row in Supabase `sync_config`; without it the *Edit* button doesn't show. |
+| `MAP_EDIT_SECRET` | Server | Turns on listing edits, and gates the Quo contact log. Must equal the `MAP_EDIT_KEY` row in Supabase `sync_config`; without it the *Edit* button doesn't show and Quo events aren't handled. |
 | `MAP_EDITING` | Server | Optional kill switch: `off` hides *Edit* and refuses saves, without touching the secret. |
 | `MONDAY_DRY_RUN` | Server | `1` = never write to Monday. **Local only — never set in Production.** |
-| `QUO_API_KEY` | Server | Optional. Quo → *Settings → API*. Read-only use: the contact history on the owner card. Without it the card shows nothing extra. The Call / Text buttons need no key: they open the Quo app on the user's own device. |
+| `QUO_API_KEY` | Server | Optional. Quo → *Settings → API* (owner or admin key). The contact history, the call lookups behind Owner said, the backfill, and creating the webhook. Without it the card shows nothing extra. The Call / Text buttons need no key: they open the Quo app on the user's own device. |
+| `QUO_TIMEZONE` | Server | Optional. Days and note times for the contact log; default `America/Chicago`. The contact log's switches (`QUO_LOG_MODE`, `QUO_LIVE_USERS`) and the webhook's signing key live in Supabase `sync_config`, not here. |
 | `MONDAY_ACTIVE_CLAIM_GROUPS` | Server | Optional. Groups that count as active. Default `topics,group_mkvngrgz`. |
 | `MONDAY_TEST_CLAIM_GROUP` | Server | Optional. The testing group for *Show test claims*. Default `group_mm1jnpwf`. |
 
@@ -533,6 +555,9 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 | **Text** on a laptop opens Quo with an empty composer, or nothing | Quo's deep links are documented for its phone apps only; the desktop app may ignore the link | The number is already on your clipboard: paste it into *To* in the Quo app, or in the *open Quo* link the panel shows |
 | **Call** / **Text** on a phone opens the App Store / Play Store | The Quo app isn't installed on that phone | Install it and sign in; the buttons then open it directly |
 | The call or text went from the wrong Quo number | Quo uses the number currently selected in your app | Switch the number in Quo (top left) before calling |
+| Last Contact Date didn't move after a call | The log is in shadow mode or off; the call wasn't answered; the number isn't on that property; or it came from outside Quo | `select value from sync_config where key = 'QUO_LOG_MODE'`; `select state, error from contact_events order by received_at desc limit 10` |
+| A Quo note went on the wrong one of an owner's properties | The owner's number is on several properties and none is on an active claim | The date is still right; the note names the number. Delete the note in Monday if it confuses |
+| No Owner said card after a call | Recording or AI summaries off for that Quo number, the call wasn't answered, or Quo hasn't finished the summary (a few minutes) | Turn both on in Quo for the number; reopen the property later |
 | No *Edit* button on the panel | `MAP_EDIT_SECRET` isn't set, or `MAP_EDITING=off` | Set the secret in Vercel (it must match `sync_config` `MAP_EDIT_KEY`) and redeploy |
 | Saving says "Someone changed this in Monday" | A field you edited was changed in Monday after you opened the form | Pick *Use Monday's values* or *Save mine anyway* |
 | Saving says "Someone else is saving this property" | Another save on the same property is in progress (or crashed in the last 30 s) | Wait a moment and save again |
@@ -558,13 +583,13 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 - [x] Coordinates for the rest of the database, and new items on the map within a minute
 - [x] **Edit listing details** from the map, synced to Monday and Supabase.
 - [x] **Availability pill** at the top of the property panel.
+- [x] **Calls and texts log themselves** in Monday (Last Contact Date + one note), and **Owner said** from Quo's AI call summaries ([#18](https://github.com/Novahavens/Interactive-map/pull/18))
 
 **Next**
 - [ ] **Coverage badge** — the header mixes in-radius and table-wide counts; switch it to `database_coverage()`.
 - [ ] **Grey out claims that already have options sent** in the drawer.
 - [x] **Contact history from Quo** on the owner card.
 - [x] **Call / Text via Quo** from the panel.
-- [ ] An AI one-line summary of the conversation with the owner (placeholder already in the property panel).
 - [ ] **Availability** and **last-used date** on the property card.
 - [ ] **Search agent** embed.
 - [ ] Real Google **Map ID**; optional server-only Supabase access.

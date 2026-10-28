@@ -13,6 +13,7 @@ import PanelFooter from "./property/PanelFooter";
 import KeyFacts from "./property/KeyFacts";
 import ContactDigest from "./property/ContactDigest";
 import ContactActions from "./property/ContactActions";
+import OwnerSaid from "./property/OwnerSaid";
 import { Fee, LinkChip, Row, Section } from "./property/parts";
 import { ReportBadLink, ReportedNote, type Reported } from "./property/ReportBadLink";
 import AvailabilityPill from "./property/AvailabilityPill";
@@ -73,6 +74,8 @@ export default function PropertyPanel({
   const formHere = editing && active;
   const savedNote = session.note?.propertyId === propertyId ? session.note : null;
   const saved = savedNote?.text ?? null;
+  // The latest save of this property that this mount took (below): "Owner said" asks again after it.
+  const savedAt = edited && edited.detail.monday_item_id === propertyId && edited.at >= mountedAt ? edited.at : 0;
   const editRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -397,6 +400,9 @@ export default function PropertyPanel({
                 {detail.landlord_phone && <ContactActions phone={detail.landlord_phone} name={detail.landlord_name} address={detail.address} />}
                 {detail.landlord_approval_note && <p className="text-xs text-muted">{detail.landlord_approval_note}</p>}
                 {(detail.owner_phone || detail.landlord_phone) && <ContactDigest propertyId={detail.monday_item_id} />}
+                {(detail.owner_phone || detail.landlord_phone) && (
+                  <OwnerSaid detail={detail} session={session} canEdit={canEdit && fetched} savedAt={savedAt} />
+                )}
               </div>
             </Section>
 
