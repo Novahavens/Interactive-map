@@ -53,6 +53,13 @@ export function webhookUrl(requestUrl: string): string {
   return `${prod ? `https://${prod}` : new URL(requestUrl).origin}/api/quo/webhook`;
 }
 
+/**
+ * Whether the contact log posts its one-line notes to Monday. Off by default: every Monday update emails the
+ * people who follow the item, so the notes were reaching people who did not need them. Last Contact Date still
+ * moves without them. Set QUO_MONDAY_NOTES=on to turn the notes back on.
+ */
+export const mondayNotesOn = () => process.env.QUO_MONDAY_NOTES?.trim().toLowerCase() === "on";
+
 /** The team's time zone for dates and note times (Tulsa). */
 export const quoTimeZone = () => process.env.QUO_TIMEZONE?.trim() || "America/Chicago";
 

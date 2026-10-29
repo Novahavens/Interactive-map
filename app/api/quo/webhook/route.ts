@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { editSecret } from "@/lib/edit-config";
 import { readFacts } from "@/lib/owner-said";
-import { quoConfig, quoTimeZone } from "@/lib/quo-config";
+import { mondayNotesOn, quoConfig, quoTimeZone } from "@/lib/quo-config";
 import {
   dateTargets, liveFor, localDay, movesDate, noteHtml, noteSlot, noteTargets, parseEvent, summaryTargets, callOutcome,
   type Match, type QuoEvent,
@@ -172,7 +172,8 @@ export async function POST(req: NextRequest) {
   const day = localDay(event.at, tz);
   const dateIds = movesDate(event) ? dateTargets(matches, day) : [];
   const slot = noteSlot(event);
-  const noteIds = slot ? noteTargets(matches) : [];
+  // Monday emails every update to the people who follow an item, so the notes stay off unless QUO_MONDAY_NOTES=on.
+  const noteIds = slot && mondayNotesOn() ? noteTargets(matches) : [];
   const ids = { property: propertyIds, note: noteIds, date: dateIds };
   if (!live) {
     await finish("shadow", ids);

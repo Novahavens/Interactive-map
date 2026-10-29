@@ -446,6 +446,7 @@ Browser and API checks run against a server on `BASE` (default `http://localhost
 | `MAP_EDITING` | Server | Optional kill switch: `off` hides *Edit* and refuses saves, without touching the secret. |
 | `MONDAY_DRY_RUN` | Server | `1` = never write to Monday. **Local only — never set in Production.** |
 | `QUO_API_KEY` | Server | Optional. Quo → *Settings → API* (owner or admin key). The contact history, the call lookups behind Owner said, the backfill, and creating the webhook. Without it the card shows nothing extra. The Call / Text buttons need no key: they open the Quo app on the user's own device. |
+| `QUO_MONDAY_NOTES` | Server | Optional. `on` posts the contact log's one-line notes to Monday. Default off: Monday emails every update to the people who follow an item, so the notes were reaching people who did not need them. Last Contact Date still moves with notes off. |
 | `QUO_TIMEZONE` | Server | Optional. Days and note times for the contact log; default `America/Chicago`. The contact log's switches (`QUO_LOG_MODE`, `QUO_LIVE_USERS`) and the webhook's signing key live in Supabase `sync_config`, not here. |
 | `MONDAY_ACTIVE_CLAIM_GROUPS` | Server | Optional. Groups that count as active. Default `topics,group_mkvngrgz`. |
 | `MONDAY_TEST_CLAIM_GROUP` | Server | Optional. The testing group for *Show test claims*. Default `group_mm1jnpwf`. |

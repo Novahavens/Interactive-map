@@ -140,7 +140,7 @@ The second line of every note is *Oct 27, 2:14 PM · (918) 555-0100 · logged fr
 
 **Which properties.** A number is matched against the owner and landlord/PM phones of every property (`quo_phone_keys()`: every North American number in the cell, the same rule as `toE164List`, behind a GIN index; 36 properties for the busiest owner take a few milliseconds). The date moves on every matched property that shows an older one. The note goes on the smart pick: properties that are options on an active claim (`claim_options`), else up to five of them, most recently contacted first. A number on no property is stored as `unmatched`.
 
-**Monday writes.** Dates: one request with an aliased `change_multiple_column_values` per property (25 at most), then `quo_mirror_last_contact` so the map shows the date at once (the Monday webhook confirms it). Notes: `create_update`, posted by the map's Monday token, so they show the token's owner as author and name the teammate in the text. Each note slot (property, day, slot) is claimed in `contact_notes` before posting, so a retried event never posts twice; a post that times out keeps its claim (one missing note beats two).
+**Monday writes.** Notes are off by default (`QUO_MONDAY_NOTES`, below) because every Monday update emails the people who follow the item: on 29 Oct the notes went to people who did not need them. With notes off the event records what it would have posted, and the call history stays in the map's contact card. Dates: one request with an aliased `change_multiple_column_values` per property (25 at most), then `quo_mirror_last_contact` so the map shows the date at once (the Monday webhook confirms it). Notes: `create_update`, posted by the map's Monday token, so they show the token's owner as author and name the teammate in the text. Each note slot (property, day, slot) is claimed in `contact_notes` before posting, so a retried event never posts twice; a post that times out keeps its claim (one missing note beats two).
 
 **Failures.** Anything that fails part-way answers 503 and Quo delivers the event again (8 attempts over about 27 hours); what already happened isn't repeated (dates are idempotent, notes are claimed, and the event row keeps the ids of everything done). A bad signature is 401; an event type the map doesn't use is 200 and ignored.
 
@@ -149,6 +149,7 @@ The second line of every note is *Oct 27, 2:14 PM · (918) 555-0100 · logged fr
 | Key | Values |
 |---|---|
 | `QUO_LOG_MODE` | `shadow` (default: record only), `live` (write Monday), `off` (ignore every event) |
+| `QUO_MONDAY_NOTES` (env var, Vercel) | `off` (default): Last Contact Date moves, no Monday updates. `on`: also post one note per answered call, text and attempt. Turn on only if the notes should be seen by everyone following the item: Monday emails each update to those followers. |
 | `QUO_LIVE_USERS` | Optional pilot: comma-separated Quo user ids or first names; in live mode only their events write, everyone else's stay shadow |
 
 ```sql
@@ -197,6 +198,8 @@ Health: `contact_events` rows arrive within seconds of a call or text; `state` i
 - Owner said only reads what the summary says outright; facts in a call Quo didn't summarise, or summarised vaguely, are not there.
 
 ## 13. Go-live record (29 Oct 2026)
+
+**Change, same day:** the Monday notes were switched off after the first emails reached people who follow the items. The date still moves, and the notes can come back with `QUO_MONDAY_NOTES=on`. Notes posted before the change stay in Monday.
 
 | When (UTC) | What happened |
 |---|---|
