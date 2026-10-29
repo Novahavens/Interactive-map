@@ -50,6 +50,9 @@ Nova Havens places families displaced by insurance claims into temporary housing
 | 📋 **Claim information on the map** | The claim's status, dates, family, needs, special requests and who's working it, in a collapsible card, without leaving the map. |
 | 🧮 **Fit at a glance** | Rent, beds/baths, pets, photos, fit against the family's needs, and a single **move-in total** (first month + every deposit and one-off fee). |
 | ➕ **One-tap shortlist** | **Add to claim** creates the Monday sub-item on the claim you're working, with **Distance to Loss (mi)** filled in. The panel always says which claim you're adding to. |
+| ✏️ **Edit from the map** | Change rent, fees, availability, pets and more on the panel; Monday and the map update together, with a note on the item saying who changed what. |
+| ☎️ **Call and text through Quo** | Call or Text an owner straight from the panel through your own Quo, see every past call and text, and Monday's *Last Contact Date* and a short note update by themselves. |
+| 🗣️ **Owner said** | After a call, what the owner said (available date, rent, deposit, pets) shows on the property, one tap from updating Monday. |
 | ✉️ **Send summary** | Builds a clean summary of every option on the claim, copies it, opens an email to the relocation specialist, and logs it on the Monday claim. |
 | 🧪 **Safe local testing** | `MONDAY_DRY_RUN=1` stops every Monday write and shows a **Dry run** chip. |
 | 🗺️ **Honest coverage** | Says how many properties can't be shown because they have no coordinates — nothing is silently hidden. |
@@ -77,8 +80,9 @@ Nova Havens places families displaced by insurance claims into temporary housing
 | ☎️ | **Call and Text from the panel, through your own Quo.** Each owner and landlord/PM number has a **Call** and a **Text** button that open Quo on *your* laptop or phone, so the call or text goes from your Quo account and lands in the contact history. The text comes pre-written ("Hi Jane, it's Will from Nova Havens about 12 Elm St."). Tap the number to copy it. No set-up in the map: the device you're on is who you are. | [#16](https://github.com/Novahavens/Interactive-map/pull/16) |
 | ✏️ | **Edit listing details from the map.** *Edit* on the property panel opens a form for next availability, beds, baths, square feet, pets / furnished / fenced yard, rent and every fee, the listing link and notes. *Save* writes Monday (the source of truth) and the map at once, and posts "✏️ Edited on the map by Will: Monthly rent $2,200 → $2,400" on the Monday item. If someone changed the same field in Monday meanwhile, the map asks before overwriting. | [#17](https://github.com/Novahavens/Interactive-map/pull/17) |
 | 🟢 | **Availability on top.** A raised, softly glowing pill at the top of the property panel: *Available soon · from Nov 1 · checked Oct 22*, in the status colour, with a **date passed** warning when the next-availability date is out of date. | [#17](https://github.com/Novahavens/Interactive-map/pull/17) |
-| 📒 | **Calls and texts log themselves in Monday.** Every Quo call or text with an owner or landlord/PM moves the property's **Last Contact Date** (answered calls and any text) and leaves one short note: *📞 Will called the owner · 3 min*, *💬 The owner texted*, *📞 Will tried to call the owner · no answer*. One note per property per day for texts and tries; the note goes on the property that's on an active claim, else up to five of the owner's. Starts in shadow mode (records, writes nothing) and has an off switch. | [#18](https://github.com/Novahavens/Interactive-map/pull/18) |
+| 📒 | **Calls and texts log themselves in Monday.** Every Quo call or text with an owner or landlord/PM moves the property's **Last Contact Date** (answered calls and any text) and leaves one short note: *📞 Will called the owner · 3 min*, *💬 The owner texted*, *📞 Will tried to call the owner · no answer*. One note per property per day for texts and tries; the note goes on the property that's on an active claim, else up to five of the owner's. Live since 29 Oct 2026, with an off switch. | [#18](https://github.com/Novahavens/Interactive-map/pull/18) |
 | 🗣️ | **Owner said.** After an answered call, Quo's AI summary shows on the property panel with what the owner said: *Available Nov 1 · $2,400/mo · Deposit $500 · Pets OK*. **Update Monday** opens *Edit* already filled in from the call, each value with the sentence it came from; nothing changes until you press Save. | [#18](https://github.com/Novahavens/Interactive-map/pull/18) |
+| 🧹 | **Tidier panel.** The old greyed-out *Call / Text via Quo · P2* placeholders are gone; Call and Text sit next to each phone number. | [#19](https://github.com/Novahavens/Interactive-map/pull/19) |
 | 📱 | **Phone results sheet** with collapsed / half / expanded states: the list gets most of the screen, search and filters fold into one row, and the sheet and the list no longer fight over scrolling. The desktop rail no longer squeezes the list to a few pixels at short windows (Lou's scroll bug). | [#14](https://github.com/Novahavens/Interactive-map/pull/14) |
 | 🛠️ | **Fixes:** new options now arrive as **To Do** (not *Ready to Submit*); the claim's bedroom and bathroom needs were read from each other's columns; "% of database mappable" counted only the search circle; red properties can't be added to a claim whether the group *or* the owner says do not use. | [#13](https://github.com/Novahavens/Interactive-map/pull/13) |
 
@@ -585,12 +589,13 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 - [x] **Availability pill** at the top of the property panel.
 - [x] **Calls and texts log themselves** in Monday (Last Contact Date + one note), and **Owner said** from Quo's AI call summaries ([#18](https://github.com/Novahavens/Interactive-map/pull/18))
 
+- [x] **Contact history from Quo** on the owner card ([#15](https://github.com/Novahavens/Interactive-map/pull/15)) and **Call / Text via Quo** from the panel ([#16](https://github.com/Novahavens/Interactive-map/pull/16), [#19](https://github.com/Novahavens/Interactive-map/pull/19))
+- [x] **Availability** and **last contact** on the property card ([#14](https://github.com/Novahavens/Interactive-map/pull/14), [#17](https://github.com/Novahavens/Interactive-map/pull/17))
+
 **Next**
+- [ ] **Fill in past Last Contact Dates** from Quo's history (report first, then apply; `POST /api/quo/backfill`).
 - [ ] **Coverage badge** — the header mixes in-radius and table-wide counts; switch it to `database_coverage()`.
 - [ ] **Grey out claims that already have options sent** in the drawer.
-- [x] **Contact history from Quo** on the owner card.
-- [x] **Call / Text via Quo** from the panel.
-- [ ] **Availability** and **last-used date** on the property card.
 - [ ] **Search agent** embed.
 - [ ] Real Google **Map ID**; optional server-only Supabase access.
 
