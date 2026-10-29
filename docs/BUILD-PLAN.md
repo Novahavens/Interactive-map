@@ -1,5 +1,7 @@
 # Build plan — repo truth + claims drawer + specialist summary
 
+> **Historical (12 Oct 2026).** Every phase here is done. For what exists now see the README; for requirements see PRD v4 (Google Doc), §14 and §15.
+
 Companion to `docs/PRD-claims-drawer-and-specialist-summary.md`. Phases are sequential; steps inside a phase can run in parallel where noted. Branch: `ccr-b5ed9a81-8g65uc` → draft PR #5.
 
 ## Phase 0 — Recover the live source (blocking)

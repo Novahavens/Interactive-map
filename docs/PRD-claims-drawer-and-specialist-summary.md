@@ -1,5 +1,7 @@
 # PRD — Active Claims Drawer, Claim-scoped Add, and Relocation-Specialist Summary
 
+> **Historical (12 Oct 2026).** This PRD covers the claims drawer, claim-scoped Add and the specialist summary, all shipped. The current product requirements are PRD v4 (Google Doc *interactive-map-prd-v4*, §14 and §15); how the app works today is the README and the *Interactive Property Map: Internal Documentation* Google Doc.
+
 **Product:** Nova Havens · Property Map (`nova-havens-map.vercel.app`)
 **Status:** Draft v1 · 12 Oct 2026
 **Owner:** Fazal (Nova Havens) · **Author:** Claude Code session

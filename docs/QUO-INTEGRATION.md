@@ -2,7 +2,7 @@
 
 How the property map talks to Quo (formerly OpenPhone): the read-only **contact history** on the owner card, the **Call / Text** buttons that open Quo on the user's own device, the **contact log** that puts every call and text in Monday by itself, and **Owner said**, Quo's AI call summary on the panel. For the user-facing description see the README (*Using the map → 2 · Find the right home → Tap a property*).
 
-Last updated: 28 Oct 2026 · Owner: Fazal Abed (fazal@novahavens.com) · Shipped in [#15](https://github.com/Novahavens/Interactive-map/pull/15) (contact history), [#16](https://github.com/Novahavens/Interactive-map/pull/16) (Call / Text) and [#18](https://github.com/Novahavens/Interactive-map/pull/18) (contact log, Owner said, backfill).
+Last updated: 29 Oct 2026 · Owner: Fazal Abed (fazal@novahavens.com) · Shipped in [#15](https://github.com/Novahavens/Interactive-map/pull/15) (contact history), [#16](https://github.com/Novahavens/Interactive-map/pull/16) (Call / Text) and [#18](https://github.com/Novahavens/Interactive-map/pull/18) (contact log, Owner said, backfill) and [#19](https://github.com/Novahavens/Interactive-map/pull/19) (the old placeholders removed). **The contact log has been live for every team number since 29 Oct 2026** (§13).
 
 Words used below: **E.164** is the international phone format `+1 918 740 9628` written as `+19187409628`. A **deep link** is a URL with a custom scheme (`openphone://…`) that the operating system hands to the app that registered it. **Rail** is the property panel on the right of the desktop map; **sheet** is the same panel sliding up on a phone; **drawer** is a collapsed section inside it. **PM** is a property manager. **Inbox** is a Quo phone number shared by teammates. The Quo API spec is at https://www.quo.com/docs; Vercel environment variables and logs are under *Settings → Environment Variables* and *Logs* for the `nova-havens-map` project.
 
@@ -178,11 +178,13 @@ After an answered, recorded call, Quo writes an AI summary (`call.summary.comple
 
 ## 11. Setting it up and checking it
 
-1. In Quo, turn on call recording and AI call summaries for every number the team calls from (done 28 Oct).
+This is the order to follow on a new environment. What we actually did, with dates and numbers, is in §13.
+
+1. In Quo, turn on call recording and AI call summaries for every number the team calls from.
 2. `POST /api/quo/setup` with `x-map-secret: <MAP_EDIT_SECRET>` on the production URL. It creates the one webhook (or keeps a matching one; rotates it if the stored key isn't its own), stores the `whsec_` key in sync_config `QUO_WEBHOOK_KEYS` and its id in `QUO_WEBHOOK_ID`, and answers the mode in force. On Vercel it always registers the production address. No Vercel variable to add: the key lives in the database, behind the same server secret as listing edits.
-3. Shadow for two or three days: the daily check above, compared with what the team logged by hand.
-4. Live: `QUO_LIVE_USERS` set to one person for a day, then cleared.
-5. Backfill: scan, report, apply (§10).
+3. Shadow: the daily check above, compared with what the team logged by hand. The plan said two or three days; we ran about an hour (§13) because the first hour already matched what the team did.
+4. Live: set `QUO_LOG_MODE` to `live`. To limit it first, set `QUO_LIVE_USERS` to one person for a day, then clear it. We went live for everyone at once.
+5. Backfill: scan, report, apply (§10). Not run yet.
 
 Health: `contact_events` rows arrive within seconds of a call or text; `state` is `shadow`/`done`/`unmatched`/`ignored`, and `retry` rows say what failed in `error`. Quo's side: `GET https://api.quo.com/webhooks/<id>/events` (header `Quo-Api-Version: 2026-03-30`) lists deliveries and their answers.
 
@@ -193,3 +195,19 @@ Health: `contact_events` rows arrive within seconds of a call or text; `state` i
 - Not built: a "blacklist from the claim board" flow (separate brief).
 - The contact log can't tell a person from voicemail on an outgoing call Quo marks answered (above). Dates are compared with the map's copy of Monday, which is seconds behind; a date typed in Monday in those seconds could be overwritten by an older call.
 - Owner said only reads what the summary says outright; facts in a call Quo didn't summarise, or summarised vaguely, are not there.
+
+## 13. Go-live record (29 Oct 2026)
+
+| When (UTC) | What happened |
+|---|---|
+| 28 Oct | Quo recording and AI summaries confirmed on for every number. |
+| 29 Oct | #18 merged. |
+| 29 Oct, before the shadow hour | `POST /api/quo/setup` run on production: Quo webhook `47649` created, signing key stored. Mode `shadow`. |
+| 29 Oct, shadow hour | 2 answered calls, 40 texts and 2 call summaries arrived. 16 properties matched, 15 numbers on no property, 0 errors. Owner said read *available in December* as Dec 1. A one-hour comparison with what the team logged by hand was enough; no day-long pilot (`QUO_LIVE_USERS`) was used. |
+| 29 Oct, 15:04:41 | `QUO_LOG_MODE` set to `live` for everyone. |
+| 29 Oct, 15:04 to 15:46 | 17 calls and texts arrived: 15 logged (`done`), 2 calls on no property (`unmatched`); 6 summaries (4 saved, 2 unmatched). No `retry` or `failed` rows. Notes landed in Monday once each (checked on one property: *📞 Dani called the owner · 2 min*), and Last Contact Date moved to Oct 29 on every property that had an older date. |
+
+To stop it at any time: `QUO_LOG_MODE = 'shadow'` (records only) or `'off'` (ignores events); effective within 5 seconds, no deploy.
+
+Still to do: the backfill (§10) and the Mac and Windows check of the Text button (§12).
+
