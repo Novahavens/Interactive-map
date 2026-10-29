@@ -1,0 +1,8 @@
+renders/
+*_frames/
+capture/probe/
+audio/vo/tts.log
+.thumbnails/
+snapshots/
+.hyperframes/
+node_modules/
