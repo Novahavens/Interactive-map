@@ -8,7 +8,7 @@
 //   1. node tests/api/quo-webhook.mjs serve                                (mock on 127.0.0.1:3097)
 //   2. NEXT_DIST_DIR=.next-quo npx next build; git checkout -- tsconfig.json  (a build rewrites it)
 //   3. env SUPABASE_URL=http://127.0.0.1:3097 SUPABASE_KEY=test MONDAY_API_URL=http://127.0.0.1:3097/v2 \
-//        MONDAY_API_TOKEN=test QUO_API_BASE=http://127.0.0.1:3097/v1 QUO_API_KEY=test MAP_EDIT_SECRET=test-secret \
+//        MONDAY_API_TOKEN=test QUO_API_BASE=http://127.0.0.1:3097/v1 QUO_API_KEY=test MAP_EDIT_SECRET=test-secret QUO_MONDAY_NOTES=on \
 //        NEXT_DIST_DIR=.next-quo npx next start -p 3033
 //   4. node tests/api/quo-webhook.mjs                                       (BASE=http://localhost:3033 by default)
 //
@@ -17,6 +17,7 @@
 // ~1 s pauses for the once-a-second config re-read, and ~8 s for a Monday note that lands late. Exit code 0
 // only when every check passes. Checks marked [doc] test what a doc comment promises where the code was seen to
 // do something else.
+// QUO_MONDAY_NOTES=on turns the Monday notes on (they are off by default, so Monday does not email followers).
 // Result on 28 Oct 2026, after the fixes this test found (MondayError keeps the HTTP status, so a note answered
 // 500 keeps its claim): 135 PASS, 0 FAIL.
 import http from "node:http";
