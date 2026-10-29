@@ -1,0 +1,305 @@
+{
+  "ok": true,
+  "strict": false,
+  "browserSkipped": false,
+  "lint": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 1,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "composition_file_too_large",
+        "severity": "warning",
+        "message": "This HTML composition file has 499 lines. Smaller sub-compositions are easier to read, iterate on, and diff.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "/home/user/Interactive-map/video-tutorial/compositions/captions.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Split this sub-composition further into smaller .html files, then mount them from the parent with data-composition-src so each file stays small enough to inspect, revise, and validate independently."
+      }
+    ],
+    "filesScanned": 17
+  },
+  "runtime": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": []
+  },
+  "layout": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 5,
+    "findings": [
+      {
+        "code": "container_overflow",
+        "severity": "info",
+        "time": 7.043,
+        "selector": "#s01-cam",
+        "message": "Element extends outside a clipping layout container.",
+        "rect": {
+          "left": -102,
+          "top": -120.8,
+          "right": 2163.6,
+          "bottom": 1153.6,
+          "width": 2265.6,
+          "height": 1274.4
+        },
+        "containerSelector": "#s01 > div:nth-of-type(1)",
+        "fixHint": "Resize/reposition the child or container, or mark intentional overflow with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "left": 102,
+          "right": 243.6,
+          "top": 120.8,
+          "bottom": 73.6
+        },
+        "dataAttributes": {},
+        "sourceFile": "compositions/s01.html",
+        "bbox": {
+          "x": -102,
+          "y": -120.8,
+          "width": 2265.6,
+          "height": 1274.4
+        },
+        "firstSeen": 7.043,
+        "lastSeen": 7.043,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          7.043
+        ]
+      },
+      {
+        "code": "container_overflow",
+        "severity": "info",
+        "time": 63.385,
+        "selector": "#s07-cam",
+        "message": "Element extends outside a clipping layout container.",
+        "rect": {
+          "left": -1056,
+          "top": -266,
+          "right": 1920,
+          "bottom": 1408,
+          "width": 2976,
+          "height": 1674
+        },
+        "containerSelector": "#s07 > div:nth-of-type(1)",
+        "fixHint": "Resize/reposition the child or container, or mark intentional overflow with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "left": 1056,
+          "top": 266,
+          "bottom": 328
+        },
+        "dataAttributes": {},
+        "sourceFile": "compositions/s07.html",
+        "bbox": {
+          "x": -1056,
+          "y": -266,
+          "width": 2976,
+          "height": 1674
+        },
+        "firstSeen": 63.385,
+        "lastSeen": 63.385,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          63.385
+        ]
+      },
+      {
+        "code": "content_overlap",
+        "severity": "info",
+        "time": 99.858,
+        "selector": "#cw67_0",
+        "message": "Two text blocks overlap and may render unreadable.",
+        "rect": {
+          "left": 815.39,
+          "top": 916,
+          "right": 945.23,
+          "bottom": 973,
+          "width": 129.84,
+          "height": 57
+        },
+        "containerSelector": "#cw68_0",
+        "text": "Happy",
+        "fixHint": "Give each block its own zone, or put data-layout-allow-overlap on the text or on a container inside the scene. A marker on the scene root does not apply.",
+        "dataAttributes": {},
+        "sourceFile": "compositions/captions.html",
+        "bbox": {
+          "x": 815.39,
+          "y": 916,
+          "width": 129.84,
+          "height": 57
+        },
+        "firstSeen": 99.858,
+        "lastSeen": 99.858,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          99.858
+        ]
+      },
+      {
+        "code": "content_overlap",
+        "severity": "info",
+        "time": 99.858,
+        "selector": "#cw67_1",
+        "message": "Two text blocks overlap and may render unreadable.",
+        "rect": {
+          "left": 955.5,
+          "top": 916,
+          "right": 1042.86,
+          "bottom": 973,
+          "width": 87.36,
+          "height": 57
+        },
+        "containerSelector": "#cw68_2",
+        "text": "with",
+        "fixHint": "Give each block its own zone, or put data-layout-allow-overlap on the text or on a container inside the scene. A marker on the scene root does not apply.",
+        "dataAttributes": {},
+        "sourceFile": "compositions/captions.html",
+        "bbox": {
+          "x": 955.5,
+          "y": 916,
+          "width": 87.36,
+          "height": 57
+        },
+        "firstSeen": 99.858,
+        "lastSeen": 99.858,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          99.858
+        ]
+      },
+      {
+        "code": "content_overlap",
+        "severity": "info",
+        "time": 99.858,
+        "selector": "#cw67_2",
+        "message": "Two text blocks overlap and may render unreadable.",
+        "rect": {
+          "left": 1053.13,
+          "top": 916,
+          "right": 1104.59,
+          "bottom": 973,
+          "width": 51.46,
+          "height": 57
+        },
+        "containerSelector": "#cw68_2",
+        "text": "it?",
+        "fixHint": "Give each block its own zone, or put data-layout-allow-overlap on the text or on a container inside the scene. A marker on the scene root does not apply.",
+        "dataAttributes": {},
+        "sourceFile": "compositions/captions.html",
+        "bbox": {
+          "x": 1053.13,
+          "y": 916,
+          "width": 51.46,
+          "height": 57
+        },
+        "firstSeen": 99.858,
+        "lastSeen": 99.858,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          99.858
+        ]
+      }
+    ],
+    "duration": 126.77,
+    "samples": [
+      7.043,
+      21.128,
+      35.214,
+      49.299,
+      63.385,
+      77.471,
+      91.556,
+      105.642,
+      119.727
+    ],
+    "transitionSamples": [],
+    "transitionSamplesDropped": 0,
+    "tolerance": 2,
+    "totalIssueCount": 5,
+    "truncated": false
+  },
+  "motion": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": false,
+    "samples": 0
+  },
+  "contrast": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": true,
+    "samples": [
+      7.043,
+      35.214,
+      63.385,
+      91.556,
+      119.727
+    ],
+    "checked": 13,
+    "passed": 13
+  },
+  "craft": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": true,
+    "step": 0.2119999999999962,
+    "samples": 599
+  },
+  "audio": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": []
+  },
+  "hdr": {
+    "autoPromotion": null,
+    "inspection": "available"
+  },
+  "snapshots": {
+    "enabled": false,
+    "files": [],
+    "times": [],
+    "findingFiles": []
+  }
+}

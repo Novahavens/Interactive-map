@@ -1,0 +1,32 @@
+<template>
+  <style>
+@font-face { font-family: "Geist"; src: url("assets/fonts/geist.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
+@font-face { font-family: "Geist Mono"; src: url("assets/fonts/geist-mono.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
+  #root { position: absolute; inset: 0; overflow: hidden; background: #fafafa; font-family: "Geist", sans-serif; color: #171717; }
+  .cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+  .cam video { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+  .head { position: absolute; left: 192px; top: 108px; }
+  .head.right { left: auto; right: 192px; }
+  .head-in { display: flex; align-items: baseline; gap: 22px; padding: 22px 34px 24px 30px; background: #ffffff; border: 1px solid #eaeaea;
+    border-radius: 18px; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.14); }
+  .head-num { font-family: "Geist Mono", monospace; font-size: 34px; font-weight: 600; color: #c17d0a; letter-spacing: 0; }
+  .head-t { font-size: 60px; font-weight: 700; letter-spacing: -0.02em; color: #171717; line-height: 1; }
+  .phones { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 96px; }
+  .phone { width: 410px; height: 888px; border-radius: 56px; background: #171717; padding: 14px; box-shadow: 0 30px 80px rgba(0,0,0,.22); }
+  .phone img { width: 100%; height: 100%; object-fit: cover; border-radius: 44px; display: block; }
+  </style>
+  <div id="root" data-composition-id="s14" data-width="1920" data-height="1080">
+    
+    <div id="s14-phones" class="clip phones" data-start="0" data-duration="3.021"><div class="phone" id="s14-p1"><img src="assets/clips/phone-light-map.png" alt=""></div><div class="phone" id="s14-p2"><img src="assets/clips/phone-dark-map.png" alt=""></div></div>
+    
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    
+    
+    tl.fromTo("#s14-p1", { y: 1100 }, { y: 0, duration: 0.8, ease: "power3.out" }, 0);
+    tl.fromTo("#s14-p2", { y: 1100 }, { y: 0, duration: 0.8, ease: "power3.out" }, 0.15);
+    tl.set({}, {}, 3.021);
+    window.__timelines["s14"] = tl;
+  </script>
+</template>

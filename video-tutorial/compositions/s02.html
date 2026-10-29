@@ -1,0 +1,31 @@
+<template>
+  <style>
+@font-face { font-family: "Geist"; src: url("assets/fonts/geist.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
+@font-face { font-family: "Geist Mono"; src: url("assets/fonts/geist-mono.woff2") format("woff2"); font-weight: 100 900; font-display: block; }
+  #root { position: absolute; inset: 0; overflow: hidden; background: #fafafa; font-family: "Geist", sans-serif; color: #171717; }
+  .cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+  .cam video { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; object-fit: cover; }
+  .head { position: absolute; left: 192px; top: 108px; }
+  .head.right { left: auto; right: 192px; }
+  .head-in { display: flex; align-items: baseline; gap: 22px; padding: 22px 34px 24px 30px; background: #ffffff; border: 1px solid #eaeaea;
+    border-radius: 18px; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.14); }
+  .head-num { font-family: "Geist Mono", monospace; font-size: 34px; font-weight: 600; color: #c17d0a; letter-spacing: 0; }
+  .head-t { font-size: 60px; font-weight: 700; letter-spacing: -0.02em; color: #171717; line-height: 1; }
+  </style>
+  <div id="root" data-composition-id="s02" data-width="1920" data-height="1080">
+    <div id="s02-cam" class="cam"><video id="s02-vid" class="clip" data-start="0" data-duration="11.213" data-media-start="0.0" data-playback-rate="0.991" src="assets/clips/pick.mp4" muted playsinline></video></div>
+    
+    <div id="s02-head" class="clip head right" data-start="0.25" data-duration="2.9"><div class="head-in"><span class="head-num">01</span><span class="head-t">Pick a claim</span></div></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.set("#s02-cam", { scale: 1.0, x: 0, y: 0, transformOrigin: "0 0" }, 0);
+    tl.to("#s02-cam", { scale: 1.75, x: 0, y: 0, duration: 0.9, ease: "power2.inOut" }, 1.615);
+    tl.to("#s02-cam", { scale: 1.0, x: 0, y: 0, duration: 0.9, ease: "power2.inOut" }, 5.954);
+    tl.fromTo("#s02-head .head-in", { opacity: 0, x: -40 }, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" }, 0.25);
+    tl.to("#s02-head .head-in", { opacity: 0, duration: 0.3, ease: "power2.in" }, 2.8);
+    
+    tl.set({}, {}, 11.213);
+    window.__timelines["s02"] = tl;
+  </script>
+</template>

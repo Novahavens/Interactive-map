@@ -12,7 +12,7 @@ import pathlib
 import subprocess
 
 HERE = pathlib.Path(__file__).parent
-GAP = 0.9          # silence between lines
+GAP = 1.4          # silence between lines
 LEAD = 0.6         # before the first line
 TAIL = 5.0         # end card hold after the last line
 W, H = 1920, 1080
@@ -32,10 +32,10 @@ SCENES = {
     "06_status":  dict(clip="status",  head=("05", "Live status"), cam=[(0, 1.0, 960, 540), (0.6, 1.9, 220, 640)]),
     "07_fit":     dict(clip="fit",     head=("06", "Fit and cost"), cam=[(0, 1.0, 960, 540), (2.4, 1.55, 1680, 520)]),
     "08_call":    dict(clip="call",    head=("07", "Call or text"), cam=[(0, 1.6, 1680, 560), (0.8, 2.0, 1700, 640)]),
-    "09_log":     dict(clip="log",     head=("08", "Calls log themselves"), cam=[(0, 1.7, 1680, 260), (2.6, 1.6, 1680, 700)]),
+    "09_log":     dict(clip="log",     head=("08", "Calls log themselves"), cam=[(0, 1.7, 1680, 260), (6.4, 1.6, 1680, 700)]),
     "10_said":    dict(clip="said",    head=("09", "Owner said"), cam=[(0, 1.6, 1680, 620), (4.2, 1.55, 1680, 560)]),
     "11_edit":    dict(clip="edit",    head=("10", "Save to Monday"), cam=[(0, 1.6, 1680, 760), (2.4, 1.6, 1680, 300)]),
-    "12_add":     dict(clip="add",     head=("11", "Add to claim"), cam=[(0, 1.0, 960, 540), (0.6, 1.7, 1680, 940)]),
+    "12_add":     dict(clip="add",     head=("11", "Add to claim"), cam=[(0, 1.0, 960, 540), (0.6, 1.25, 1700, 900)]),
     "13_send":    dict(clip="send",    head=("12", "Send summary"), cam=[(0, 1.0, 960, 540), (2.0, 1.45, 1500, 540)]),
     "14_phone":   dict(clip=None,      head=None, cam=[]),
     "15_close":   dict(clip="hero",    head=None, cam=[(0, 1.12, 900, 560), (3.0, 1.0, 960, 540)]),
@@ -194,8 +194,14 @@ for l in lines:
         cur.append(w)
         nxt = ws[i + 1] if i + 1 < len(ws) else None
         if nxt is None or w["text"][-1] in ".,?!:" or len(cur) >= 6 or nxt["start"] - w["end"] > 0.2:
-            groups.append(dict(start=l["start"] + cur[0]["start"], end=l["start"] + (nxt["start"] if nxt else w["end"] + 0.3),
-                               words=[dict(t=x["text"], s=round(l["start"] + x["start"], 3)) for x in cur]))
+            g = dict(start=l["start"] + cur[0]["start"], end=l["start"] + (nxt["start"] if nxt else w["end"] + 0.3),
+                     words=[dict(t=x["text"], s=round(l["start"] + x["start"], 3)) for x in cur], line=l["id"])
+            # A lone word joins the group before it in the same line, so nothing flashes on its own.
+            if len(cur) <= 2 and groups and groups[-1]["line"] == l["id"] and len(groups[-1]["words"]) + len(cur) <= 8:
+                groups[-1]["words"] += g["words"]
+                groups[-1]["end"] = g["end"]
+            else:
+                groups.append(g)
             cur = []
 merged = []
 for g in groups:
