@@ -197,13 +197,19 @@ export default function MapCanvas({
     const existing = propertyMarkersRef.current;
     const next = new Map<string, AdvMarker>();
     const toAdd: AdvMarker[] = [];
-    let moved = false;
+    const toRemove: AdvMarker[] = [];
 
     for (const p of pins) {
       if (attachedIds.has(p.monday_item_id)) continue; // drawn by the attached layer instead — always visible, never faded
       if (typeof p.lat !== "number" || typeof p.lng !== "number") continue;
 
       let m = existing.get(p.monday_item_id);
+      // The address was edited on the map: the pin gets a new marker, because the clusterer rebuilds its index
+      // only when the set of markers changes, not when one of them moves.
+      if (m && !atPosition(m, p.lat, p.lng)) {
+        toRemove.push(m);
+        m = undefined;
+      }
       const status = asMapStatus(p.map_status);
       const selected = selectedId === p.monday_item_id;
       const shown = passesFilters(p, filters);
@@ -215,10 +221,6 @@ export default function MapCanvas({
         });
         m.addListener("click", () => onSelect(p.monday_item_id));
         toAdd.push(m);
-      } else if (!atPosition(m, p.lat, p.lng)) {
-        // The address was edited on the map: the pin moves (the clusterer re-reads positions on render).
-        m.position = { lat: p.lat, lng: p.lng };
-        moved = true;
       }
       const approx = p.approximate === true;
       const hovered = hoveredId === p.monday_item_id;
@@ -229,13 +231,12 @@ export default function MapCanvas({
       next.set(p.monday_item_id, m);
     }
 
-    const toRemove: AdvMarker[] = [];
     for (const [id, m] of existing) {
       if (!next.has(id)) toRemove.push(m);
     }
     if (toRemove.length) clusterer.removeMarkers(toRemove, true);
     if (toAdd.length) clusterer.addMarkers(toAdd, true);
-    if (toRemove.length || toAdd.length || moved) clusterer.render();
+    if (toRemove.length || toAdd.length) clusterer.render();
     propertyMarkersRef.current = next;
   }, [ready, pins, attachedIds, selectedId, hoveredId, filters, onSelect, onHover]);
 
@@ -259,6 +260,8 @@ export default function MapCanvas({
           gmpClickable: true,
         });
         m.addListener("click", () => onSelect(a.monday_item_id));
+      } else if (!atPosition(m, a.lat, a.lng)) {
+        m.position = { lat: a.lat, lng: a.lng }; // the address was edited on the map; not clustered, so a move is enough
       }
       const hovered = hoveredId === a.monday_item_id;
       const chip = chipMoney(a.monthly_rate);
