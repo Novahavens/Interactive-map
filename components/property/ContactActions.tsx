@@ -11,6 +11,8 @@ const QUO_WEB = "https://my.quo.com";
 /** How long we give Quo to take focus before assuming it didn't open. */
 const OPEN_GRACE_MS = 1500;
 const HINT_MS = 9000;
+/** After Quo took over, the hint waits for the user to come back from it. */
+const OPENED_HINT_MS = 45_000;
 const COPIED_MS = 1500;
 
 type Hint = { text: string; link?: { href: string; label: string } } | null;
@@ -82,11 +84,11 @@ export default function ContactActions({ phone, name, address }: { phone: string
     };
   }, []);
 
-  function showHint(h: Hint) {
+  function showHint(h: Hint, ms = HINT_MS) {
     if (!alive.current) return;
     clearTimeout(timers.current.hint);
     setHint(h);
-    if (h) timers.current.hint = setTimeout(() => alive.current && setHint(null), HINT_MS);
+    if (h) timers.current.hint = setTimeout(() => alive.current && setHint(null), ms);
   }
 
   if (!numbers.length) return <span className="font-mono text-[13px] text-ink">{phone}</span>;
@@ -101,16 +103,18 @@ export default function ContactActions({ phone, name, address }: { phone: string
     }
   }
 
-  async function onText(number: string) {
+  async function onText(number: string, shown: string) {
     if (mobile) return; // the openphone:// link does the work
-    // Quo documents its deep links for the mobile apps only. On a laptop the link is still tried (the
-    // desktop app registers the scheme), the number is held on the clipboard for pasting, and Quo on
-    // the web is offered when nothing takes over.
+    // Quo documents its deep links for the mobile apps only. On a laptop the desktop app opens on the link
+    // but shows whatever conversation was open last (6 Nov 2026: a text drafted to the previous property's
+    // landlord), so the number is held on the clipboard for pasting and the hint stays up after Quo takes
+    // over, telling the user to paste it into To. Quo on the web is offered when nothing takes over.
     const took = quoTookOver();
     const held = await copy(number);
     showHint({ text: held ? "Opening Quo · number copied" : "Opening Quo…" });
-    if (await took) showHint(null);
-    else showHint({ text: held ? "Quo didn't open. Paste the number into Quo:" : "Quo didn't open:", link: { href: QUO_WEB, label: "open Quo" } });
+    if (await took) {
+      showHint({ text: held ? `Quo opened on its last conversation. Paste the copied number (${shown}) into To before you type.` : `Quo opened on its last conversation. Put ${shown} into To before you type.` }, OPENED_HINT_MS);
+    } else showHint({ text: held ? "Quo didn't open. Paste the number into Quo:" : "Quo didn't open:", link: { href: QUO_WEB, label: "open Quo" } });
   }
 
   async function onCopy(number: string) {
@@ -144,7 +148,7 @@ export default function ContactActions({ phone, name, address }: { phone: string
                 Call
               </a>
               {parsed && (
-                <a href={quoMessageUrl(number, draft)} onClick={() => onText(number)} className={btn} data-quo="text" aria-label={`Text ${shown} with Quo`}>
+                <a href={quoMessageUrl(number, draft)} onClick={() => onText(number, shown)} className={btn} data-quo="text" aria-label={`Text ${shown} with Quo`}>
                   <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
                   Text
                 </a>

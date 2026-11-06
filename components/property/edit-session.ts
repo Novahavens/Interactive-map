@@ -48,6 +48,8 @@ export interface EditDraft {
   /** Filled in from a call ("Owner said"): the save names the call, and each value shows the sentence it came from. */
   source?: { callId: string; label: string };
   evidence?: Partial<Record<EditKey, string>>;
+  /** Where the pin was when the form opened, so an address pick can say how far it moves. */
+  origin: { lat: number; lng: number } | null;
 }
 
 /** Values read from a call summary, to open the form with. `label` reads "Will's call on Oct 27". */
@@ -81,7 +83,8 @@ export interface SentEdit {
   base: EditChanges;
 }
 
-export const toRaw = (v: EditValue | undefined): string => (v === null || v === undefined ? "" : String(v));
+/** A field's value as the form holds it: text, with a picked address kept as JSON (lib/listing-edit reads it back). */
+export const toRaw = (v: EditValue | undefined): string => (v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
 
 /** One field against where the form started: unchanged, changed to a valid value, or changed and invalid. */
 export function evaluate(field: EditField, raw: string, base: EditValue): { changed: false } | { changed: true; value: EditValue } | { changed: true; error: string } {
@@ -302,6 +305,7 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
     }
     const next: EditDraft = {
       propertyId: id, raw, base, name, shown: {}, nameError: null, confirming: false, askSeq: 0, status: { kind: "idle" }, notice, autofocus: true,
+      origin: typeof detail.lat === "number" && typeof detail.lng === "number" ? { lat: detail.lat, lng: detail.lng } : null,
       ...(prefill ? { source: prefill.source, evidence: prefill.evidence } : restoredSource ?? {}),
     };
     draftRef.current = next;

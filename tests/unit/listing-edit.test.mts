@@ -12,7 +12,8 @@ test("every field has a unique key and Monday column", () => {
   assert.equal(new Set(EDIT_FIELDS.map((x) => x.column)).size, EDIT_FIELDS.length);
   // The availability status belongs to the availability monitor and is never editable from the map.
   assert.equal(FIELD_BY_KEY.has("availability"), false);
-  for (const k of ["owner_phone", "owner_name", "name", "address", "landlord_phone"]) assert.equal(FIELD_BY_KEY.has(k), false, k);
+  for (const k of ["owner_phone", "owner_name", "name", "city", "state", "zipcode", "lat", "lng", "landlord_phone"]) assert.equal(FIELD_BY_KEY.has(k), false, k);
+  assert.equal(f("address").column, "location_mm416w07");
 });
 
 test("numbers: text or number in, number out; ranges and kinds enforced", () => {
@@ -85,8 +86,10 @@ test("Monday column values: the formats change_multiple_column_values takes", ()
 test("Monday column values: every clear is a JSON null (an empty string on a numbers column does not clear it)", () => {
   const all = Object.fromEntries(EDIT_FIELDS.map((x) => [x.key, null]));
   const out = mondayColumnValues(all);
-  assert.equal(Object.keys(out).length, EDIT_FIELDS.length);
-  for (const x of EDIT_FIELDS) assert.equal(out[x.column], null, `${x.key} must clear with null`);
+  // The address is the pin: it is never cleared, so a null address writes nothing.
+  const clearable = EDIT_FIELDS.filter((x) => x.kind !== "address");
+  assert.equal(Object.keys(out).length, clearable.length);
+  for (const x of clearable) assert.equal(out[x.column], null, `${x.key} must clear with null`);
   assert.equal(mondayColumnValues({ bedrooms: 0 }).numeric_mm44r6x9, "0", "a real zero is still sent as 0");
 });
 
@@ -134,4 +137,73 @@ test("request source: a Quo call id is kept; anything else is dropped without fa
     assert.equal(p.ok, true);
     assert.equal(p.ok && "source" in p, false);
   }
+});
+
+const PLACE = { address: " 1601 E Marshall St, Tulsa, OK 74106, USA ", lat: 36.1712345678, lng: -95.9598765432, city: "Tulsa", state: "OK", zipcode: "74106" };
+const PICKED = { address: "1601 E Marshall St, Tulsa, OK 74106, USA", lat: 36.1712346, lng: -95.9598765, city: "Tulsa", state: "OK", zipcode: "74106" };
+
+test("address: a picked place (object or the form's JSON) is cleaned and rounded; typed text and blanks are refused", () => {
+  assert.deepEqual(normaliseValue(f("address"), PLACE), { ok: true, value: PICKED });
+  assert.deepEqual(normaliseValue(f("address"), JSON.stringify(PLACE)), { ok: true, value: PICKED });
+  // Parts are optional and dropped when empty; nothing else is kept.
+  assert.deepEqual(normaliseValue(f("address"), { address: "1 Main St", lat: 1, lng: 2, city: "", state: null, placeId: "x" }), { ok: true, value: { address: "1 Main St", lat: 1, lng: 2 } });
+  for (const bad of ["1601 E Marshall", "", null, undefined, "{not json", { address: "", lat: 1, lng: 2 }, { lat: 1, lng: 2 }]) {
+    const r = normaliseValue(f("address"), bad);
+    assert.equal(r.ok, false, JSON.stringify(bad));
+    if (!r.ok) assert.equal(r.error, "Pick an address from the suggestions");
+  }
+  // Monday's limits: latitude strictly inside ±90, longitude within ±180.
+  for (const [lat, lng] of [[90, 0], [-90, 0], [0, 181], [Number.NaN, 0], ["abc", 0]]) assert.equal(normaliseValue(f("address"), { address: "x", lat, lng }).ok, false, `${lat},${lng}`);
+  assert.equal(normaliseValue(f("address"), { address: "x", lat: 0, lng: 180 }).ok, true);
+  assert.equal(normaliseValue(f("address"), { address: "x".repeat(301), lat: 0, lng: 0 }).ok, false);
+  assert.equal(normaliseValue(f("address"), { address: "x", lat: 0, lng: 0, city: "y".repeat(101) }).ok, false);
+  assert.equal(normaliseValue(f("address"), { address: "x", lat: 0, lng: 0, city: 5 }).ok, false);
+});
+
+test("address: compared by text, spacing and case aside; shown as its text; the pin never conflicts by itself", () => {
+  assert.equal(sameValue(PICKED, "1601 e marshall st,  tulsa, ok 74106, usa"), true);
+  assert.equal(sameValue(PICKED, { ...PICKED, lat: 1, lng: 1 }), true);
+  assert.equal(sameValue(PICKED, "Los Angeles, CA"), false);
+  assert.equal(sameValue(null, "Los Angeles, CA", f("address")), false);
+  assert.equal(sameValue("a b", "A  B", f("address")), true);
+  assert.equal(sameValue("a b", "A  B"), false); // other fields compare text exactly
+  assert.equal(displayValue(f("address"), PICKED), PICKED.address);
+  assert.equal(displayValue(f("address"), null), "blank");
+  assert.deepEqual(diffLines({ address: PICKED }, { address: "Los Angeles, CA" }), ["Address: Los Angeles, CA → 1601 E Marshall St, Tulsa, OK 74106, USA"]);
+  assert.deepEqual(diffLines({ address: PICKED }, { address: "1601 E Marshall St, Tulsa, OK 74106, USA" }), []);
+  assert.deepEqual(conflicts({ address: "Los Angeles, CA" }, { address: "los angeles, ca" }), []);
+  assert.deepEqual(conflicts({ address: "Los Angeles, CA" }, { address: "Tulsa, OK" }), ["address"]);
+  assert.deepEqual(conflicts({ address: null }, { address: null }), []);
+});
+
+test("address: the record's value needs a pin; Monday's location column reads back as text", () => {
+  assert.deepEqual(currentValue(f("address"), { address: "1 Main St", lat: 1, lng: 2 }), { address: "1 Main St", lat: 1, lng: 2 });
+  assert.deepEqual(currentValue(f("address"), { address: null, lat: 1, lng: 2 }), { address: "", lat: 1, lng: 2 });
+  assert.equal(currentValue(f("address"), { address: "Tulsa, OK", lat: null, lng: null }), null);
+  assert.equal(fromMondayText(f("address"), " 1 Main St "), "1 Main St");
+  assert.equal(fromMondayText(f("address"), ""), null);
+});
+
+test("address: Monday gets the location column (numbers as strings) plus the City / State / Zip columns; never a clear", () => {
+  assert.deepEqual(mondayColumnValues({ address: PICKED }), {
+    location_mm416w07: { lat: "36.1712346", lng: "-95.9598765", address: PICKED.address },
+    text_mm3yzy0x: "Tulsa", text_mm3yw9nf: "OK", text_mm3y5tq6: "74106",
+  });
+  assert.deepEqual(mondayColumnValues({ address: { address: "1 Main St", lat: 1, lng: 2 } }), { location_mm416w07: { lat: "1", lng: "2", address: "1 Main St" } });
+  assert.deepEqual(mondayColumnValues({ address: null }), {});
+});
+
+test("address: the request carries the place; its base is compared as text", () => {
+  const r = parseEditRequest({ editor: "Lou", changes: { address: PLACE }, base: { address: { address: "Los Angeles, CA", lat: 34, lng: -118 } } });
+  assert.ok(r.ok);
+  if (r.ok) {
+    assert.deepEqual(r.changes, { address: PICKED });
+    assert.deepEqual(r.base, { address: "Los Angeles, CA" });
+  }
+  const r2 = parseEditRequest({ editor: "Lou", changes: { address: PLACE }, base: { address: "" } });
+  assert.ok(r2.ok && r2.base.address === null);
+  const r3 = parseEditRequest({ editor: "Lou", changes: { address: "1601 E Marshall" }, base: {} });
+  assert.equal(r3.ok, false);
+  const r4 = parseEditRequest({ editor: "Lou", changes: { address: null }, base: {} });
+  assert.equal(r4.ok, false);
 });

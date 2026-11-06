@@ -153,7 +153,8 @@ Picking a claim fills the search box with its loss address, recentres the map, l
      - Monday is updated, the map shows the new values straight away (pins and the list too), and the Monday item gets a note listing every change and who made it.
      - If someone changed one of those fields in Monday since you opened the form, the map shows **Monday now** next to **You entered** and lets you keep theirs or save yours anyway.
      - Closing the panel or picking another property with unsaved changes asks *Discard N changes?* first.
-     - Not editable here, on purpose: the availability status (the monitor sets it), owner and landlord contacts (they decide the dot colour), and the name and address (they decide the pin). Change those in Monday.
+     - **Address** is the first field: start typing and pick from Google's suggestions (the same ones as the loss-address search). The pick carries the map position, so Save moves the pin and the distance in the list, and fills Monday's location, City, State and Zip. A line under the field says how far the pin moves. Typed text that was never picked can't be saved, and an address can't be blanked.
+     - Not editable here, on purpose: the availability status (the monitor sets it), owner and landlord contacts (they decide the dot colour), and the name (it stays as the board has it). Change those in Monday.
 
      <p>
        <img alt="Availability pill at the top of the panel: Available soon, from Nov 1, checked Oct 22" src="docs/screenshots/availability-pill.png" width="380">
@@ -437,7 +438,7 @@ Browser and API checks run against a server on `BASE` (default `http://localhost
 
 | Variable | Where | Notes |
 |---|---|---|
-| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Browser | Maps JS + Places (New). **Public by design — must be referrer-restricted.** |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Browser | Maps JS + Places (New), for the loss-address search and the Address field of the edit form. **Public by design — must be referrer-restricted.** |
 | `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` | Browser | For Advanced Markers. `DEMO_MAP_ID` works for testing only. |
 | `SUPABASE_URL` · `SUPABASE_KEY` | Server | Project URL and publishable key. |
 | `MONDAY_API_TOKEN` | Server | Sub-items and updates are created **as the token's owner**. |

@@ -5,9 +5,21 @@
 // Monday is the source of truth. The route writes there first, then mirrors the same values into Supabase so
 // the map shows them at once; Monday's own webhook re-reads the item a second later and confirms the mirror.
 
-export type EditKind = "int" | "decimal" | "money" | "date" | "yesno" | "url" | "longtext";
-export type EditGroup = "availability" | "basics" | "costs" | "listing";
-export type EditValue = number | string | null;
+export type EditKind = "int" | "decimal" | "money" | "date" | "yesno" | "url" | "longtext" | "address";
+export type EditGroup = "location" | "availability" | "basics" | "costs" | "listing";
+/**
+ * A street address picked from Google's suggestions: the text Monday shows, where the pin goes, and the parts
+ * the board keeps in its own City / State / Zip columns (left out when Google didn't give them).
+ */
+export interface AddressValue {
+  address: string;
+  lat: number;
+  lng: number;
+  city?: string | null;
+  state?: string | null;
+  zipcode?: string | null;
+}
+export type EditValue = number | string | AddressValue | null;
 
 export interface EditField {
   /** The property field, as in PropertyDetail and the Supabase `properties` row. */
@@ -23,6 +35,7 @@ export interface EditField {
 }
 
 export const EDIT_FIELDS = [
+  { key: "address", label: "Address", column: "location_mm416w07", kind: "address", group: "location", maxLength: 300 },
   { key: "next_availability", label: "Next availability", column: "date_mm4416ne", kind: "date", group: "availability" },
   { key: "bedrooms", label: "Bedrooms", column: "numeric_mm44r6x9", kind: "int", group: "basics", min: 0, max: 20 },
   { key: "bathrooms", label: "Bathrooms", column: "numeric_mm44dmx5", kind: "decimal", group: "basics", min: 0, max: 20 },
@@ -47,6 +60,7 @@ export type EditKey = (typeof EDIT_FIELDS)[number]["key"];
 export type EditChanges = Partial<Record<EditKey, EditValue>>;
 
 export const EDIT_GROUPS: Record<EditGroup, string> = {
+  location: "Address",
   availability: "Availability",
   basics: "Basics",
   costs: "Rent and fees",
@@ -54,6 +68,11 @@ export const EDIT_GROUPS: Record<EditGroup, string> = {
 };
 
 export const FIELD_BY_KEY = new Map<string, EditField>(EDIT_FIELDS.map((f) => [f.key, f as EditField]));
+/** The board's own City / State / Zip text columns, written alongside the location column on an address edit. */
+export const ADDRESS_PART_COLUMNS = { city: "text_mm3yzy0x", state: "text_mm3yw9nf", zipcode: "text_mm3y5tq6" } as const;
+const ADDRESS_PARTS = Object.keys(ADDRESS_PART_COLUMNS) as (keyof typeof ADDRESS_PART_COLUMNS)[];
+const ADDRESS_PART_MAX = 100;
+const PICK_ADDRESS = "Pick an address from the suggestions";
 export const EDITOR_MAX = 80;
 /** Dates outside this window are almost certainly typos (a year of 0026 or 2206). */
 const DATE_MIN = "2020-01-01";
@@ -99,6 +118,8 @@ function isCalendarDate(s: string): boolean {
  * text ("$2,400") from a form; they leave as numbers. Returns an error message instead of throwing.
  */
 export function normaliseValue(field: EditField, raw: unknown): { ok: true; value: EditValue } | { ok: false; error: string } {
+  // An address is never cleared from the map (it is the pin), and it must be a place Google resolved.
+  if (field.kind === "address") return normaliseAddress(field, raw);
   if (raw === null || raw === undefined || (typeof raw === "string" && raw.trim() === "")) return { ok: true, value: null };
   switch (field.kind) {
     case "int":
@@ -150,6 +171,52 @@ export function normaliseValue(field: EditField, raw: unknown): { ok: true; valu
   }
 }
 
+export const isAddress = (v: unknown): v is AddressValue =>
+  !!v && typeof v === "object" && !Array.isArray(v) && typeof (v as AddressValue).address === "string";
+
+/** The text two address values are compared by: the address as Monday shows it, spacing and case aside. */
+function addressKey(v: EditValue | undefined): string {
+  if (v === null || v === undefined) return "";
+  return cleanText(isAddress(v) ? v.address : String(v), false).toLowerCase();
+}
+
+/**
+ * The form keeps a picked place as JSON in its text value (so a stored draft survives a reload); the route
+ * gets it as an object. Typed text that was never picked, or an empty value, is refused: the address is the
+ * pin, so it needs coordinates, and it can't be blanked from the map.
+ */
+function normaliseAddress(field: EditField, raw: unknown): { ok: true; value: AddressValue } | { ok: false; error: string } {
+  let o: unknown = raw;
+  if (typeof raw === "string" && raw.trim().startsWith("{")) {
+    try {
+      o = JSON.parse(raw);
+    } catch {
+      o = null;
+    }
+  }
+  if (!isAddress(o)) return { ok: false, error: PICK_ADDRESS };
+  const address = cleanText(o.address, false);
+  if (!address) return { ok: false, error: PICK_ADDRESS };
+  if (address.length > (field.maxLength ?? 300)) return { ok: false, error: `${field.label} is too long` };
+  const lat = Number(o.lat);
+  const lng = Number(o.lng);
+  // Monday's own limits: latitude strictly inside ±90, longitude within ±180.
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) >= 90 || Math.abs(lng) > 180) {
+    return { ok: false, error: `${field.label} has no map position; pick it from the suggestions again` };
+  }
+  const round = (n: number) => Math.round(n * 1e7) / 1e7;
+  const value: AddressValue = { address, lat: round(lat), lng: round(lng) };
+  for (const part of ADDRESS_PARTS) {
+    const v = o[part];
+    if (v === null || v === undefined) continue;
+    if (typeof v !== "string") return { ok: false, error: `${field.label} ${part} must be text` };
+    const t = cleanText(v, false);
+    if (t.length > ADDRESS_PART_MAX) return { ok: false, error: `${field.label} ${part} is too long` };
+    if (t) value[part] = t;
+  }
+  return { ok: true, value };
+}
+
 /** Checks a whole request body. Unknown fields, a missing editor name, or nothing to change are errors. */
 export function parseEditRequest(body: unknown): ParsedEdit {
   if (body === null || typeof body !== "object" || Array.isArray(body)) return { ok: false, error: "Body must be a JSON object" };
@@ -175,7 +242,9 @@ export function parseEditRequest(body: unknown): ParsedEdit {
     // the way currentValue/fromMondayText read Monday: a value that wouldn't pass validation (pets "N/D") stays
     // as its text. Turning it into null would make such a field conflict on every save, for ever.
     const rb = (rawBase as Record<string, unknown>)[key];
-    base[field.key] = typeof rb === "number" || typeof rb === "string" ? currentValue(field, { [field.key]: rb }) : null;
+    // An address base is compared by its text only (Monday's location column reads back as text).
+    if (field.kind === "address") base[field.key] = isAddress(rb) ? cleanText(rb.address, false) || null : typeof rb === "string" ? cleanText(rb, false) || null : null;
+    else base[field.key] = typeof rb === "number" || typeof rb === "string" ? currentValue(field, { [field.key]: rb }) : null;
   }
   if (Object.keys(changes).length === 0) return { ok: false, error: "Nothing to change" };
   const s = b.source as Record<string, unknown> | null | undefined;
@@ -185,10 +254,14 @@ export function parseEditRequest(body: unknown): ParsedEdit {
   return { ok: true, editor, changes, base, ...(source && { source }) };
 }
 
-/** Two values of one field are the same (numbers by value, text exactly, null = blank). */
-export function sameValue(a: EditValue | undefined, b: EditValue | undefined): boolean {
+/**
+ * Two values of one field are the same (numbers by value, text exactly, null = blank). An address is compared
+ * by its text, spacing and case aside: the pin follows the text, and Monday reads the column back as text.
+ */
+export function sameValue(a: EditValue | undefined, b: EditValue | undefined, field?: EditField): boolean {
   const x = a ?? null;
   const y = b ?? null;
+  if (field?.kind === "address" || isAddress(x) || isAddress(y)) return addressKey(x) === addressKey(y);
   if (typeof x === "number" && typeof y === "number") return Math.abs(x - y) < 0.005;
   return x === y;
 }
@@ -199,6 +272,13 @@ export function sameValue(a: EditValue | undefined, b: EditValue | undefined): b
  * cell typed by hand, e.g. pets "N/D") comes back as text so it shows, and an edit replaces it.
  */
 export function currentValue(field: EditField, row: Record<string, unknown>): EditValue {
+  if (field.kind === "address") {
+    // The record's address, with its pin. No coordinates means Monday's location column is empty (the text
+    // the panel shows then is only the city and state), so there is nothing to compare an edit against.
+    const { lat, lng, address } = row;
+    if (typeof lat !== "number" || typeof lng !== "number") return null;
+    return { address: typeof address === "string" ? address : "", lat, lng };
+  }
   const raw = row[field.key];
   if (raw === null || raw === undefined || raw === "") return null;
   const v = normaliseValue(field, typeof raw === "number" ? raw : String(raw));
@@ -210,6 +290,7 @@ export function fromMondayText(field: EditField, text: string | null | undefined
   const t = (text ?? "").trim();
   if (!t) return null;
   if (field.kind === "date") return t.slice(0, 10);
+  if (field.kind === "address") return t; // the location column's text is its address
   return currentValue(field, { [field.key]: t });
 }
 
@@ -221,12 +302,21 @@ export function fromMondayText(field: EditField, text: string | null | undefined
  * A null clears the column, for every kind. Verified live on 28 Oct 2026 on a throwaway board: null cleared
  * numbers, text, long text, date and dropdown, while an empty string on a numbers column left a stored empty
  * value instead of clearing it.
+ *
+ * An address is a location column, {lat, lng, address} with the numbers as strings (Monday's documented
+ * format), plus the board's City / State / Zip text columns for the parts Google gave. It is never cleared.
  */
 export function mondayColumnValues(changes: EditChanges): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(changes)) {
     const field = FIELD_BY_KEY.get(key);
     if (!field || value === undefined) continue;
+    if (field.kind === "address") {
+      if (!isAddress(value)) continue;
+      out[field.column] = { lat: String(value.lat), lng: String(value.lng), address: value.address };
+      for (const part of ADDRESS_PARTS) if (value[part]) out[ADDRESS_PART_COLUMNS[part]] = value[part];
+      continue;
+    }
     if (value === null) {
       out[field.column] = null;
       continue;
@@ -255,6 +345,7 @@ export function mondayColumnValues(changes: EditChanges): Record<string, unknown
 /** How a value reads in the Monday note and the confirm line: "$2,400", "Nov 1, 2026", "Yes", "blank". */
 export function displayValue(field: EditField, value: EditValue | undefined): string {
   if (value === null || value === undefined || value === "") return "blank";
+  if (isAddress(value)) return value.address;
   if (field.kind === "money" && typeof value === "number") return `$${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
   if (field.kind === "date" && typeof value === "string" && isCalendarDate(value)) {
     return new Date(`${value}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
@@ -269,7 +360,7 @@ export function diffLines(changes: EditChanges, before: EditChanges): string[] {
   for (const field of EDIT_FIELDS as readonly EditField[]) {
     if (!(field.key in changes)) continue;
     const after = changes[field.key];
-    if (sameValue(after, before[field.key])) continue;
+    if (sameValue(after, before[field.key], field)) continue;
     lines.push(`${field.label}: ${displayValue(field, before[field.key])} → ${displayValue(field, after)}`);
   }
   return lines;
@@ -277,5 +368,5 @@ export function diffLines(changes: EditChanges, before: EditChanges): string[] {
 
 /** The fields whose value in Monday no longer matches what the editor started from. */
 export function conflicts(base: EditChanges, current: EditChanges): EditKey[] {
-  return (Object.keys(base) as EditKey[]).filter((k) => !sameValue(base[k], current[k]));
+  return (Object.keys(base) as EditKey[]).filter((k) => !sameValue(base[k], current[k], FIELD_BY_KEY.get(k)));
 }

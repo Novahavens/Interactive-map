@@ -197,12 +197,19 @@ export default function MapCanvas({
     const existing = propertyMarkersRef.current;
     const next = new Map<string, AdvMarker>();
     const toAdd: AdvMarker[] = [];
+    const toRemove: AdvMarker[] = [];
 
     for (const p of pins) {
       if (attachedIds.has(p.monday_item_id)) continue; // drawn by the attached layer instead — always visible, never faded
       if (typeof p.lat !== "number" || typeof p.lng !== "number") continue;
 
       let m = existing.get(p.monday_item_id);
+      // The address was edited on the map: the pin gets a new marker, because the clusterer rebuilds its index
+      // only when the set of markers changes, not when one of them moves.
+      if (m && !atPosition(m, p.lat, p.lng)) {
+        toRemove.push(m);
+        m = undefined;
+      }
       const status = asMapStatus(p.map_status);
       const selected = selectedId === p.monday_item_id;
       const shown = passesFilters(p, filters);
@@ -224,7 +231,6 @@ export default function MapCanvas({
       next.set(p.monday_item_id, m);
     }
 
-    const toRemove: AdvMarker[] = [];
     for (const [id, m] of existing) {
       if (!next.has(id)) toRemove.push(m);
     }
@@ -254,6 +260,8 @@ export default function MapCanvas({
           gmpClickable: true,
         });
         m.addListener("click", () => onSelect(a.monday_item_id));
+      } else if (!atPosition(m, a.lat, a.lng)) {
+        m.position = { lat: a.lat, lng: a.lng }; // the address was edited on the map; not clustered, so a move is enough
       }
       const hovered = hoveredId === a.monday_item_id;
       const chip = chipMoney(a.monthly_rate);
@@ -360,4 +368,12 @@ function buildAttachedPin(selected: boolean, hovered: boolean, chip: string, nam
     <span class="nh-pin__caret"></span>
   `;
   return wrap;
+}
+
+/** Whether a marker already sits at these coordinates (its position may be a LatLng or a literal). */
+function atPosition(m: AdvMarker, lat: number, lng: number): boolean {
+  const pos = m.position;
+  if (!pos) return false;
+  const cur = typeof pos.lat === "function" ? { lat: pos.lat(), lng: (pos as google.maps.LatLng).lng() } : (pos as google.maps.LatLngLiteral);
+  return Math.abs(cur.lat - lat) < 1e-7 && Math.abs(cur.lng - lng) < 1e-7;
 }

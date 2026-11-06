@@ -284,7 +284,7 @@ export interface EditConflictResponse extends ApiError {
   code: "conflict";
   fields: string[];
   /** Monday's values now, for the conflicting fields. */
-  current: Record<string, number | string | null>;
+  current: Record<string, number | string | { address: string; lat: number; lng: number } | null>;
 }
 
 export interface ApiError {

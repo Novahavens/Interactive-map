@@ -12,6 +12,7 @@ The property panel has an **Edit** button. It opens a form with 18 listing field
 
 | Group | Fields | Monday column |
 |---|---|---|
+| Address | Address, picked from Google's suggestions (6 Nov 2026). The pick carries the coordinates, so the pin moves on save. Typed text that was never picked can't be saved, and the address can't be blanked. | `location_mm416w07` (lat, lng, address), plus City / State / Zip `text_mm3yzy0x`, `text_mm3yw9nf`, `text_mm3y5tq6` for the parts Google gave |
 | Availability | Next availability (date) | `date_mm4416ne` |
 | Basics | Bedrooms (whole), Bathrooms (whole or half), Square feet, Pets allowed, Furnished, Fenced yard (Yes / No / blank) | `numeric_mm44r6x9`, `numeric_mm44dmx5`, `numeric_mm4b1e83`, `dropdown_mm3ywgac`, `dropdown_mm3yqhxg`, `dropdown_mm3yt55p` |
 | Rent and fees | Monthly rent, Security deposit, Cleaning, Admin, Application, Move-in fee, Pet deposit, Pet fee, Monthly pet rent ($0–$100,000) | `numeric_mm44b6ew` and the fee columns |
@@ -21,7 +22,8 @@ Deliberately **not** editable:
 
 - **Availability status** (Available now / soon / unverified …). Monday's column says "Set automatically by the Property Availability Monitor. Do not edit by hand." A hand edit would be overwritten on the monitor's next check. *Next availability* is editable.
 - **Owner and landlord name, phone, email.** They decide the green / yellow / red dot through the owner board and the dot-colour rules.
-- **Name, address, city, state, zip.** They drive the locator pipeline; a typo would move the pin.
+- **Name.** The item name stays as the board has it (often the address as first typed); an address edit changes the location column, not the name.
+- **City, state, zip on their own.** They follow the address pick (Google's address components), never a hand edit: a typo would mislead the locator pipeline.
 
 The list of fields, their limits and their Monday formats live in one place, `lib/listing-edit.ts`, shared by the form and the route.
 
@@ -29,7 +31,7 @@ The list of fields, their limits and their Monday formats live in one place, `li
 
 `POST /api/properties/[id]/edit` with `{ editor, changes, base }`:
 
-- `changes` holds only the fields the user changed (`null` clears one).
+- `changes` holds only the fields the user changed (`null` clears one; an address is an object `{ address, lat, lng, city?, state?, zipcode? }` and is never cleared).
 - `base` holds the value the form started from for each of those fields.
 
 | # | Step | On failure |
@@ -61,10 +63,11 @@ Checked against Monday's developer docs and the board's column settings, then co
 | Date | `{ "date": "2026-11-01" }` | `null` |
 | Yes/No dropdown | `{ "labels": ["Yes"] }` | `null` |
 | Long text | `{ "text": "…" }` | `null` |
+| Location (address) | `{ "lat": "36.1712346", "lng": "-95.9598765", "address": "1601 E Marshall St, Tulsa, OK 74106, USA" }` (numbers as strings, per Monday's location reference; latitude strictly inside ±90) | never cleared from the map |
 
 ### The conflict check
 
-Monday is read fresh on every save, so an edit made in Monday after the form opened is never silently overwritten. Values are compared after the same normalisation on both sides. A Monday value that the form can't validate (for example pets typed as "N/D") is compared as text, so such a property doesn't conflict on every save. The form offers two ways out of a conflict: **Use Monday's values** for those fields, or **Save mine anyway**, which resubmits with Monday's values as the new base.
+Monday is read fresh on every save, so an edit made in Monday after the form opened is never silently overwritten. Values are compared after the same normalisation on both sides. An address is compared by its text (spacing and case aside): Monday's location column reads back as text, and the pin follows the text. A Monday value that the form can't validate (for example pets typed as "N/D") is compared as text, so such a property doesn't conflict on every save. The form offers two ways out of a conflict: **Use Monday's values** for those fields, or **Save mine anyway**, which resubmits with Monday's values as the new base.
 
 ## 4. Who can do this, and the guard rails
 
@@ -136,7 +139,9 @@ If *Next availability* is in the past and the status isn't Available now, Unavai
 | `lib/monday.ts` | `readColumns`, `changeColumns`, `MONDAY_API_URL` (tests) |
 | `app/api/properties/[id]/edit/route.ts` | The save |
 | `supabase/migrations/20261027_listing_edit.sql` | `listing_edit_log`, `listing_edit_guard`, `listing_edit_finish`, `listing_edit_mirror` |
+| `supabase/migrations/20261106_listing_edit_address.sql` | `listing_edit_valid` and `listing_edit_mirror` taking an address (address, lat, lng, parts, `geocode_status`; `geom` is generated, the precision trigger reads `exact`) |
 | `components/property/EditListing.tsx` | The form |
+| `components/property/AddressInput.tsx`, `lib/use-places.ts` | The Address field: Google's suggestions (one billed session per pick, shared with the loss-address search box), the "moves the pin about N mi" line |
 | `components/property/health.ts` | One cached `/api/health` request |
 | `lib/availability.ts`, `components/property/AvailabilityPill.tsx` | The pill |
 
@@ -144,8 +149,8 @@ If *Next availability* is in the past and the status isn't Available now, Unavai
 
 | Command | Covers |
 |---|---|
-| `npm run test:unit` | `listing-edit`, `edit-overlay`, `availability` rules |
-| `node tests/api/edit-route.mjs serve`, then the app with `SUPABASE_URL=http://127.0.0.1:3098 SUPABASE_KEY=test MONDAY_API_URL=http://127.0.0.1:3098/v2 MONDAY_API_TOKEN=test MAP_EDIT_SECRET=test`, then `BASE=… node tests/api/edit-route.mjs` | The route against one mock of Monday and Supabase: exact Monday JSON, the secret on every call, mirror by log id, the log state sequence, note, conflict, busy, no-op, every refusal, Monday read and write failures, note failure, dry run, kill switch and missing secret, body size, the GET route unchanged |
+| `npm run test:unit` | `listing-edit` (the address rules included), `edit-overlay`, `availability` rules |
+| `node tests/api/edit-route.mjs serve`, then the app with `SUPABASE_URL=http://127.0.0.1:3098 SUPABASE_KEY=test MONDAY_API_URL=http://127.0.0.1:3098/v2 MONDAY_API_TOKEN=test MAP_EDIT_SECRET=test`, then `BASE=… node tests/api/edit-route.mjs` | The route against one mock of Monday and Supabase: exact Monday JSON (the location column and City / State / Zip for an address), the secret on every call, mirror by log id (the pin moves), the log state sequence, note, conflict (an address by its text), busy, no-op, every refusal, Monday read and write failures, note failure, dry run, kill switch and missing secret, body size, the GET route unchanged |
 | `BASE=… node tests/browser/edit-listing.mjs` | The pill in every state (light, dark, desktop, phone, at most two lines at 390 px) and the form: validation, exact request body, success, conflict, busy, errors, discard prompts on close / another property / claim switch, keyboard use, both panel mounts agreeing, one health request per page |
 
 The route test never touches the live database or Monday.
