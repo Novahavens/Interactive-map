@@ -19,22 +19,26 @@ const MOCK = `http://127.0.0.1:${PORT}`;
 // Monday column ids (lib/listing-edit.ts) used by the fixtures.
 const C = {
   next_availability: "date_mm4416ne", bedrooms: "numeric_mm44r6x9", sqft: "numeric_mm4b1e83", pet_status: "dropdown_mm3ywgac",
-  monthly_rate: "numeric_mm44b6ew", property_link: "text_mm3ykmnv", notes: "long_text_mm4jpg99",
+  monthly_rate: "numeric_mm44b6ew", property_link: "text_mm3ykmnv", notes: "long_text_mm4jpg99", address: "location_mm416w07",
 };
+// The board's City / State / Zip text columns, written alongside the location column on an address edit.
+const PARTS = { city: "text_mm3yzy0x", state: "text_mm3yw9nf", zipcode: "text_mm3y5tq6" };
 
 // Every fixture property starts from the same record, in Monday and in the mirror.
 const SEED_MONDAY = {
   [C.next_availability]: "", [C.bedrooms]: "3", [C.sqft]: "1200", [C.pet_status]: "No",
   [C.monthly_rate]: "2200", [C.property_link]: "https://example.com/listing/1", [C.notes]: "Old",
+  [C.address]: "Los Angeles, CA", [PARTS.city]: "Los Angeles", [PARTS.state]: "CA", [PARTS.zipcode]: "",
 };
 const SEED_ROW = {
   monday_item_id: "", name: "1 Test St", geom: "0101000020E6100000", fields: { raw: true },
+  address: "Los Angeles, CA", city: "Los Angeles", state: "CA", zipcode: null, lat: 34.0522, lng: -118.2437,
   next_availability: null, bedrooms: 3, bathrooms: 2, sqft: 1200, pet_status: "No", monthly_rate: 2200,
   security_deposit: 500, property_link: "https://example.com/listing/1", notes: "Old", owner_phone: "+15550000000",
   move_in_total: 2700, updated_at: "2026-10-26T00:00:00Z",
 };
 
-const OK = ["1001", "1002", "1003", "1004", "1005", "1006", "5021", "5022", "5023", "5024", "5030", "5031", "5032", "5033", "5034", "5035", "5036", "1007", "5037", "5038"];
+const OK = ["1001", "1002", "1003", "1004", "1005", "1006", "1008", "5021", "5022", "5023", "5024", "5030", "5031", "5032", "5033", "5034", "5035", "5036", "1007", "5037", "5038"];
 const SECRET = "test-secret"; // the mock's sync_config MAP_EDIT_KEY
 const GUARD_SAYS = { "429001": "ip_limit", "429002": "property_limit", "429003": "daily_cap", "400400": "invalid", "409409": "busy" };
 const GUARD_ERRORS = "500500";
@@ -54,6 +58,7 @@ const LATE_429 = "5035"; // the first read answers 429 after 9.3 s: the 1.2 s re
 const QUICK_429 = "5036"; // the first read answers 429 at once: the retry goes ahead and works
 const LANDS_THEN_WEBHOOK = "5037"; // like HANG_WRITE_LANDS, then the Monday webhook catches the map up
 const LANDS_NOTE_FAILS = "5038"; // like HANG_WRITE_LANDS, and every change note on it fails
+const ADDRESS = "1008"; // gets a new address picked from Google (location column + City / State / Zip)
 const MAP_BEHIND = "1007"; // Monday already has rent 2400 (changed there directly); the mirror still says 2200 // property_map_status errors: GET answers 502 db_error
 
 if (process.argv[2] === "serve") {
@@ -79,6 +84,7 @@ if (process.argv[2] === "serve") {
     if (v.date !== undefined) return v.date;
     if (Array.isArray(v.labels)) return v.labels.join(", ");
     if (v.text !== undefined) return v.text;
+    if (v.lat !== undefined && v.lng !== undefined) return v.address ?? ""; // a location column reads back as its address
     return JSON.stringify(v);
   };
 
@@ -185,6 +191,12 @@ if (process.argv[2] === "serve") {
             if (a.p_secret !== SECRET || !entry || entry.property_item_id !== id || entry.status !== "monday_ok" || !rows[id]) return send(200, false);
             const patch = Object.fromEntries(Object.entries(entry.changes).filter(([k]) => (entry.confirmed ?? []).includes(k)));
             if (!Object.keys(patch).length) return send(200, false);
+            // Like the SQL: an address lands on the record's address, lat, lng and the parts given.
+            if (patch.address && typeof patch.address === "object") {
+              const a = patch.address;
+              delete patch.address;
+              Object.assign(rows[id], { address: a.address, lat: a.lat, lng: a.lng, geocode_status: "ok" }, ...["city", "state", "zipcode"].filter((k) => a[k]).map((k) => ({ [k]: a[k] })));
+            }
             Object.assign(rows[id], patch);
             entry.status = "applied";
             return send(200, true);
@@ -323,6 +335,40 @@ if (process.argv[2] === "serve") {
     check("order: read, write, read back, monday_ok, mirror, note, applied", same(order, ["read", "change", "read", "finish:monday_ok", "listing_edit_mirror", "update", "finish:applied"]), JSON.stringify(order));
     check("the read-back asked for the same columns", same(s.filter((x) => x.kind === "read")[1]?.variables?.cols, [C.monthly_rate, C.next_availability, C.pet_status, C.notes, C.bedrooms]));
     check("the mirror applied the logged row's values to the record", (await state()).rows["1001"].monthly_rate === 2400 && (await state()).rows["1001"].bedrooms === 3);
+
+    // ---- Address: a place picked from Google moves the pin, in Monday and in the mirror ----
+    {
+      const place = { address: "1601 E Marshall St, Tulsa, OK 74106, USA", lat: 36.1712346, lng: -95.9598765, city: "Tulsa", state: "OK", zipcode: "74106" };
+      const ma = await mark();
+      const ra = await edit(ADDRESS, { editor: "Lou", changes: { address: place }, base: { address: { address: "Los Angeles, CA", lat: 34.0522, lng: -118.2437 } } });
+      const sa = await since(ma);
+      check("address: 200, noted, mirrored, nothing unconfirmed", ra.status === 200 && ra.body?.ok === true && ra.body?.noted === true && ra.body?.mirrored === true && same(ra.body?.unconfirmed, []), JSON.stringify(ra.body).slice(0, 300));
+      check("address: the guard logged the place as an object", same(rpcs(sa, "listing_edit_guard")[0]?.args?.p_changes, { address: place }), JSON.stringify(rpcs(sa, "listing_edit_guard")[0]?.args?.p_changes));
+      check("address: Monday was read for the location column only", same(sa.find((x) => x.kind === "read")?.variables?.cols, [C.address]));
+      const ch = sa.filter((x) => x.kind === "change");
+      check(
+        "address: Monday got the location column (numbers as strings) plus City / State / Zip",
+        ch.length === 1 && same(JSON.parse(ch[0]?.variables?.values ?? "null"), { [C.address]: { lat: "36.1712346", lng: "-95.9598765", address: place.address }, [PARTS.city]: "Tulsa", [PARTS.state]: "OK", [PARTS.zipcode]: "74106" }),
+        ch[0]?.variables?.values,
+      );
+      const row = (await state()).rows[ADDRESS];
+      check("address: the mirror moved the pin and took the parts", row.address === place.address && row.lat === 36.1712346 && row.lng === -95.9598765 && row.city === "Tulsa" && row.state === "OK" && row.zipcode === "74106" && row.geocode_status === "ok", JSON.stringify(row));
+      check("address: the response carries the moved pin", ra.body?.detail?.lat === 36.1712346 && ra.body?.detail?.address === place.address, JSON.stringify(ra.body?.detail).slice(0, 200));
+      const an = sa.find((x) => x.kind === "update")?.variables?.body ?? "";
+      check("address: the note names the old and new address", an.includes("• Address: Los Angeles, CA → 1601 E Marshall St, Tulsa, OK 74106, USA"), an);
+      // The same place again: Monday already shows that text, so nothing is written (noop).
+      const mb = await mark();
+      const rb2 = await edit(ADDRESS, { editor: "Lou", changes: { address: place }, base: { address: place } });
+      check("address: saving the same place again writes nothing", rb2.status === 200 && rb2.body?.alreadySaved === true && mutations(await since(mb)).length === 0, JSON.stringify(rb2.body).slice(0, 200));
+      // A base that no longer matches Monday's text is a conflict, answered with Monday's address.
+      const rc = await edit("1002", { editor: "Lou", changes: { address: place }, base: { address: "Somewhere else" } });
+      check("address: 409 conflict with Monday's current address", rc.status === 409 && rc.body?.code === "conflict" && same(rc.body?.fields, ["address"]) && rc.body?.current?.address === "Los Angeles, CA", JSON.stringify(rc.body));
+      // Typed text that was never picked, or a blank, is refused before anything is logged.
+      const md = await mark();
+      const rd = await edit("1002", { editor: "Lou", changes: { address: "1601 E Marshall" }, base: {} });
+      const re = await edit("1002", { editor: "Lou", changes: { address: null }, base: {} });
+      check("address: typed text and a blank are 400, nothing logged", rd.status === 400 && re.status === 400 && (await since(md)).length === 0, `${rd.status} ${re.status}`);
+    }
     const note = s.find((x) => x.kind === "update")?.variables;
     const today = new Date().toISOString().slice(0, 10);
     const expectedNote =

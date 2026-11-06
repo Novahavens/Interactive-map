@@ -17,6 +17,7 @@ import {
 } from "@/lib/listing-edit";
 import type { ApiError, EditConflictResponse, EditListingResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import AddressInput from "./AddressInput";
 import { Section } from "./parts";
 import { FIELDS, evaluate, toRaw, type EditDraft, type EditSession, type Values } from "./edit-session";
 
@@ -39,7 +40,7 @@ interface Props {
  */
 export default function EditListing({ draft, session }: Props) {
   const uid = useId();
-  const { propertyId, raw, base, name, shown, nameError, confirming, askSeq, status, notice, source, evidence } = draft;
+  const { propertyId, raw, base, name, shown, nameError, confirming, askSeq, status, notice, source, evidence, origin } = draft;
   const update = (fn: (d: EditDraft) => EditDraft) => session.update(propertyId, fn);
 
   const firstRef = useRef<HTMLInputElement>(null);
@@ -320,6 +321,7 @@ export default function EditListing({ draft, session }: Props) {
                         changed={ev.changed}
                         error={shown[f.key]}
                         evidence={evidence?.[f.key]}
+                        origin={origin}
                         inputRef={f.key === FIELDS[0].key ? firstRef : undefined}
                         onChange={(v) => setValue(f, v)}
                         onBlur={() => check(f)}
@@ -407,6 +409,8 @@ interface FieldProps {
   error: string | undefined;
   /** The call summary sentence this value came from (a form filled in from "Owner said"). */
   evidence?: string;
+  /** Where the pin was when the form opened (the Address field says how far a pick moves it). */
+  origin: { lat: number; lng: number } | null;
   inputRef?: React.Ref<HTMLInputElement>;
   onChange: (v: string) => void;
   onBlur: () => void;
@@ -414,7 +418,7 @@ interface FieldProps {
 
 const EVIDENCE_MAX = 140;
 
-function FieldInput({ id, field, value, base, changed, error, evidence, inputRef, onChange, onBlur }: FieldProps) {
+function FieldInput({ id, field, value, base, changed, error, evidence, origin, inputRef, onChange, onBlur }: FieldProps) {
   const errorId = `${id}-error`;
   const wasId = `${id}-was`;
   const fromId = `${id}-from`;
@@ -427,7 +431,7 @@ function FieldInput({ id, field, value, base, changed, error, evidence, inputRef
     "aria-describedby": describedBy,
   } as const;
   // A field with a call sentence under it takes the full row, so the sentence isn't squeezed into half.
-  const wide = field.kind === "yesno" || field.kind === "url" || field.kind === "longtext" || field.kind === "date" || !!evidence;
+  const wide = field.kind === "yesno" || field.kind === "url" || field.kind === "longtext" || field.kind === "date" || field.kind === "address" || !!evidence;
   const bad = error ? "border-[var(--bad-ink)]" : "";
   // A stored value the control can't show (pets "N/D" in a Yes/No control) is named under it.
   const stored = (field.kind === "yesno" || field.kind === "date") && !changed && value !== "" && !normaliseValue(field, value).ok ? value : null;
@@ -492,6 +496,11 @@ function FieldInput({ id, field, value, base, changed, error, evidence, inputRef
     }
     case "yesno":
       control = <Segmented id={id} labelId={`${id}-label`} value={value} describedBy={describedBy} onChange={onChange} />;
+      break;
+    case "address":
+      control = (
+        <AddressInput id={id} value={value} error={error} describedBy={describedBy} origin={origin} inputRef={inputRef} onChange={onChange} onBlur={onBlur} className={cn(inputClass, bad)} />
+      );
       break;
   }
 

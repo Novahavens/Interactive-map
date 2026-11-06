@@ -197,6 +197,7 @@ export default function MapCanvas({
     const existing = propertyMarkersRef.current;
     const next = new Map<string, AdvMarker>();
     const toAdd: AdvMarker[] = [];
+    let moved = false;
 
     for (const p of pins) {
       if (attachedIds.has(p.monday_item_id)) continue; // drawn by the attached layer instead — always visible, never faded
@@ -214,6 +215,10 @@ export default function MapCanvas({
         });
         m.addListener("click", () => onSelect(p.monday_item_id));
         toAdd.push(m);
+      } else if (!atPosition(m, p.lat, p.lng)) {
+        // The address was edited on the map: the pin moves (the clusterer re-reads positions on render).
+        m.position = { lat: p.lat, lng: p.lng };
+        moved = true;
       }
       const approx = p.approximate === true;
       const hovered = hoveredId === p.monday_item_id;
@@ -230,7 +235,7 @@ export default function MapCanvas({
     }
     if (toRemove.length) clusterer.removeMarkers(toRemove, true);
     if (toAdd.length) clusterer.addMarkers(toAdd, true);
-    if (toRemove.length || toAdd.length) clusterer.render();
+    if (toRemove.length || toAdd.length || moved) clusterer.render();
     propertyMarkersRef.current = next;
   }, [ready, pins, attachedIds, selectedId, hoveredId, filters, onSelect, onHover]);
 
@@ -360,4 +365,12 @@ function buildAttachedPin(selected: boolean, hovered: boolean, chip: string, nam
     <span class="nh-pin__caret"></span>
   `;
   return wrap;
+}
+
+/** Whether a marker already sits at these coordinates (its position may be a LatLng or a literal). */
+function atPosition(m: AdvMarker, lat: number, lng: number): boolean {
+  const pos = m.position;
+  if (!pos) return false;
+  const cur = typeof pos.lat === "function" ? { lat: pos.lat(), lng: (pos as google.maps.LatLng).lng() } : (pos as google.maps.LatLngLiteral);
+  return Math.abs(cur.lat - lat) < 1e-7 && Math.abs(cur.lng - lng) < 1e-7;
 }

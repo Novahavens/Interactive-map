@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
-import { loadGoogleMaps } from "@/lib/google";
+import { usePlaces, type PlaceSuggestion as Suggestion } from "@/lib/use-places";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -19,17 +19,7 @@ interface Props {
   size?: "rail" | "hero";
 }
 
-interface Suggestion {
-  id: string;
-  main: string;
-  secondary: string;
-  prediction: google.maps.places.PlacePrediction;
-}
-
-/**
- * Places Autocomplete (new API). One session token per search; the token is
- * consumed by fetchFields so Google bills per session, not per keystroke (E4).
- */
+/** Places Autocomplete (new API) for the loss address; the session-token rules live in lib/use-places.ts. */
 export default function SearchBox({
   apiKey,
   placeholder = "Loss address",
@@ -46,17 +36,9 @@ export default function SearchBox({
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Suggestion[]>([]);
   const [active, setActive] = useState(-1);
-  const tokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
-  const placesRef = useRef<google.maps.PlacesLibrary | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
-
-  async function places(): Promise<google.maps.PlacesLibrary> {
-    if (placesRef.current) return placesRef.current;
-    const g = await loadGoogleMaps(apiKey);
-    placesRef.current = (await g.importLibrary("places")) as google.maps.PlacesLibrary;
-    return placesRef.current;
-  }
+  const { suggest, resolve, reset } = usePlaces(apiKey);
 
   useEffect(() => {
     if (value === undefined) return;
@@ -73,25 +55,7 @@ export default function SearchBox({
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(async () => {
       try {
-        const lib = await places();
-        if (!tokenRef.current) tokenRef.current = new lib.AutocompleteSessionToken();
-        const { suggestions } = await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-          input: q,
-          sessionToken: tokenRef.current,
-          includedRegionCodes: ["us"],
-        });
-        setItems(
-          suggestions
-            .map((s) => s.placePrediction)
-            .filter((p): p is google.maps.places.PlacePrediction => !!p)
-            .slice(0, 6)
-            .map((p) => ({
-              id: p.placeId,
-              main: p.mainText?.text ?? p.text.text,
-              secondary: p.secondaryText?.text ?? "",
-              prediction: p,
-            })),
-        );
+        setItems(await suggest(q));
         setOpen(true);
         setActive(-1);
       } catch {
@@ -114,15 +78,11 @@ export default function SearchBox({
 
   async function choose(s: Suggestion) {
     try {
-      const place = s.prediction.toPlace();
-      // fetchFields closes the session: this is the single billable event.
-      await place.fetchFields({ fields: ["location", "formattedAddress"] });
-      tokenRef.current = null;
-      const loc = place.location;
-      if (loc) {
-        onPick({ lat: loc.lat(), lng: loc.lng(), address: place.formattedAddress ?? s.main });
-        external.current = place.formattedAddress ?? s.main;
-        setQ(place.formattedAddress ?? s.main);
+      const picked = await resolve(s);
+      if (picked) {
+        onPick({ lat: picked.lat, lng: picked.lng, address: picked.address });
+        external.current = picked.address;
+        setQ(picked.address);
       }
     } finally {
       setOpen(false);
@@ -177,7 +137,7 @@ export default function SearchBox({
               setQ("");
               setItems([]);
               setOpen(false);
-              tokenRef.current = null;
+              reset();
               onClear?.();
             }}
             className="inline-flex shrink-0 max-lg:-mr-3 items-center justify-center rounded text-muted hover:bg-surface-muted hover:text-ink max-lg:h-[44px] max-lg:w-[44px] lg:p-0.5"

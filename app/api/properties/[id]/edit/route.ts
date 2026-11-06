@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 // The guard treats an edit as in flight for 30 s ("busy"); the function must be gone well before that.
 export const maxDuration = 25;
 
-/** 18 fields with a 2,000-character note at most; anything much bigger is not a form submission. */
+/** 19 fields with a 2,000-character note at most; anything much bigger is not a form submission. */
 const MAX_BODY = 32_000;
 /** Every Monday call of one edit finishes within this many ms of the request starting (under maxDuration). */
 const MONDAY_BUDGET_MS = 22_000;
@@ -184,7 +184,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   // A field Monday already holds at the new value is not a conflict, whatever the editor started from (a
   // timed-out save that landed, or two people making the same edit): it is simply already done.
-  const conflicted = conflicts(base, current).filter((k) => !sameValue(changes[k], current[k]));
+  const conflicted = conflicts(base, current).filter((k) => !sameValue(changes[k], current[k], fieldOf(k)));
   if (conflicted.length) {
     await finish("conflict");
     return NextResponse.json<EditConflictResponse>(
@@ -251,11 +251,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     });
   };
 
-  const remainingKeys = keys.filter((k) => !sameValue(changes[k], current[k]));
+  const remainingKeys = keys.filter((k) => !sameValue(changes[k], current[k], fieldOf(k)));
   if (remainingKeys.length === 0) {
     // Monday already holds every requested value: nothing will be written to it.
     const row = before as unknown as Record<string, unknown>;
-    const behind = keys.filter((k) => !sameValue(currentValue(fieldOf(k), row), changes[k]));
+    const behind = keys.filter((k) => !sameValue(currentValue(fieldOf(k), row), changes[k], fieldOf(k)));
     if (DRY_RUN) {
       await finish(behind.length ? "dry_run" : "noop");
       return NextResponse.json<EditListingResponse>({
@@ -315,7 +315,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (timeLeft() > 500) {
     try {
       const after = asValues(await readColumns(id, columns, { signal: mondaySignal() }));
-      confirmed = keys.filter((k) => sameValue(after[k], changes[k]));
+      confirmed = keys.filter((k) => sameValue(after[k], changes[k], fieldOf(k)));
       readBack = true;
     } catch (e) {
       console.error("edit: Monday read-back failed; not mirroring", id, errText(e));

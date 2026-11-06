@@ -67,3 +67,13 @@ export const MONDAY_BOARDS = { claim: "9030696652", property: "18415735059" } as
 export function mondayItemUrl(board: string, id?: string | null): string {
   return `https://novahavens.monday.com/boards/${board}${id ? `/pulses/${id}` : ""}`;
 }
+
+/** Great-circle distance in miles between two points (the same figure Postgres gives the list). */
+export function milesBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 3958.7613;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}

@@ -10,6 +10,7 @@ import SummarySheet from "./SummarySheet";
 import { useTheme } from "@/lib/useTheme";
 import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, type PropertyDetail } from "@/lib/types";
 import { EDIT_FIELDS } from "@/lib/listing-edit";
+import { milesBetween } from "@/lib/utils";
 
 const COST_KEYS = new Set<string>(EDIT_FIELDS.filter((f) => f.group === "costs").map((f) => f.key));
 import { readHealth } from "./property/health";
@@ -78,6 +79,8 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   // `at` lets a panel mounted later ignore it (it fetches its own, fresher copy); cleared when the selection moves.
   const [editedDetail, setEditedDetail] = useState<{ detail: PropertyDetail; at: number } | null>(null);
   useEffect(() => setEditedDetail(null), [selectedId, claimId]);
+  const centerRef = useRef(center);
+  centerRef.current = center;
   const applyDetail = useCallback((d: PropertyDetail) => {
     setEditedDetail({ detail: d, at: Date.now() });
     const apply = <T extends object>(p: T): T => {
@@ -85,6 +88,14 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       for (const { key } of EDIT_FIELDS) if (key in next && key in d) next[key] = d[key as keyof PropertyDetail];
       // The list carries next_availability under its own name.
       if ("available_from" in next && "next_availability" in d) next.available_from = d.next_availability;
+      // An address edit moved the pin: the marker, the ≈ flag and the distance in the list follow.
+      if ("lat" in next && "lng" in next && typeof d.lat === "number" && typeof d.lng === "number") {
+        next.lat = d.lat;
+        next.lng = d.lng;
+        if ("approximate" in next) next.approximate = d.location_precision === "approximate";
+        const c = centerRef.current;
+        if (c && "distance_miles" in next) next.distance_miles = milesBetween(c, { lat: d.lat, lng: d.lng });
+      }
       return next as T;
     };
     setPins((prev) => prev.map((p) => (p.monday_item_id === d.monday_item_id ? apply(p) : p)));
