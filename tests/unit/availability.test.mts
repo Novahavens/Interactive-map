@@ -74,6 +74,9 @@ test("available now with no date ahead: the status answers, not an old date", ()
   assert.deepEqual(timing("Available Now", "2026-10-25"), { state: "ok", text: "Available now, in time for move-in <2026-11-15>." });
   assert.deepEqual(timing("Available Now", TODAY), { state: "ok", text: "Available now, in time for move-in <2026-11-15>." });
   assert.deepEqual(timing("Available Now", null, null), { state: "unknown", text: "Available now; move-in date not on the claim." });
+  // Move-in already behind us: still the best a listing can do, but never worded as "in time".
+  assert.deepEqual(timing("Available Now", "2026-10-26", "2026-10-20"), { state: "ok", text: "Available now; the move-in date (<2026-10-20>) has passed." });
+  assert.deepEqual(timing("Available Now", null, TODAY), { state: "ok", text: "Available now, in time for move-in <2026-10-27>." });
   assert.equal(isAvailableNow({ availability: "Available Now", next_availability: null }, TODAY), true);
   assert.equal(isAvailableNow({ availability: "Available Now", next_availability: "2026-11-01" }, TODAY), false);
   assert.equal(isAvailableNow({ availability: "Unavailable", next_availability: null }, TODAY), false);

@@ -98,9 +98,11 @@ export function timingFromStatus(
   if (status === "listing removed") return { state: "bad", text: "The listing has been removed." };
   const noDateAhead = !next || next <= today;
   if (status === "available now" && noDateAhead) {
-    return mi
-      ? { state: "ok", text: `Available now, in time for move-in ${when(mi)}.` }
-      : { state: "unknown", text: "Available now; move-in date not on the claim." };
+    if (!mi) return { state: "unknown", text: "Available now; move-in date not on the claim." };
+    // A move-in date already behind us can't be met "in time": free today is the earliest any listing can be.
+    return mi < today
+      ? { state: "ok", text: `Available now; the move-in date (${when(mi)}) has passed.` }
+      : { state: "ok", text: `Available now, in time for move-in ${when(mi)}.` };
   }
   if (status === "available (unverified)" && noDateAhead) {
     return { state: "unknown", text: mi ? `Listed as available, not confirmed; move-in is ${when(mi)}.` : "Listed as available, not confirmed." };
