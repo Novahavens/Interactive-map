@@ -59,6 +59,13 @@ export const EDIT_FIELDS = [
 export type EditKey = (typeof EDIT_FIELDS)[number]["key"];
 export type EditChanges = Partial<Record<EditKey, EditValue>>;
 
+/**
+ * Fields the availability check owns on a listing it watches (lib/availability monitorOwnsDate): the form shows
+ * them read-only and the edit route refuses them, because the next check would replace a hand-made change.
+ */
+export const MONITOR_OWNED_KEYS: readonly EditKey[] = ["next_availability"];
+export const MONITOR_OWNED_MESSAGE = "Next availability is set by the availability check for this listing";
+
 export const EDIT_GROUPS: Record<EditGroup, string> = {
   location: "Address",
   availability: "Availability",
