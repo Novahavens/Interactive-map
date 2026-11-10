@@ -2,6 +2,7 @@
 // and rendered identically for the preview, the clipboard and the Monday update.
 // The HTML sticks to tags Monday updates and mail clients both keep: p, b, a, br, ul, li.
 
+import { isAvailableNow } from "./availability";
 import type { ClaimNeeds, PropertyDetail } from "./types";
 
 export interface SummaryOption {
@@ -85,7 +86,7 @@ function optionRows(o: SummaryOption): Array<[string, string]> {
     ...fees.map(([k, v]) => [k, usd(v)] as [string, string | null]),
     ["Move-in total", usd(d.move_in_total)],
     ["Distance to loss", o.distanceMiles != null ? `${o.distanceMiles.toFixed(1)} mi` : null],
-    ["Available", day(d.next_availability)],
+    ["Available", isAvailableNow(d, new Date().toISOString().slice(0, 10)) ? "Now" : day(d.next_availability)],
   ];
   return rows.filter((r): r is [string, string] => !!r[1]);
 }

@@ -68,6 +68,47 @@ export function availabilityPill(src: AvailabilitySource, today: string): Availa
   return { label: state.label, detail: parts.length ? parts.join(" · ") : null, tone: state.tone, stale };
 }
 
+/**
+ * The availability check has spoken for this listing, so it owns the Next availability date: it rewrites the
+ * date at every check, and an edit made by hand would be replaced. Blank status = not a monitored listing.
+ */
+export const monitorOwnsDate = (availability: string | null | undefined): boolean => (availability ?? "").trim() !== "";
+
+/** "Available now" with no date still to come: the status is the answer, whatever old date sits beside it. */
+export function isAvailableNow(src: AvailabilitySource, today: string): boolean {
+  const next = day(src.next_availability);
+  return (src.availability ?? "").trim().toLowerCase() === "available now" && (!next || next <= today);
+}
+
+export type TimingState = "ok" | "bad" | "unknown";
+
+/**
+ * "Available by move-in" when the status decides it rather than a date. Null when the date should be read as
+ * before (a date still to come, or a listing the availability check does not watch). `when` formats a date.
+ */
+export function timingFromStatus(
+  src: AvailabilitySource,
+  moveIn: string | null | undefined,
+  today: string,
+  when: (iso: string) => string,
+): { state: TimingState; text: string } | null {
+  const status = (src.availability ?? "").trim().toLowerCase();
+  const next = day(src.next_availability);
+  const mi = day(moveIn);
+  if (status === "listing removed") return { state: "bad", text: "The listing has been removed." };
+  const noDateAhead = !next || next <= today;
+  if (status === "available now" && noDateAhead) {
+    return mi
+      ? { state: "ok", text: `Available now, in time for move-in ${when(mi)}.` }
+      : { state: "unknown", text: "Available now; move-in date not on the claim." };
+  }
+  if (status === "available (unverified)" && noDateAhead) {
+    return { state: "unknown", text: mi ? `Listed as available, not confirmed; move-in is ${when(mi)}.` : "Listed as available, not confirmed." };
+  }
+  if (status === "unavailable" && !next) return { state: "bad", text: "Unavailable; no free date known." };
+  return null;
+}
+
 /** The viewer's local date as YYYY-MM-DD. */
 export function localToday(now: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0");

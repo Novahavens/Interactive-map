@@ -40,7 +40,7 @@ interface Props {
  */
 export default function EditListing({ draft, session }: Props) {
   const uid = useId();
-  const { propertyId, raw, base, name, shown, nameError, confirming, askSeq, status, notice, source, evidence, origin } = draft;
+  const { propertyId, raw, base, name, shown, nameError, confirming, askSeq, status, notice, source, evidence, origin, locked } = draft;
   const update = (fn: (d: EditDraft) => EditDraft) => session.update(propertyId, fn);
 
   const firstRef = useRef<HTMLInputElement>(null);
@@ -320,7 +320,8 @@ export default function EditListing({ draft, session }: Props) {
                         base={base[f.key]}
                         changed={ev.changed}
                         error={shown[f.key]}
-                        evidence={evidence?.[f.key]}
+                        evidence={locked?.includes(f.key) ? undefined : evidence?.[f.key]}
+                        locked={locked?.includes(f.key)}
                         origin={origin}
                         inputRef={f.key === FIELDS[0].key ? firstRef : undefined}
                         onChange={(v) => setValue(f, v)}
@@ -411,6 +412,8 @@ interface FieldProps {
   evidence?: string;
   /** Where the pin was when the form opened (the Address field says how far a pick moves it). */
   origin: { lat: number; lng: number } | null;
+  /** Owned by the availability check on this listing: shown, not editable. */
+  locked?: boolean;
   inputRef?: React.Ref<HTMLInputElement>;
   onChange: (v: string) => void;
   onBlur: () => void;
@@ -418,11 +421,12 @@ interface FieldProps {
 
 const EVIDENCE_MAX = 140;
 
-function FieldInput({ id, field, value, base, changed, error, evidence, origin, inputRef, onChange, onBlur }: FieldProps) {
+function FieldInput({ id, field, value, base, changed, error, evidence, origin, locked, inputRef, onChange, onBlur }: FieldProps) {
   const errorId = `${id}-error`;
   const wasId = `${id}-was`;
   const fromId = `${id}-from`;
-  const describedBy = [error && errorId, changed && wasId, evidence && fromId].filter(Boolean).join(" ") || undefined;
+  const lockedId = `${id}-locked`;
+  const describedBy = [error && errorId, changed && wasId, evidence && fromId, locked && lockedId].filter(Boolean).join(" ") || undefined;
   const common = {
     id,
     value,
@@ -472,7 +476,7 @@ function FieldInput({ id, field, value, base, changed, error, evidence, origin, 
       );
       break;
     case "date":
-      control = <input {...common} ref={inputRef} type="date" min="2020-01-01" max="2035-12-31" onChange={(e) => onChange(e.target.value)} className={cn(inputClass, "w-auto min-w-[10rem]", bad)} />;
+      control = <input {...common} ref={inputRef} type="date" min="2020-01-01" max="2035-12-31" disabled={locked} onChange={(e) => onChange(e.target.value)} className={cn(inputClass, "w-auto min-w-[10rem]", bad)} />;
       break;
     case "url":
       control = <input {...common} ref={inputRef} type="url" inputMode="url" autoComplete="off" placeholder="https://" onChange={(e) => onChange(e.target.value)} className={cn(inputClass, bad)} />;
@@ -518,6 +522,11 @@ function FieldInput({ id, field, value, base, changed, error, evidence, origin, 
         </label>
       )}
       {control}
+      {locked && (
+        <p id={lockedId} className="text-xs text-muted">
+          Set by the availability check, which updates it by itself.
+        </p>
+      )}
       {stored && <p className="text-xs text-muted">Stored as “{stored}”</p>}
       {error && (
         <p id={errorId} className="text-xs" style={{ color: "var(--bad-ink)" }}>

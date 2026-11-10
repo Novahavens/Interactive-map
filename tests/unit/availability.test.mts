@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { availabilityPill, localToday } from "../../lib/availability.ts";
+import { availabilityPill, isAvailableNow, localToday, monitorOwnsDate, timingFromStatus } from "../../lib/availability.ts";
 
 const TODAY = "2026-10-27";
 const pill = (availability: string | null, next: string | null = null, checked: string | null = null) =>
@@ -63,4 +63,42 @@ test("unreadable dates are left out", () => {
 test("localToday is the local calendar date", () => {
   assert.equal(localToday(new Date(2026, 0, 5, 23, 59)), "2026-01-05");
   assert.equal(localToday(new Date(2026, 10, 30, 0, 0)), "2026-11-30");
+});
+
+const when = (iso: string) => `<${iso}>`;
+const timing = (availability: string | null, next: string | null, moveIn: string | null = "2026-11-15") =>
+  timingFromStatus({ availability, next_availability: next }, moveIn, TODAY, when);
+
+test("available now with no date ahead: the status answers, not an old date", () => {
+  assert.deepEqual(timing("Available Now", null), { state: "ok", text: "Available now, in time for move-in <2026-11-15>." });
+  assert.deepEqual(timing("Available Now", "2026-10-25"), { state: "ok", text: "Available now, in time for move-in <2026-11-15>." });
+  assert.deepEqual(timing("Available Now", TODAY), { state: "ok", text: "Available now, in time for move-in <2026-11-15>." });
+  assert.deepEqual(timing("Available Now", null, null), { state: "unknown", text: "Available now; move-in date not on the claim." });
+  assert.equal(isAvailableNow({ availability: "Available Now", next_availability: null }, TODAY), true);
+  assert.equal(isAvailableNow({ availability: "Available Now", next_availability: "2026-11-01" }, TODAY), false);
+  assert.equal(isAvailableNow({ availability: "Unavailable", next_availability: null }, TODAY), false);
+});
+
+test("unverified, removed and dateless unavailable never read as a confirmed fit", () => {
+  assert.deepEqual(timing("Available (Unverified)", null), { state: "unknown", text: "Listed as available, not confirmed; move-in is <2026-11-15>." });
+  assert.deepEqual(timing("Available (Unverified)", "2026-10-20", null), { state: "unknown", text: "Listed as available, not confirmed." });
+  assert.deepEqual(timing("Listing Removed", "2025-07-14"), { state: "bad", text: "The listing has been removed." });
+  assert.deepEqual(timing("Unavailable", null), { state: "bad", text: "Unavailable; no free date known." });
+});
+
+test("a date still to come, or an unwatched listing, is read from the date as before", () => {
+  assert.equal(timing("Available Soon", "2026-11-01"), null);
+  assert.equal(timing("Unavailable", "2027-01-31"), null);
+  assert.equal(timing("Available Now", "2026-11-01"), null);
+  assert.equal(timing(null, "2026-09-01"), null);
+  assert.equal(timing(null, null), null);
+  assert.equal(timing("Check Failed", null), null);
+});
+
+test("the availability check owns the date only on listings it has a status for", () => {
+  assert.equal(monitorOwnsDate("Available Now"), true);
+  assert.equal(monitorOwnsDate("Check Failed"), true);
+  assert.equal(monitorOwnsDate(null), false);
+  assert.equal(monitorOwnsDate("  "), false);
+  assert.equal(monitorOwnsDate(undefined), false);
 });

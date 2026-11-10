@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   EDIT_FIELDS,
+  MONITOR_OWNED_KEYS,
   FIELD_BY_KEY,
   currentValue,
   normaliseValue,
@@ -12,6 +13,7 @@ import {
   type EditKey,
   type EditValue,
 } from "@/lib/listing-edit";
+import { monitorOwnsDate } from "@/lib/availability";
 import type { PropertyDetail } from "@/lib/types";
 import { readReporterName } from "./ReportBadLink";
 
@@ -50,6 +52,8 @@ export interface EditDraft {
   evidence?: Partial<Record<EditKey, string>>;
   /** Where the pin was when the form opened, so an address pick can say how far it moves. */
   origin: { lat: number; lng: number } | null;
+  /** Fields the availability check owns on this listing: shown read-only, never sent. */
+  locked?: EditKey[];
 }
 
 /** Values read from a call summary, to open the form with. `label` reads "Will's call on Oct 27". */
@@ -272,6 +276,8 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
     if (draftRef.current?.propertyId === id) return;
     pending.current = null;
     const base = baseOf(detail);
+    // On a listing the availability check watches, its fields stay as they are: no call value, no stored typing.
+    const locked: EditKey[] = monitorOwnsDate(detail.availability) ? [...MONITOR_OWNED_KEYS] : [];
     let raw = rawOf(base);
     let name = readReporterName();
     let notice: EditDraft["notice"] = null;
@@ -279,7 +285,7 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
     if (prefill) {
       // The call's values replace a stored draft: the form shows what the owner said, not older typing.
       clearStored(id);
-      const keys = (Object.keys(prefill.values) as EditKey[]).filter((k) => FIELD_BY_KEY.has(k));
+      const keys = (Object.keys(prefill.values) as EditKey[]).filter((k) => FIELD_BY_KEY.has(k) && !locked.includes(k));
       raw = { ...raw, ...Object.fromEntries(keys.map((k) => [k, toRaw(prefill.values[k])])) };
     }
     const stored = prefill ? null : readStored(id);
@@ -287,6 +293,7 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
       // A field Monday now holds as typed (an unconfirmed save that landed after all) has nothing left to restore.
       const storedKeys = Object.keys(stored.raw)
         .filter((k): k is EditKey => FIELD_BY_KEY.has(k))
+        .filter((k) => !locked.includes(k))
         .filter((k) => evaluate(FIELD_BY_KEY.get(k) as EditField, String(stored.raw[k] ?? ""), base[k]).changed);
       const stillMatches = storedKeys.length > 0 && storedKeys.every((k) => sameValue((stored.base[k] ?? null) as EditValue, base[k]));
       if (storedKeys.length === 0) clearStored(id);
@@ -306,6 +313,7 @@ export function useEditSession(onSaved: (detail: PropertyDetail, outcome: SavedO
     const next: EditDraft = {
       propertyId: id, raw, base, name, shown: {}, nameError: null, confirming: false, askSeq: 0, status: { kind: "idle" }, notice, autofocus: true,
       origin: typeof detail.lat === "number" && typeof detail.lng === "number" ? { lat: detail.lat, lng: detail.lng } : null,
+      locked,
       ...(prefill ? { source: prefill.source, evidence: prefill.evidence } : restoredSource ?? {}),
     };
     draftRef.current = next;

@@ -1,4 +1,5 @@
 import type { ClaimNeeds, PropertyDetail } from "@/lib/types";
+import { localToday, timingFromStatus } from "@/lib/availability";
 import { dateShort, money, num, petsAllowed } from "@/lib/utils";
 
 type FitState = "ok" | "warn" | "bad" | "unknown";
@@ -44,8 +45,12 @@ export function computeFit(d: PropertyDetail, n: ClaimNeeds): { title: string; s
   }
 
   // Available by move-in
+  // The availability check's status decides it when there is no date still to come ("Available now").
   let timing: { state: FitState; text: string };
-  if (!d.next_availability) {
+  const byStatus = timingFromStatus(d, n.moveIn, localToday(), dateShort);
+  if (byStatus) {
+    timing = byStatus;
+  } else if (!d.next_availability) {
     timing = { state: "unknown", text: n.moveIn ? `Availability not on the record; move-in is ${dateShort(n.moveIn)}.` : "Availability not on the record." };
   } else if (!n.moveIn) {
     timing = { state: "unknown", text: `Available ${dateShort(d.next_availability)}; move-in date not on the claim.` };

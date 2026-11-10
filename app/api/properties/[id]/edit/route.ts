@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { editSecret, editingEnabled } from "@/lib/edit-config";
 import { overlayDetail } from "@/lib/edit-overlay";
+import { monitorOwnsDate } from "@/lib/availability";
 import {
   FIELD_BY_KEY, conflicts, currentValue, diffLines, fromMondayText, mondayColumnValues, parseEditRequest, sameValue,
   type EditChanges, type EditField, type EditKey,
+  MONITOR_OWNED_KEYS, MONITOR_OWNED_MESSAGE,
 } from "@/lib/listing-edit";
 import { BOARDS, DRY_RUN, EDIT_CALL_TIMEOUT_MS, changeColumns, createUpdate, readColumns } from "@/lib/monday";
 import { loadPropertyDetail } from "@/lib/property-detail";
@@ -180,6 +182,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       : fail(502, "db_error", "Could not load the property; nothing was changed. Try again");
   }
   const before: PropertyDetail = detailRead.value;
+  // The availability check owns these on a listing it watches; its next check would replace the change.
+  if (monitorOwnsDate(before.availability) && keys.some((k) => MONITOR_OWNED_KEYS.includes(k))) {
+    await finish("failed");
+    return fail(400, "bad_request", MONITOR_OWNED_MESSAGE);
+  }
   const current = asValues(mondayRead.value);
 
   // A field Monday already holds at the new value is not a conflict, whatever the editor started from (a
