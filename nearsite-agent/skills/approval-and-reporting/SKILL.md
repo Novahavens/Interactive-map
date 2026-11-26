@@ -9,8 +9,8 @@ description: Builds the Slack approval card that goes to William and Lou when cl
 
 1. Gather every home that passed the checker for this batch, grouped by claim.
 2. Build the card: `ns.py slack-card --batch-id <id> --items items.json` where each item is `{"claim": {...}, "homes": [{"address", "distance_mi", "quote", "checker_passed"}]}`.
-3. The card goes to William (Slack U00000000A1) and Lou (Slack id not set yet; ask the owner). Post only when `slack_posts` is live. Otherwise save `slack_card.json` in the run folder.
-4. Approvals are recorded by the Slack button handler (an n8n workflow) into `agent_approvals`, one row per press with person, action and batch id. The agent never writes that table; the gate blocks it.
+3. The card goes to the two approvers in config `approvals.people` (William and Lou; their Slack ids live in the private settings file). Post only when `slack_posts` is live. Otherwise save `slack_card.json` in the run folder.
+4. Approvals are recorded by the Slack button handler (`handlers/slack-approvals`, a Supabase Edge Function) into `agent_approvals`, one row per press with person, action and batch id. The agent never writes that table; the gate blocks it.
 5. Submit unlocks only when `approvals_complete` says both approved on the same batch. The latest press per person counts, so a Hold after an Approve takes it back.
 
 ## Reports

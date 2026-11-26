@@ -24,4 +24,4 @@ While `nearsite_writes` is off, stop after step 4 with screenshots or the Review
 - Apartments need the floor.
 - Up to 10 photos from the landlord's link.
 - Notice to vacate 30 days (ours), background check on.
-- Contact name and number on every proposal (config `nearsite.proposal_contact`; empty today, so the checker blocks until it's set).
+- Contact name and number on every proposal (config `nearsite.proposal_contact`: William, with his Quo number, from the private settings file; the checker blocks a proposal without it).
