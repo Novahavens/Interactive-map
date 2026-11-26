@@ -96,7 +96,8 @@ const shots = async (p, tag) => {
 {
   const { ctx, p, c } = await open("phone", { w: 360, h: 780, touch: true });
   check("360: no sideways scroll", await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
-  check("360: buttons are 44px touch targets", (await c("home-suggested").getByRole("button", { name: "Use this home" }).evaluate((e) => e.getBoundingClientRect().height)) === 44);
+  const h = await c("home-suggested").getByRole("button", { name: "Use this home" }).evaluate((e) => e.getBoundingClientRect().height);
+  check("360: buttons are 44px touch targets", h === 44, String(h));
   await shots(p, "phone-360");
   await ctx.close();
 }

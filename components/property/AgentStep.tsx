@@ -58,7 +58,7 @@ export default function AgentStep({ home, homeKey, listingUrl, send }: Props) {
     }
   };
 
-  const btn = "inline-flex h-8 pointer-coarse:h-11 items-center gap-1.5 rounded-md border px-2.5 text-[12.5px] font-medium disabled:opacity-50";
+  const btn = "inline-flex h-8 [@media(pointer:coarse)]:h-[44px] items-center gap-1.5 rounded-md border px-2.5 text-[12.5px] font-medium disabled:opacity-50";
   return (
     <div className="flex flex-col gap-2" data-agent-step={home.status}>
       <div className="flex items-baseline justify-between gap-2">

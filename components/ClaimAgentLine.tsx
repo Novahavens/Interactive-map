@@ -32,7 +32,7 @@ export default function ClaimAgentLine({ state, send }: { state: AgentState; sen
             setAsked(await send({ type: "submit_pressed" }));
             setBusy(false);
           }}
-          className="inline-flex h-8 pointer-coarse:h-11 items-center justify-center rounded-md bg-ink px-3 text-[12.5px] font-medium text-bg disabled:opacity-60"
+          className="inline-flex h-8 [@media(pointer:coarse)]:h-[44px] items-center justify-center rounded-md bg-ink px-3 text-[12.5px] font-medium text-bg disabled:opacity-60"
         >
           {asked ? "Sent for William and Lou to approve" : "Submit for approval"}
         </button>
