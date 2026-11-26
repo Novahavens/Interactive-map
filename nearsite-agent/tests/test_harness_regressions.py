@@ -82,3 +82,52 @@ def test_waiting_text_has_no_internal_names():
     from nearsite_core import harness as H
     assert H._work_wait("submit_claim", "held_switch_off") == "the Nearsite submission: ready, held because Nearsite saves are switched off"
     assert "_" not in H._work_wait("place_call", "blocked_by_checker")
+
+
+def _one_home_state(status, facts=None, claim=None):
+    h = {"status": status, "home": {"home_id": "h1", "owner_monthly": 2000}, "facts": dict(facts or {}), "history": []}
+    c = {"claim": claim or {"nearsite_claim_id": "c1", "move_in": "2099-01-01", "move_out": "2099-02-01"},
+         "stage": "outreach", "facts": {}, "homes": {"h1": h}, "history": []}
+    return {"claims": {"c1": c}, "work": {}}
+
+
+def test_stop_drops_a_home_at_any_later_step(cfg):
+    """Review of PR #29: STOP after the landlord agreed to a call left the home eligible for submission."""
+    from datetime import datetime, timezone
+    from nearsite_core import harness as H
+    now = datetime(2026, 11, 26, 20, tzinfo=timezone.utc)
+    for status in ("accepted", "ok_to_call", "called", "verified", "ready", "needs_person"):
+        st = _one_home_state(status, {"opted_out": True})
+        H.advance(st, cfg, now, {})
+        assert st["claims"]["c1"]["homes"]["h1"]["status"] == "dropped", status
+
+
+def test_each_landlord_reply_gets_its_own_parse_work(cfg):
+    """Review of PR #29: a second single-message reply reused the finished parse_reply work id and was never read."""
+    from datetime import datetime, timezone
+    from nearsite_core import harness as H
+    now = datetime(2026, 11, 26, 20, tzinfo=timezone.utc)
+    st = _one_home_state("messaged", {"messages_sent": 1, "last_message_at": now.isoformat()})
+    H.apply_event(st, {"type": "landlord_message", "claim": "c1", "home": "h1", "text": "Who is this?"}, now)
+    H.advance(st, cfg, now, {})
+    first = {k for k, w in st["work"].items() if w["kind"] == "parse_reply"}
+    H.apply_event(st, {"type": "landlord_reply", "claim": "c1", "home": "h1"}, now)
+    H.advance(st, cfg, now, {})
+    assert all(st["work"][k]["status"] == "done" for k in first)
+    H.apply_event(st, {"type": "landlord_message", "claim": "c1", "home": "h1", "text": "Is it still needed?"}, now)
+    H.advance(st, cfg, now, {})
+    second = {k for k, w in st["work"].items() if w["kind"] == "parse_reply"} - first
+    assert len(first) == 1 and len(second) == 1
+    assert st["work"][second.pop()]["status"] in ("queued", "in_progress")
+
+
+def test_outside_homes_compete_when_internal_falls_short(cfg):
+    """Review of PR #29: 20 blocked internal homes filled the list and every fitting outside home was dropped."""
+    from nearsite_core import scoring
+    claim = {"beds": 2, "budget_monthly": 5000, "max_rate": 4200, "pets": None, "move_in": "2099-01-01", "move_out": "2099-02-01"}
+    internal = [{"home_id": f"i{n}", "distance_mi": 2, "owner_monthly": 9000, "bedrooms": 2, "bathrooms": 1, "pets_ok": True} for n in range(cfg["sourcing"]["target_homes"])]
+    external = [{"home_id": "e1", "source": "zillow", "distance_mi": 3, "owner_monthly": 1500, "bedrooms": 2, "bathrooms": 1, "pets_ok": True}]
+    sl = scoring.shortlist(claim, internal, external, cfg)
+    assert not sl["internal_sufficient"] and sl["used_external"]
+    assert sl["homes"][0].home_id == "e1" and not sl["homes"][0].blockers
+    assert len(sl["homes"]) == cfg["sourcing"]["target_homes"]

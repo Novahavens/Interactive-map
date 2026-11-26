@@ -219,6 +219,9 @@ HOME_NODES = {n.id: n for n in [
 ]}
 
 HOME_EDGES = [
+    # A landlord's STOP ends contact at every step, not only while we wait for a reply (found in review of PR #29).
+    *[Edge(src, "dropped", g_opted_out, "landlord said STOP")
+      for src in ("accepted", "ok_to_call", "called", "verified", "ready", "needs_person")],
     Edge("suggested", "accepted", g_picked("accept"), "person ticks", gates=("human_pick",)),
     Edge("suggested", "declined", g_picked("decline"), "person Xs", gates=("human_pick",)),
     Edge("accepted", "dropped", g_expired, "request expired"),

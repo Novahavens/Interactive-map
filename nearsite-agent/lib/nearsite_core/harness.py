@@ -367,6 +367,8 @@ def apply_event(state: dict, event: dict, now: datetime) -> dict:
             if key in event:
                 h["facts"][key] = event[key]
         h["facts"]["last_reply_at"] = event.get("at") or _iso(now)
+        # Keep a count of parsed batches so the next reply gets a new parse_reply work id (found in review of PR #29).
+        h["facts"].setdefault("parse_log", []).append({"at": event.get("at") or _iso(now), "messages": len(h["facts"].get("unparsed_messages") or [])})
         h["facts"]["unparsed_messages"] = []
     elif k == "call_attempt":
         h["facts"]["call_attempts"] = h["facts"].get("call_attempts", 0) + 1

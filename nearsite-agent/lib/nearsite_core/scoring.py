@@ -145,9 +145,9 @@ def shortlist(claim: dict, internal: list[dict], external: list[dict], cfg: dict
     picked = s_int[:target]
     used_external = False
     if not sufficient and external:
+        # Internal fell short, so outside homes compete for the whole list: a home that fits beats any home
+        # with a blocker, wherever it came from (found in review of PR #29: blocked internal homes filled the list).
         used_external = True
         s_ext = rank(claim, external, cfg)
-        room = target - len(picked)
-        picked = picked + s_ext[: max(room, 0)]
-        picked.sort(key=lambda s: (len(s.blockers) > 0, -s.score))
+        picked = sorted(s_int + s_ext, key=lambda s: (len(s.blockers) > 0, -s.score))[:target]
     return {"internal_sufficient": sufficient, "used_external": used_external, "homes": picked}
