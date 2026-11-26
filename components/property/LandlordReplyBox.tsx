@@ -19,7 +19,7 @@ interface Result {
  * the server decides what it may write (POST /api/outside/:id/landlord-reply). Shown only while the `outside`
  * feature is on. Nothing is sent to the landlord, and Monday is not written.
  */
-export default function LandlordReplyBox({ listingId }: { listingId: string }) {
+export default function LandlordReplyBox({ listingId, onSaved }: { listingId: string; onSaved?: () => void }) {
   const [on, setOn] = useState(false);
   const [text, setText] = useState("");
   const [by, setBy] = useState("");
@@ -66,6 +66,8 @@ export default function LandlordReplyBox({ listingId }: { listingId: string }) {
         if (data.possibleDuplicates) lines.push("A home with this street may already exist. Nothing was merged; please check.");
         setResult({ tone: data.outcome === "address_saved" || data.outcome === "same_address" || data.outcome === "duplicate" ? "ok" : "warn", lines });
         setText("");
+        // The outside list and the map pin come from the list, so re-read it: the home now has an address.
+        if (data.addressWritten) onSaved?.();
       } else {
         setResult({ tone: "bad", lines: [data?.error ?? "The reply was not saved. Try again."] });
       }

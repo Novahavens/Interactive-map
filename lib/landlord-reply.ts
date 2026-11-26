@@ -206,8 +206,16 @@ export function parseLandlordReply(raw: unknown): ParsedReply {
   const distinct = [...new Map(hits.map((h) => [h.key, h])).values()];
   if (distinct.length === 0) return { status: "no_address", address: null, candidates: 0, phones };
   if (distinct.length > 1) return { status: "ambiguous", address: null, candidates: distinct.length, phones };
-  const hit = distinct[0] as StreetHit;
-  const loc = afterStreet(text.slice(hit.end));
+  // The same street can be written twice (once in a sentence, once with its place). Use the first mention that
+  // has a real place after it (a zip, or a city with a state, the same test the write uses); otherwise the first
+  // mention. (A Map keeps the last duplicate, which could drop the place the first mention had.)
+  const first = distinct[0] as StreetHit;
+  const mentions = hits
+    .filter((h) => h.key === first.key)
+    .map((h) => ({ hit: h, loc: afterStreet(text.slice(h.end)) }));
+  const pick = mentions.find((m) => m.loc.zip || (m.loc.city && m.loc.state)) ?? mentions[0] ?? { hit: first, loc: afterStreet(text.slice(first.end)) };
+  const hit = pick.hit;
+  const loc = pick.loc;
   return {
     status: "address",
     address: { addressLine: hit.line, houseNumber: hit.houseNumber, unit: loc.unit, city: loc.city, state: loc.state, zip: loc.zip },

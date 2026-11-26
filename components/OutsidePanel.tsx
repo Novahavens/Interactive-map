@@ -17,6 +17,8 @@ interface Props {
   onClose: () => void;
   /** Flag `addOutside`. */
   canAdd: boolean;
+  /** After a landlord reply saved an address: re-read the outside list so the pin and "Add to claim" update. */
+  onAddressSaved?: () => void;
   /** Slot at the top of "Fit against this claim": the match score card. */
   score?: React.ReactNode;
   /** Slot inside "Fit against this claim", under the score: fit rows. */
@@ -78,7 +80,7 @@ function Fact({ icon, label, value, tone = "plain" }: { icon: React.ReactNode; l
  * The panel for a home the search agent found on a listing site and that is not in our database yet.
  * Same frame as PropertyPanel; everything it shows comes from the list's copy of the home (no read of its own).
  */
-export default function OutsidePanel({ home, claim, onAdded, onClose, canAdd, score, fit, onAskAddress, submit, children }: Props) {
+export default function OutsidePanel({ home, claim, onAdded, onClose, canAdd, score, fit, onAskAddress, submit, onAddressSaved, children }: Props) {
   const [photoBroken, setPhotoBroken] = useState(false);
   const source = SOURCE[home.source] ?? null;
   const url = safeUrl(home.url);
@@ -236,7 +238,7 @@ export default function OutsidePanel({ home, claim, onAdded, onClose, canAdd, sc
 
         {children}
 
-        {home.source === "furnished_finder" && !home.addressKnown && <LandlordReplyBox listingId={home.listingId} />}
+        {home.source === "furnished_finder" && !home.addressKnown && <LandlordReplyBox listingId={home.listingId} onSaved={onAddressSaved} />}
 
         <Section title="Notes & links">
           <p className="mb-2.5 text-[13px] text-muted">

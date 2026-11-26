@@ -244,3 +244,17 @@ test("the switched-off answer is 503 with feature_off, as the other outside rout
   assert.equal(LANDLORD_REPLY_OFF.status, 503);
   assert.equal(LANDLORD_REPLY_OFF.body.code, "feature_off");
 });
+
+test("a street written twice keeps the place from the mention that has one", () => {
+  // The first mention has no place; the second has the city and zip. The Map-based pick used to keep the
+  // last mention, so a first mention with the place was lost. Here the place comes from whichever mention has it.
+  const early = parseLandlordReply("Is 1234 N Harvard Ave the home? Yes, it is 1234 N Harvard Ave, Tulsa, OK 74136.");
+  assert.equal(early.status, "address");
+  assert.equal(early.address?.city, "Tulsa");
+  assert.equal(early.address?.zip, "74136");
+  // The place is on the first mention only: it must still be kept.
+  const first = parseLandlordReply("1234 N Harvard Ave, Tulsa, OK 74136. Thanks, 1234 N Harvard Ave.");
+  assert.equal(first.status, "address");
+  assert.equal(first.address?.city, "Tulsa");
+  assert.equal(first.address?.zip, "74136");
+});
