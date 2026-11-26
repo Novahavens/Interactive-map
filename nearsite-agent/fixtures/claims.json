@@ -1,0 +1,567 @@
+{
+ "_note": "FICTIONAL test data. Claim refs, home ids, company, cities, zips and landlord answers are made up; the shapes match Nearsite requests and the Interactive Map database. Nothing here is a real client or home.",
+ "claims": [
+  {
+   "nearsite_claim_id": "90001",
+   "company": "Example Insurance Services",
+   "title": "Request #90001 \u00b7 Apartment / Single Family House / Town House",
+   "beds": 3,
+   "baths": 1,
+   "budget_monthly": 4000,
+   "max_rate": 3360,
+   "city": "Sampleton",
+   "state": "MI",
+   "zip": "48990",
+   "move_in": "2026-12-03",
+   "move_out": "2027-03-02",
+   "pets": "Pet friendly needed (2 dogs)",
+   "pet_details": "2 dogs: Stafford Terrier 35 lbs, Stafford Terriers 35 lbs",
+   "notes": "Guests: 4 \u00b7 Wants: Apartment / Single Family House / Town House \u00b7 Furnished \u00b7 Pets: 2 dogs",
+   "platform_fee_pct": 6,
+   "referral_fee_rate": 10,
+   "referral_fee_type": "percentage",
+   "expires_at": null,
+   "proposals": 1,
+   "source": "nearsite",
+   "internal_homes": [
+    {
+     "home_id": "9900000110",
+     "source": "internal",
+     "distance_mi": 13.93,
+     "owner_monthly": 2550,
+     "bedrooms": 2,
+     "bathrooms": 1,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    }
+   ],
+   "external_homes": [
+    {
+     "home_id": "ext-ff-demo-1",
+     "source": "furnished_finder",
+     "distance_mi": 4.2,
+     "owner_monthly": 1650,
+     "bedrooms": 3,
+     "bathrooms": 1,
+     "availability": "Available Now",
+     "pets_ok": true,
+     "title": "SYNTHETIC 3BR house near Sampleton"
+    },
+    {
+     "home_id": "ext-zl-demo-2",
+     "source": "zillow",
+     "distance_mi": 6.8,
+     "owner_monthly": 1500,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "",
+     "pets_ok": null,
+     "title": "SYNTHETIC 3BR ranch"
+    },
+    {
+     "home_id": "ext-ff-demo-3",
+     "source": "furnished_finder",
+     "distance_mi": 5.1,
+     "owner_monthly": 1700,
+     "bedrooms": 3,
+     "bathrooms": 1.5,
+     "availability": "Available Now",
+     "pets_ok": true,
+     "title": "Property Management LLC SYNTHETIC listing"
+    }
+   ]
+  },
+  {
+   "nearsite_claim_id": "90002",
+   "company": "Example Insurance Services",
+   "title": "Request #90002 \u00b7 Single Family House",
+   "beds": 3,
+   "baths": 2,
+   "budget_monthly": 5700,
+   "max_rate": 4788,
+   "city": "Fictionville",
+   "state": "TX",
+   "zip": "77990",
+   "move_in": "2026-12-08",
+   "move_out": "2027-02-07",
+   "pets": "Pet friendly needed (4 dogs)",
+   "pet_details": "4 dogs: TBD 1 lbs, TBD 1 lbs, TBD 1 lbs, TBD 1 lbs",
+   "notes": "there is 4 pets but not sure of the breed or weight 3 bedrooms elderly couple - no stairs 2 cars\nBudget as posted: $190/day \u00b7 Guests: 2 \u00b7 Wants: Single Family House \u00b7 Furnished \u00b7 Pets: 4 dogs \u00b7 Parking: 2 \u00b7 Flags: no stairs, elderly guest",
+   "platform_fee_pct": 6,
+   "referral_fee_rate": 10,
+   "referral_fee_type": "percentage",
+   "expires_at": "2026-12-02T00:00:00+00:00",
+   "proposals": 3,
+   "source": "nearsite",
+   "internal_homes": [
+    {
+     "home_id": "9900000134",
+     "source": "internal",
+     "distance_mi": 4.44,
+     "owner_monthly": 2500,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "Available Now",
+     "pets_ok": false
+    },
+    {
+     "home_id": "9900000112",
+     "source": "internal",
+     "distance_mi": 2.02,
+     "owner_monthly": 2500,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000108",
+     "source": "internal",
+     "distance_mi": 4.21,
+     "owner_monthly": 3450,
+     "bedrooms": 3,
+     "bathrooms": 3,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000136",
+     "source": "internal",
+     "distance_mi": 7.55,
+     "owner_monthly": 2850,
+     "bedrooms": 3,
+     "bathrooms": 2.5,
+     "availability": "Available Now",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000131",
+     "source": "internal",
+     "distance_mi": 5.54,
+     "owner_monthly": 2800,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000130",
+     "source": "internal",
+     "distance_mi": 6.62,
+     "owner_monthly": 1890,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000135",
+     "source": "internal",
+     "distance_mi": 8.03,
+     "owner_monthly": 2850,
+     "bedrooms": 3,
+     "bathrooms": 3,
+     "availability": "Available (Unverified)",
+     "pets_ok": false
+    },
+    {
+     "home_id": "9900000115",
+     "source": "internal",
+     "distance_mi": 8.62,
+     "owner_monthly": 2800,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000128",
+     "source": "internal",
+     "distance_mi": 8.99,
+     "owner_monthly": 2600,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000113",
+     "source": "internal",
+     "distance_mi": 9.24,
+     "owner_monthly": 2800,
+     "bedrooms": 3,
+     "bathrooms": 2.5,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000119",
+     "source": "internal",
+     "distance_mi": 8.16,
+     "owner_monthly": 2500,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000116",
+     "source": "internal",
+     "distance_mi": 9.39,
+     "owner_monthly": 3000,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000109",
+     "source": "internal",
+     "distance_mi": 9.24,
+     "owner_monthly": 3000,
+     "bedrooms": 3,
+     "bathrooms": 1.5,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000125",
+     "source": "internal",
+     "distance_mi": 5.51,
+     "owner_monthly": 2500,
+     "bedrooms": 4,
+     "bathrooms": 3,
+     "availability": "Available (Unverified)",
+     "pets_ok": false
+    },
+    {
+     "home_id": "9900000122",
+     "source": "internal",
+     "distance_mi": 7.32,
+     "owner_monthly": 3300,
+     "bedrooms": 4,
+     "bathrooms": 2.5,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000126",
+     "source": "internal",
+     "distance_mi": 5.77,
+     "owner_monthly": 3500,
+     "bedrooms": 3,
+     "bathrooms": 3.5,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000123",
+     "source": "internal",
+     "distance_mi": 8.66,
+     "owner_monthly": 3500,
+     "bedrooms": 3,
+     "bathrooms": 3,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000133",
+     "source": "internal",
+     "distance_mi": 8.55,
+     "owner_monthly": 3600,
+     "bedrooms": 3,
+     "bathrooms": 2.5,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000129",
+     "source": "internal",
+     "distance_mi": 6.01,
+     "owner_monthly": 3700,
+     "bedrooms": 3,
+     "bathrooms": 3,
+     "availability": "Available Now",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000107",
+     "source": "internal",
+     "distance_mi": 3.77,
+     "owner_monthly": 3950,
+     "bedrooms": 3,
+     "bathrooms": 3,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    }
+   ],
+   "external_homes": []
+  },
+  {
+   "nearsite_claim_id": "90003",
+   "company": "Example Insurance Services",
+   "title": "Request #90003 \u00b7 Single Family House",
+   "beds": 2,
+   "baths": 1.5,
+   "budget_monthly": 5670,
+   "max_rate": 4762.8,
+   "city": "Exampleburg",
+   "state": "TX",
+   "zip": "77991",
+   "move_in": "2026-12-02",
+   "move_out": "2027-01-01",
+   "pets": "Pet friendly needed (2 dogs)",
+   "pet_details": "2 dogs: Lab 75 lbs, Jack Russell 15 lbs",
+   "notes": "Example Elementary School - 1 Example Rd 77991\nBudget as posted: $189/day \u00b7 Guests: 2 \u00b7 Wants: Single Family House \u00b7 Furnished \u00b7 Pets: 2 dogs \u00b7 Nearsite closes 2026-12-01",
+   "platform_fee_pct": 6,
+   "referral_fee_rate": 10,
+   "referral_fee_type": "percentage",
+   "expires_at": "2026-12-01T00:00:00+00:00",
+   "proposals": 0,
+   "source": "nearsite",
+   "internal_homes": [
+    {
+     "home_id": "9900000140",
+     "source": "internal",
+     "distance_mi": 3.29,
+     "owner_monthly": 2450,
+     "bedrooms": 3,
+     "bathrooms": 3,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000138",
+     "source": "internal",
+     "distance_mi": 5.69,
+     "owner_monthly": 1400,
+     "bedrooms": 2,
+     "bathrooms": 2,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000141",
+     "source": "internal",
+     "distance_mi": 7.86,
+     "owner_monthly": 2000,
+     "bedrooms": 2,
+     "bathrooms": 2,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000139",
+     "source": "internal",
+     "distance_mi": 8.88,
+     "owner_monthly": 1900,
+     "bedrooms": 2,
+     "bathrooms": 2,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000101",
+     "source": "internal",
+     "distance_mi": 3.01,
+     "owner_monthly": 3600,
+     "bedrooms": 4,
+     "bathrooms": 3.5,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000127",
+     "source": "internal",
+     "distance_mi": 19.31,
+     "owner_monthly": 2700,
+     "bedrooms": 3,
+     "bathrooms": 3,
+     "availability": "Available Now",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000124",
+     "source": "internal",
+     "distance_mi": 19.71,
+     "owner_monthly": 3200,
+     "bedrooms": 3,
+     "bathrooms": 2.5,
+     "availability": "Available Now",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000137",
+     "source": "internal",
+     "distance_mi": 5.87,
+     "owner_monthly": 1853,
+     "bedrooms": 4,
+     "bathrooms": 2,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000120",
+     "source": "internal",
+     "distance_mi": 13.86,
+     "owner_monthly": 3200,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000104",
+     "source": "internal",
+     "distance_mi": 19.15,
+     "owner_monthly": 2000,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000118",
+     "source": "internal",
+     "distance_mi": 12.9,
+     "owner_monthly": 3300,
+     "bedrooms": 3,
+     "bathrooms": 2.5,
+     "availability": "",
+     "pets_ok": false
+    },
+    {
+     "home_id": "9900000132",
+     "source": "internal",
+     "distance_mi": 11.07,
+     "owner_monthly": 2500,
+     "bedrooms": 4,
+     "bathrooms": 2.5,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000105",
+     "source": "internal",
+     "distance_mi": 18.88,
+     "owner_monthly": 3000,
+     "bedrooms": 4,
+     "bathrooms": 3,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000114",
+     "source": "internal",
+     "distance_mi": 18.56,
+     "owner_monthly": 3280,
+     "bedrooms": 4,
+     "bathrooms": 2.5,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000121",
+     "source": "internal",
+     "distance_mi": 11.99,
+     "owner_monthly": 3295,
+     "bedrooms": 4,
+     "bathrooms": 2.5,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000111",
+     "source": "internal",
+     "distance_mi": 17.86,
+     "owner_monthly": 3650,
+     "bedrooms": 3,
+     "bathrooms": 1,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000106",
+     "source": "internal",
+     "distance_mi": 6.59,
+     "owner_monthly": 3800,
+     "bedrooms": 4,
+     "bathrooms": 2.5,
+     "availability": "",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000103",
+     "source": "internal",
+     "distance_mi": 2.11,
+     "owner_monthly": 4100,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000102",
+     "source": "internal",
+     "distance_mi": 1.52,
+     "owner_monthly": 4500,
+     "bedrooms": 4,
+     "bathrooms": 2.5,
+     "availability": "Available (Unverified)",
+     "pets_ok": true
+    },
+    {
+     "home_id": "9900000117",
+     "source": "internal",
+     "distance_mi": 10.46,
+     "owner_monthly": 4200,
+     "bedrooms": 3,
+     "bathrooms": 2,
+     "availability": "",
+     "pets_ok": true
+    }
+   ],
+   "external_homes": []
+  }
+ ],
+ "verified": {
+  "90003:9900000140": {
+   "_synthetic": true,
+   "address": "123 Example Pine Ct, Exampleburg, TX 77991",
+   "property_type": "single family",
+   "bedrooms": 3,
+   "bathrooms": 3,
+   "owner_monthly": 2450,
+   "owner_clean": 200,
+   "owner_pet_fee": 250,
+   "owner_deposit": 1000,
+   "available_from": "2026-11-30",
+   "available_to": "2027-02-28",
+   "pets_ok": true,
+   "parking_spaces": 2,
+   "single_level": true,
+   "floor": null,
+   "photos_url": "https://example.com/photos/demo",
+   "landlord_name": "SYNTHETIC Owner",
+   "landlord_notice_days": 45,
+   "utilities_included": true,
+   "amenities": [
+    "AC",
+    "In-unit laundry",
+    "Wi-Fi",
+    "Dishes & utensils"
+   ],
+   "call_consent": true,
+   "selling_point": "Fenced yard for both dogs, 3 miles from Example Elementary",
+   "bed_sizes": [
+    "King",
+    "Queen",
+    "Twin"
+   ],
+   "parking": "2 spaces, driveway",
+   "verified": true,
+   "landlord_phone": "+15550100000",
+   "description_draft": "SYNTHETIC: furnished 3 bed, 3 bath single-level home with a fenced yard."
+  }
+ }
+}

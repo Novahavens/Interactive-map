@@ -1,0 +1,16 @@
+{
+  "name": "nearsite-agent-skills",
+  "version": "0.2.0",
+  "description": "Nova Havens claims agent: intake, sourcing, landlord outreach, verification calls, a checker gate and Nearsite or email submission, with every outward action locked behind a live gate.",
+  "author": {
+    "name": "Nova Havens"
+  },
+  "keywords": [
+    "nearsite",
+    "claims",
+    "housing",
+    "crs",
+    "quo",
+    "sona"
+  ]
+}

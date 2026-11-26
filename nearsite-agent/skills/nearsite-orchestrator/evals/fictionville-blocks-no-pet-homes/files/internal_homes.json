@@ -1,0 +1,202 @@
+[
+ {
+  "home_id": "9900000134",
+  "source": "internal",
+  "distance_mi": 4.44,
+  "owner_monthly": 2500,
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "availability": "Available Now",
+  "pets_ok": false
+ },
+ {
+  "home_id": "9900000112",
+  "source": "internal",
+  "distance_mi": 2.02,
+  "owner_monthly": 2500,
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "availability": "Available (Unverified)",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000108",
+  "source": "internal",
+  "distance_mi": 4.21,
+  "owner_monthly": 3450,
+  "bedrooms": 3,
+  "bathrooms": 3,
+  "availability": "",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000136",
+  "source": "internal",
+  "distance_mi": 7.55,
+  "owner_monthly": 2850,
+  "bedrooms": 3,
+  "bathrooms": 2.5,
+  "availability": "Available Now",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000131",
+  "source": "internal",
+  "distance_mi": 5.54,
+  "owner_monthly": 2800,
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "availability": "Available (Unverified)",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000130",
+  "source": "internal",
+  "distance_mi": 6.62,
+  "owner_monthly": 1890,
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "availability": "Available (Unverified)",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000135",
+  "source": "internal",
+  "distance_mi": 8.03,
+  "owner_monthly": 2850,
+  "bedrooms": 3,
+  "bathrooms": 3,
+  "availability": "Available (Unverified)",
+  "pets_ok": false
+ },
+ {
+  "home_id": "9900000115",
+  "source": "internal",
+  "distance_mi": 8.62,
+  "owner_monthly": 2800,
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "availability": "Available (Unverified)",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000128",
+  "source": "internal",
+  "distance_mi": 8.99,
+  "owner_monthly": 2600,
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "availability": "Available (Unverified)",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000113",
+  "source": "internal",
+  "distance_mi": 9.24,
+  "owner_monthly": 2800,
+  "bedrooms": 3,
+  "bathrooms": 2.5,
+  "availability": "Available (Unverified)",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000119",
+  "source": "internal",
+  "distance_mi": 8.16,
+  "owner_monthly": 2500,
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "availability": "",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000116",
+  "source": "internal",
+  "distance_mi": 9.39,
+  "owner_monthly": 3000,
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "availability": "",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000109",
+  "source": "internal",
+  "distance_mi": 9.24,
+  "owner_monthly": 3000,
+  "bedrooms": 3,
+  "bathrooms": 1.5,
+  "availability": "Available (Unverified)",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000125",
+  "source": "internal",
+  "distance_mi": 5.51,
+  "owner_monthly": 2500,
+  "bedrooms": 4,
+  "bathrooms": 3,
+  "availability": "Available (Unverified)",
+  "pets_ok": false
+ },
+ {
+  "home_id": "9900000122",
+  "source": "internal",
+  "distance_mi": 7.32,
+  "owner_monthly": 3300,
+  "bedrooms": 4,
+  "bathrooms": 2.5,
+  "availability": "",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000126",
+  "source": "internal",
+  "distance_mi": 5.77,
+  "owner_monthly": 3500,
+  "bedrooms": 3,
+  "bathrooms": 3.5,
+  "availability": "Available (Unverified)",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000123",
+  "source": "internal",
+  "distance_mi": 8.66,
+  "owner_monthly": 3500,
+  "bedrooms": 3,
+  "bathrooms": 3,
+  "availability": "Available (Unverified)",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000133",
+  "source": "internal",
+  "distance_mi": 8.55,
+  "owner_monthly": 3600,
+  "bedrooms": 3,
+  "bathrooms": 2.5,
+  "availability": "",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000129",
+  "source": "internal",
+  "distance_mi": 6.01,
+  "owner_monthly": 3700,
+  "bedrooms": 3,
+  "bathrooms": 3,
+  "availability": "Available Now",
+  "pets_ok": true
+ },
+ {
+  "home_id": "9900000107",
+  "source": "internal",
+  "distance_mi": 3.77,
+  "owner_monthly": 3950,
+  "bedrooms": 3,
+  "bathrooms": 3,
+  "availability": "Available (Unverified)",
+  "pets_ok": true
+ }
+]

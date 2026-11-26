@@ -1,0 +1,23 @@
+{
+ "nearsite_claim_id": "90001",
+ "company": "Example Insurance Services",
+ "title": "Request #90001 \u00b7 Apartment / Single Family House / Town House",
+ "beds": 3,
+ "baths": 1,
+ "budget_monthly": 4000,
+ "max_rate": 3360,
+ "city": "Sampleton",
+ "state": "MI",
+ "zip": "48990",
+ "move_in": "2026-12-03",
+ "move_out": "2027-03-02",
+ "pets": "Pet friendly needed (2 dogs)",
+ "pet_details": "2 dogs: Stafford Terrier 35 lbs, Stafford Terriers 35 lbs",
+ "notes": "Guests: 4 \u00b7 Wants: Apartment / Single Family House / Town House \u00b7 Furnished \u00b7 Pets: 2 dogs",
+ "platform_fee_pct": 6,
+ "referral_fee_rate": 10,
+ "referral_fee_type": "percentage",
+ "expires_at": null,
+ "proposals": 1,
+ "source": "nearsite"
+}

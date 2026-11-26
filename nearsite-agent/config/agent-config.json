@@ -1,0 +1,169 @@
+{
+  "version": "0.1.0",
+  "_note": "Every live switch is off. Nothing leaves the building until live.master AND the specific switch are true AND the environment variable NEARSITE_AGENT_LIVE=1 is set. See USER_GUIDE.md, 'Switching it on'. Real pricing, phone numbers and approvers come from the private overlay (see lib/nearsite_core/config.py), never from this file.",
+  "live": {
+    "master": false,
+    "quo_texts": false,
+    "quo_calls": false,
+    "nearsite_writes": false,
+    "email_send": false,
+    "slack_posts": false,
+    "monday_writes": false,
+    "supabase_writes": false,
+    "n8n_changes": false
+  },
+  "sourcing": {
+    "target_homes": 20,
+    "internal_sufficient_count": 5,
+    "internal_sufficient_score": 70,
+    "radius_steps_mi": [
+      10,
+      20
+    ],
+    "stretch_radius_mi": 75,
+    "sources": {
+      "internal": true,
+      "furnished_finder": true,
+      "zillow": true,
+      "rentkey": true
+    },
+    "avoid_keywords": [
+      "property management",
+      "leasing office",
+      "apartment complex",
+      "management company"
+    ]
+  },
+  "pricing": {
+    "_example": true,
+    "_note": "EXAMPLE values only, not Nova Havens' real pricing. The real rules live in the private overlay (NEARSITE_AGENT_CONFIG_LOCAL), never in this repo. While _example is true the checker refuses every outward step.",
+    "month_days": 30,
+    "monthly_markup_target": 1800,
+    "monthly_markup_floor": 1200,
+    "searcher_budget_offset": 1800,
+    "app_fee_per_adult": 90,
+    "admin_fee": 400,
+    "clean_fee_min": 450,
+    "clean_fee_upcharge": 200,
+    "pet_fee_nonref": 450,
+    "pet_fee_upcharge": 250,
+    "move_in_fee": 0,
+    "one_time_markup_target": 900,
+    "nh_notice_days": 30,
+    "extension_term_days": 30,
+    "utility_caps": {
+      "1": 180,
+      "2": 270,
+      "3": 360,
+      "4": 450,
+      "5": 450
+    },
+    "platform_fee_pct_default": 6
+  },
+  "outreach": {
+    "from_number": "+15550100000",
+    "inbox_name": "Shared Quo inbox",
+    "inbox_note": "Shared Quo inbox. Every agent thread is tagged with the claim and home so people can follow it.",
+    "sender_name": "the housing team at Nova Havens",
+    "max_follow_ups": 1,
+    "follow_up_after_hours": 24,
+    "quiet_hours_local": {
+      "start": "20:00",
+      "end": "09:00"
+    },
+    "one_thread_per_landlord": true
+  },
+  "calls": {
+    "credits_per_call": 50,
+    "monthly_credit_budget": 1000,
+    "credit_reserve": 100,
+    "max_duration_seconds": 300,
+    "voicemail": "hang-up",
+    "max_attempts": 2
+  },
+  "approvals": {
+    "nearsite_required": [
+      "william",
+      "lou"
+    ],
+    "people": {
+      "william": {
+        "name": "Approver One",
+        "full_name": "Approver One",
+        "slack_user": "U00000000A1"
+      },
+      "lou": {
+        "name": "Approver Two",
+        "full_name": "Approver Two",
+        "slack_user": "U00000000B2"
+      }
+    },
+    "ticket_ttl_minutes": 120
+  },
+  "nearsite": {
+    "base_url": "https://www.nearsite.com/v2/provider",
+    "proposal_contact": {
+      "name": "Proposal Contact",
+      "phone": "+15550100000",
+      "_note": "Placeholder. The real proposal contact lives in the private overlay."
+    },
+    "background_check": true,
+    "description_max_chars": 2000
+  },
+  "monday": {
+    "all_claims_board": 18441658213,
+    "columns": {
+      "source": "color_mm9fa3z1",
+      "company": "color_mm9fnh6x",
+      "claim_ref": "text_mm9f9eay",
+      "nearsite_request_id": "text_mm9f3kb3",
+      "damaged_residence": "location_mm9f428a",
+      "assigned_to": "multiple_person_mm9fs7b8",
+      "deadline": "date_mm9f9gsa",
+      "move_in": "date_mm9fgnpg",
+      "move_out": "date_mm9fpse2",
+      "bedrooms_needed": "numeric_mm9f1ejf",
+      "adults": "numeric_mm9fmmjw",
+      "children": "numeric_mm9fs2qp",
+      "pets": "text_mm9frphc",
+      "frv": "numeric_mm9fa94x",
+      "budget_per_day": "numeric_mm9fkc1d",
+      "notes": "long_text_mm9fsstx",
+      "homes_verified": "numeric_mm9f7djs",
+      "options_submitted": "numeric_mm9fpndw",
+      "william_approval": "color_mm9fv2t5",
+      "lou_approval": "color_mm9fgq96",
+      "supabase_claim_id": "text_mm9fxyrt"
+    },
+    "groups": {
+      "new": "topics",
+      "sourcing": "group_mm9f219t",
+      "outreach": "group_mm9f8s5m",
+      "verifying": "group_mm9fb86r",
+      "ready": "group_mm9fjbfc",
+      "submitted": "group_mm9fmz0b",
+      "won": "group_mm9fraee",
+      "lost": "group_mm9f835j"
+    }
+  },
+  "supabase": {
+    "project_ref": "nmandvqfuwvqxeabptjd",
+    "tables": {
+      "nearsite_claims": "nearsite_claims",
+      "other_claims": "search_claims",
+      "internal_matches": "nearsite_matches",
+      "external_listings": "external_listings",
+      "landlord_outreach": "landlord_outreach",
+      "approvals": "submission_approvals",
+      "config": "nearsite_config"
+    }
+  },
+  "email_templates": {
+    "CRS": "crs",
+    "_default": "all_other_companies"
+  },
+  "map": {
+    "origin": "https://nova-havens-map.vercel.app",
+    "vercel_project": "nova-havens-map"
+  }
+}

@@ -323,10 +323,13 @@ const idle = (ui) => ui.running.waitFor({ state: "detached", timeout: 8000 }).th
   check("typing takes over: listening stops, the text stays", (await ui.input.inputValue()) === "pets ok" && (await ui.mic.getAttribute("aria-pressed")) === "false" && (await p.evaluate(() => window.__speech.stopped)) === 1);
   await ui.input.fill("Cheaper,");
   await ui.mic.click();
+  await p.locator('[aria-pressed="true"][aria-label]').first().waitFor({ timeout: 2000 }).catch(() => {});
   await p.evaluate(() => window.__say([["within ten", false]]));
-  check("spoken words are added after what was typed", (await ui.input.inputValue()) === "Cheaper, within ten", await ui.input.inputValue());
+  // The words land on the next render; wait for them (up to 2 s) rather than reading at once, which raced on CI.
+  const valueSoon = (want) => ui.input.evaluate((e, w) => new Promise((res) => { const t0 = Date.now(); const tick = () => (e.value === w || Date.now() - t0 > 2000 ? res(e.value) : requestAnimationFrame(tick)); tick(); }), want);
+  check("spoken words are added after what was typed", (await valueSoon("Cheaper, within ten")) === "Cheaper, within ten", await ui.input.inputValue());
   await p.evaluate(() => window.__say([["within ten miles", true]]));
-  check("final words replace the interim ones", (await ui.input.inputValue()) === "Cheaper, within ten miles");
+  check("final words replace the interim ones", (await valueSoon("Cheaper, within ten miles")) === "Cheaper, within ten miles", await ui.input.inputValue());
   check("speech sends nothing by itself", net.asks.length === 1);
   await ui.send.click();
   check("Send posts the spoken text and stops listening", (await ui.asked(2)) && same(net.asks[1], { action: "message", message: "Cheaper, within ten miles", user: USER }) && (await p.evaluate(() => window.__speech.stopped)) === 2 && (await ui.mic.getAttribute("aria-pressed")) === "false", JSON.stringify(net.asks[1]));

@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Nova Havens Messenger Bridge (unpublished)",
+  "version": "0.1.0",
+  "description": "Opens a listing's message box beside the map with the landlord message pre-filled. A person presses Send. Reads replies back to the map.",
+  "permissions": [
+    "storage",
+    "windows",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.furnishedfinder.com/*",
+    "https://www.zillow.com/*",
+    "https://www.airbnb.com/*",
+    "https://www.vrbo.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "externally_connectable": {
+    "matches": [
+      "https://nova-havens-map.vercel.app/*"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.furnishedfinder.com/*",
+        "https://www.zillow.com/*",
+        "https://www.airbnb.com/*",
+        "https://www.vrbo.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
