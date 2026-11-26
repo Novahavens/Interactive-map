@@ -29,6 +29,8 @@ interface Props {
   header: ReactNode;
   /** The <li> rows of the results list. */
   rows: ReactNode;
+  /** Optional row above the list (the Best match | Nearest toggle). Left out: nothing, as before. */
+  listHeader?: ReactNode;
   sheetRef: RefObject<HTMLDivElement | null>;
 }
 
@@ -43,7 +45,7 @@ interface Props {
  * natively (touch-action pan-y, overscroll contained). A touch that starts on the list drags the sheet only when the
  * sheet is not fully open and the finger moves up, or when the list is at its top and the finger moves down.
  */
-export default function ResultsSheet({ snap, onSnap, hidden, countLabel, glance, headerOpen, onHeaderOpen, compactSummary, header, rows, sheetRef }: Props) {
+export default function ResultsSheet({ snap, onSnap, hidden, countLabel, glance, headerOpen, onHeaderOpen, compactSummary, header, rows, listHeader, sheetRef }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const snapRef = useRef(snap);
   snapRef.current = snap;
@@ -252,6 +254,7 @@ export default function ResultsSheet({ snap, onSnap, hidden, countLabel, glance,
 
             {/* results: the only scroller; touch-action pan-y so vertical swipes are the browser's, sheet takeover is ours */}
             <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col">
+              {listHeader}
               <ul
                 aria-label="Results"
                 className="nh-scroll flex min-h-0 flex-1 touch-pan-y flex-col gap-0.5 overflow-y-auto overscroll-y-contain px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 [-webkit-overflow-scrolling:touch]"

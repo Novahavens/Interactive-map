@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X, ExternalLink, Images, Mail, Pencil, Sparkles } from "lucide-react";
-import type { PropertyDetail, ClaimNeeds, ApiError, Pin } from "@/lib/types";
+import type { PropertyDetail, ClaimNeeds, ApiError, Pin, MatchScore as Score, SubmitStatus } from "@/lib/types";
 import { BAD_LINK } from "@/lib/types";
 import { STATUS, asMapStatus, reasonText, type MapStatus } from "@/lib/status";
 import { chipsFor, mergeChipSource } from "@/lib/chips";
@@ -18,6 +18,9 @@ import { Fee, LinkChip, Row, Section } from "./property/parts";
 import { ReportBadLink, ReportedNote, type Reported } from "./property/ReportBadLink";
 import AvailabilityPill from "./property/AvailabilityPill";
 import EditListing from "./property/EditListing";
+import FindPhone from "./property/FindPhone";
+import OutreachLine from "./property/OutreachLine";
+import MatchScore from "./MatchScore";
 import type { EditSession } from "./property/edit-session";
 import { editingEnabled } from "./property/health";
 import { availabilityPill, localToday } from "@/lib/availability";
@@ -39,6 +42,15 @@ interface Props {
   /** This copy is the one on screen (rail on wide screens, sheet on narrow): only it shows the edit form. */
   active: boolean;
   onClose: () => void;
+  /** Flag `bestMatch`: this home's score against the claim (null = none). Left out: no score card. */
+  score?: Score | null;
+  scoreLoading?: boolean;
+  /** Flag `submit`: this option's row, passed to the footer. Left out: no steps. */
+  submit?: SubmitStatus | null;
+  /** Flag `findPhone`: "Find phone" where the owner has no number. */
+  findPhone?: boolean;
+  /** Flag `templates`: the Text menu and the outreach line. */
+  templates?: boolean;
 }
 
 const STATUS_TOKEN: Record<MapStatus, { bg: string; ink: string; line: string }> = {
@@ -59,6 +71,11 @@ export default function PropertyPanel({
   session,
   active,
   onClose,
+  score,
+  scoreLoading = false,
+  submit,
+  findPhone = false,
+  templates = false,
 }: Props) {
   const [detail, setDetail] = useState<PropertyDetail | null>(null);
   // Edit waits for this panel's own read, so the form never starts from an older copy.
@@ -261,6 +278,7 @@ export default function PropertyPanel({
             {/* Fit against the claim */}
             {needs && (
               <Section title="Fit against this claim">
+                {score !== undefined && <MatchScore score={score} loading={scoreLoading} />}
                 <ul className="flex flex-col gap-1.5">
                   {fitRows.map((row) => (
                     <FitRow key={row.title} {...row} />
@@ -378,7 +396,18 @@ export default function PropertyPanel({
                     <span className="font-medium">{detail.owner_name ?? "—"}</span>
                   </span>
                 </div>
-                {detail.owner_phone && <ContactActions phone={detail.owner_phone} name={detail.owner_name} address={detail.address} />}
+                {detail.owner_phone && (
+                  <ContactActions
+                    phone={detail.owner_phone}
+                    name={detail.owner_name}
+                    address={detail.address}
+                    {...(templates && { templates, templateContext: templateContext(detail, needs) })}
+                  />
+                )}
+                {templates && <OutreachLine propertyId={detail.monday_item_id} enabled />}
+                {findPhone && !detail.owner_phone && (
+                  <FindPhone propertyId={detail.monday_item_id} name={detail.owner_name} address={detail.address} enabled />
+                )}
                 {detail.owner_email && (
                   <a href={`mailto:${detail.owner_email}`} className="flex items-center gap-2 text-brand text-[13px] no-underline hover:underline">
                     <Mail className="h-3.5 w-3.5" />
@@ -397,7 +426,14 @@ export default function PropertyPanel({
                     {detail.landlord_approval ? detail.landlord_approval : "approval unknown"}
                   </span>
                 </div>
-                {detail.landlord_phone && <ContactActions phone={detail.landlord_phone} name={detail.landlord_name} address={detail.address} />}
+                {detail.landlord_phone && (
+                  <ContactActions
+                    phone={detail.landlord_phone}
+                    name={detail.landlord_name}
+                    address={detail.address}
+                    {...(templates && { templates, templateContext: templateContext(detail, needs) })}
+                  />
+                )}
                 {detail.landlord_approval_note && <p className="text-xs text-muted">{detail.landlord_approval_note}</p>}
                 {(detail.owner_phone || detail.landlord_phone) && <ContactDigest propertyId={detail.monday_item_id} />}
                 {(detail.owner_phone || detail.landlord_phone) && (
@@ -451,9 +487,15 @@ export default function PropertyPanel({
         otherClaims={otherClaims}
         attached={attached}
         onAttached={onAttached}
+        {...(submit !== undefined && { submit })}
       />
       </>
       )}
     </aside>
   );
+}
+
+/** What the Text menu fills in: the claim's beds and move-in, the home's city and rent. */
+function templateContext(detail: PropertyDetail, needs: ClaimNeeds | null) {
+  return { beds: needs?.bedrooms ?? null, city: detail.city, moveIn: needs?.moveIn ?? null, rent: detail.monthly_rate };
 }
