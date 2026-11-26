@@ -603,6 +603,28 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 
 ---
 
+## 🧩 Housing agent on the map (switched off)
+
+The map can show the housing agent's work for the open claim: homes from outside our database (Zillow, Furnished Finder), a *Best match* sort, a chat to change the search, adding an outside home to the claim, submit status, a *Find phone* lookup, text templates and the Mine / All and Nearsite views in the claims drawer. **Every part is off until `MAP_FEATURES` names it**, so a merge changes nothing on the live map.
+
+| Switch (`MAP_FEATURES`) | Shows | Needs |
+|---|---|---|
+| `outside` | Outside homes as pins (outlined, letter Z / F) and rows | `MAP_EDIT_SECRET` (the database functions) |
+| `bestMatch` | *Best match | Nearest* sort, score and Stretch | `MAP_EDIT_SECRET` |
+| `chat` | Chat bubble, bottom right of the map | `MAP_CHAT_URL`, `MAP_CHAT_TOKEN` |
+| `addOutside` | *Add to claim* for outside homes | `MAP_CHAT_URL`, `MAP_CHAT_TOKEN` |
+| `submit` | To Do → Ready to Submit → Option Submitted on the claim | `MAP_EDIT_SECRET` |
+| `mine` | *Mine / All* filter in the claims drawer (uses the name typed on this device) | nothing |
+| `nearsite` | *Nearsite* tab in the claims drawer | `MAP_EDIT_SECRET` |
+| `findPhone` | *Find phone* when a property has no number | `MAP_PHONE_URL` (optional `MAP_PHONE_TOKEN`) |
+| `templates` | Text templates and the outreach line | `MAP_EDIT_SECRET` |
+
+`MAP_FEATURES=all` turns every switch on; a comma list turns on only those named. `/api/health` reports which switches are on (`features`), and the page reads that one response.
+
+The feature routes are `GET /api/claim/[claimId]/outside`, `…/scores`, `…/submit-status`, `POST …/ask`, `POST …/add-outside`, `GET /api/claims/nearsite`, `GET|POST /api/properties/[id]/find-phone` and `GET /api/properties/[id]/outreach`. Each answers `{ "enabled": false, … }` (or `state: "off"`) while its switch is off. The database side is one additive migration, `supabase/migrations/20261126_map_agent.sql`; its rollback statements are in the file header.
+
+Known limits: *Add to claim* and the agent work on the Claim Process Board, so they do not yet apply to Nearsite claims. *Save to listing* for a found phone waits until the edit form has a phone field.
+
 ## 🧪 Legacy prototype
 
 [`legacy/`](legacy/) holds the **1 Sep 2026 AI Studio prototype** (Vite + Lit, sample data only). It's excluded from builds and kept for reference — the travel-time calculator and internal-notes editor are ideas worth porting.
