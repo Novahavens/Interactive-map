@@ -223,6 +223,17 @@ export function toSubmitStatusResponse(data: unknown): SubmitStatusResponse {
 // ---- nearsite claims -----------------------------------------------------------------------------------
 
 /** map_nearsite_claims → NearsiteClaim[] (the route adds `enabled`). */
+/**
+ * Nearsite writes a placeholder when nobody has the claim yet ("Account manager (unassigned)"). That is nobody, so
+ * the drawer shows it as free for all (Pick up) and Mine keeps it, instead of a name chip that says "Account manager (".
+ */
+export function nearsiteAssignee(name: string | null | undefined): string | null {
+  const t = (name ?? "").trim();
+  if (!t) return null;
+  if (/\bunassigned\b|\bnot assigned\b|^(account manager|none|n\/a|-+)$/i.test(t)) return null;
+  return t;
+}
+
 export function toNearsiteClaims(data: unknown): NearsiteClaim[] {
   const d = isRow(data) ? data : {};
   const out: NearsiteClaim[] = [];
@@ -254,7 +265,7 @@ export function toNearsiteClaims(data: unknown): NearsiteClaim[] {
       feeGroup: str(r.fee_group),
       homesFound: int(r.homes_found),
       status: str(r.status),
-      assignedTo: str(r.assigned_to),
+      assignedTo: nearsiteAssignee(str(r.assigned_to)),
       url: httpUrl(r.url),
     });
   }

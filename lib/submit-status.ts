@@ -97,7 +97,10 @@ export function submitCountsLabel(
 ): string | null {
   if (!counts) return null;
   if (counts.options === 0) return "No options yet";
-  const n = (v: number) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+  const n = (v: number | null | undefined) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+  // Nothing moved yet: say how many are waiting ("4 to do") rather than "0 ready · 0 submitted", which also kept
+  // squeezing the card's title on the rail.
+  if (n(counts.ready) === 0 && n(counts.submitted) === 0 && n(counts.options) > 0) return `${n(counts.options)} to do`;
   return `${n(counts.ready)} ready · ${n(counts.submitted)} submitted`;
 }
 

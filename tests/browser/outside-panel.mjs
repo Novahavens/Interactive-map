@@ -245,7 +245,7 @@ const shots = async (p, c, tag) => {
   check("PanelFooter not attached: submit ignored", (await c("pf-notattached").locator("[data-submit]").count()) === 0 && (await text(c("pf-notattached"))).includes("One sub-item, status “To Do”."));
   check("ClaimBrief without counts: unchanged", (await c("brief-plain").locator("[data-submit-counts]").count()) === 0 && (await text(c("brief-plain").locator("summary"))) === "Claim information");
   check("ClaimBrief: 3 ready · 2 submitted in the summary row", (await text(c("brief-counts").locator("summary"))) === "Claim information 3 ready · 2 submitted");
-  check("ClaimBrief: 0 ready · 0 submitted with options", (await text(c("brief-zero").locator("summary [data-submit-counts]"))) === "0 ready · 0 submitted");
+  check("ClaimBrief: N to do when nothing is ready or submitted yet", (await text(c("brief-zero").locator("summary [data-submit-counts]"))) === "4 to do");
   check("ClaimBrief: No options yet", (await text(c("brief-none").locator("summary [data-submit-counts]"))) === "No options yet");
 
   check("desktop: no sideways scroll", await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));

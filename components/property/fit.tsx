@@ -23,8 +23,11 @@ export function computeFit(d: PropertyDetail, n: ClaimNeeds): { title: string; s
 
   // Pets
   let pets: { state: FitState; text: string };
-  if (n.pets == null || n.pets === 0) {
-    pets = { state: "unknown", text: "No pets on this claim." };
+  if (n.pets == null) {
+    pets = { state: "unknown", text: "Pets are not on the claim yet." };
+  } else if (n.pets === 0) {
+    // The claim says no pets, so there is nothing to check: a met need, not a gap.
+    pets = { state: "ok", text: "No pets on this claim." };
   } else {
     const allowed = petsAllowed(d.pet_status);
     if (allowed === true) pets = { state: "ok", text: `Pets allowed; the family has ${n.pets}.` };

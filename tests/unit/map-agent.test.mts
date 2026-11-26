@@ -4,6 +4,7 @@ import {
   ID_RE, OUTSIDE_OFF, PHONE_NONE, PHONE_OFF, RateLimiter, UUID_RE, cleanSay, cleanText, clientIp, parseAsk, readAddAnswer,
   readPhoneAnswer, refused, toAskResponse, toClaimContext, toNearsiteClaims, toOutreach, toOutsideResponse, toPhoneLookup,
   toScoresResponse, toSubmitStatusResponse, upstreamFor,
+  nearsiteAssignee,
 } from "../../lib/map-agent.ts";
 // @ts-expect-error plain JS fixtures, shared with the browser tests
 import * as fx from "../fixtures/map-agent.mjs";
@@ -229,4 +230,15 @@ test("add answer: added only when the workflow names this listing", () => {
   assert.equal(readAddAnswer(fx.RAW.chatAddRefused, fx.HOME.zillowExact), "failed");
   assert.equal(readAddAnswer(fx.RAW.chatBadKey, fx.HOME.zillowExact), "failed");
   assert.equal(readAddAnswer(null, fx.HOME.zillowExact), "failed");
+});
+
+test("Nearsite's unassigned placeholder is nobody", () => {
+  assert.equal(nearsiteAssignee("Account manager (unassigned)"), null);
+  assert.equal(nearsiteAssignee("  unassigned "), null);
+  assert.equal(nearsiteAssignee("Account manager"), null);
+  assert.equal(nearsiteAssignee(""), null);
+  assert.equal(nearsiteAssignee(null), null);
+  assert.equal(nearsiteAssignee("Alex Example"), "Alex Example");
+  const [c] = toNearsiteClaims({ ok: true, claims: [{ id: "90009", monday_item_id: "9900000309", title: "Request", assigned_to: "Account manager (unassigned)" }] });
+  assert.equal(c?.assignedTo, null);
 });
