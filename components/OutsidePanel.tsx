@@ -6,7 +6,7 @@ import type { AddOutsideResponse, OutsideHome, SubmitStatus as SubmitStatusRow }
 import { submitDate } from "@/lib/submit-status";
 import { LinkChip, Section, Tile } from "./property/parts";
 import OutsideFooter from "./property/OutsideFooter";
-import LandlordReplyBox from "./property/LandlordReplyBox";
+import LandlordReplyBox, { ReplyNote, type ReplyResult } from "./property/LandlordReplyBox";
 import { MONDAY_BOARDS, miles, mondayItemUrl, money, num } from "@/lib/utils";
 
 interface Props {
@@ -81,6 +81,8 @@ function Fact({ icon, label, value, tone = "plain" }: { icon: React.ReactNode; l
  * Same frame as PropertyPanel; everything it shows comes from the list's copy of the home (no read of its own).
  */
 export default function OutsidePanel({ home, claim, onAdded, onClose, canAdd, score, fit, onAskAddress, submit, onAddressSaved, children }: Props) {
+  // The landlord-reply result outlives the box: the list reloads after a save and the box goes away.
+  const [replyNote, setReplyNote] = useState<ReplyResult | null>(null);
   const [photoBroken, setPhotoBroken] = useState(false);
   const source = SOURCE[home.source] ?? null;
   const url = safeUrl(home.url);
@@ -238,7 +240,16 @@ export default function OutsidePanel({ home, claim, onAdded, onClose, canAdd, sc
 
         {children}
 
-        {home.source === "furnished_finder" && !home.addressKnown && <LandlordReplyBox listingId={home.listingId} onSaved={onAddressSaved} />}
+        {home.source === "furnished_finder" && !home.addressKnown && (
+          <LandlordReplyBox
+            listingId={home.listingId}
+            onSaved={(note) => {
+              setReplyNote(note);
+              onAddressSaved?.();
+            }}
+          />
+        )}
+        {replyNote && <ReplyNote note={replyNote} />}
 
         <Section title="Notes & links">
           <p className="mb-2.5 text-[13px] text-muted">

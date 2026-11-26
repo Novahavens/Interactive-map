@@ -9,7 +9,7 @@ import { featuresOn } from "./health";
 const NAME_KEY = "nh-reporter-name";
 const MAX = 8000;
 
-interface Result {
+export interface ReplyResult {
   tone: "ok" | "warn" | "bad";
   lines: string[];
 }
@@ -19,12 +19,16 @@ interface Result {
  * the server decides what it may write (POST /api/outside/:id/landlord-reply). Shown only while the `outside`
  * feature is on. Nothing is sent to the landlord, and Monday is not written.
  */
-export default function LandlordReplyBox({ listingId, onSaved }: { listingId: string; onSaved?: () => void }) {
+/**
+ * `onSaved` gets the note when an address was written. The list then reloads and this box goes away (the home has
+ * an address now), so the parent keeps the note and shows it with <ReplyNote />.
+ */
+export default function LandlordReplyBox({ listingId, onSaved }: { listingId: string; onSaved?: (note: ReplyResult) => void }) {
   const [on, setOn] = useState(false);
   const [text, setText] = useState("");
   const [by, setBy] = useState("");
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<Result | null>(null);
+  const [result, setResult] = useState<ReplyResult | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -64,10 +68,11 @@ export default function LandlordReplyBox({ listingId, onSaved }: { listingId: st
         }
         if (data.copyToPropertyDb) lines.push("This home is in PROPERTY DATABASE. Copy the address there in Monday (the map does not write Monday).");
         if (data.possibleDuplicates) lines.push("A home with this street may already exist. Nothing was merged; please check.");
-        setResult({ tone: data.outcome === "address_saved" || data.outcome === "same_address" || data.outcome === "duplicate" ? "ok" : "warn", lines });
+        const note: ReplyResult = { tone: data.outcome === "address_saved" || data.outcome === "same_address" || data.outcome === "duplicate" ? "ok" : "warn", lines };
+        setResult(note);
         setText("");
-        // The outside list and the map pin come from the list, so re-read it: the home now has an address.
-        if (data.addressWritten) onSaved?.();
+        // The outside list and the map pin come from the list, so the parent re-reads it: the home now has an address.
+        if (data.addressWritten) onSaved?.(note);
       } else {
         setResult({ tone: "bad", lines: [data?.error ?? "The reply was not saved. Try again."] });
       }
@@ -120,6 +125,20 @@ export default function LandlordReplyBox({ listingId, onSaved }: { listingId: st
       </div>
       <div aria-live="polite" className={`mt-2 space-y-1 text-[13px] ${tone}`} data-landlord-reply-result>
         {result?.lines.map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+/** The result of a saved reply, kept by the panel after the box has gone (the warning and the Monday copy note stay visible). */
+export function ReplyNote({ note }: { note: ReplyResult }) {
+  const tone = note.tone === "ok" ? "text-ok-ink" : note.tone === "warn" ? "text-amber-ink" : "text-bad-ink";
+  return (
+    <Section title="Landlord reply">
+      <div aria-live="polite" className={`space-y-1 text-[13px] ${tone}`} data-landlord-reply-result>
+        {note.lines.map((line) => (
           <p key={line}>{line}</p>
         ))}
       </div>
