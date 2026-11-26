@@ -682,6 +682,14 @@ The feature routes are listed under [API routes](#api-routes). Each answers `{ "
 
 Known limits: *Add to claim* and the agent work on the Claim Process Board, so they do not yet apply to Nearsite claims. *Save to listing* for a found phone waits until the edit form has a phone field.
 
+## 🤖 Nearsite claims agent (switched off)
+
+`nearsite-agent/` holds the claims agent: it picks up Nearsite and other claims, ranks our own homes first (outside homes only when ours fall short), drafts landlord messages, verifies by text and call, runs every option through a checker, and submits to Nearsite only after William and Lou both approve in Slack. A LangGraph harness keeps each claim and home on a graph and resumes on events.
+
+**Nothing in it can act yet.** Every outward step (Quo texts and calls, Slack posts, Nearsite saves, emails, Monday and Supabase writes) needs `live.master`, its own switch and `NEARSITE_AGENT_LIVE=1`, and all of them are off. The committed config holds example pricing and placeholder people; the real values live in a private overlay, never in this repo, and the checker refuses every outward step without it. Its migrations are written but not applied. See [`nearsite-agent/README.md`](nearsite-agent/README.md).
+
+**Tests.** CI (`.github/workflows/ci.yml`) runs the agent's pytest suite (engine, live gate, harness, LangGraph runtime with a Postgres checkpointer), the Slack handler, extension and migration tests, and a dry run on fictional claims, next to the map's typecheck, unit tests, build and browser suites.
+
 ## 🧪 Legacy prototype
 
 [`legacy/`](legacy/) holds the **1 Sep 2026 AI Studio prototype** (Vite + Lit, sample data only). It's excluded from builds and kept for reference — the travel-time calculator and internal-notes editor are ideas worth porting.
