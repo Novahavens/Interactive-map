@@ -20,6 +20,8 @@ import AvailabilityPill from "./property/AvailabilityPill";
 import EditListing from "./property/EditListing";
 import FindPhone from "./property/FindPhone";
 import OutreachLine from "./property/OutreachLine";
+import AgentStep, { type AgentSend } from "./property/AgentStep";
+import type { AgentHome } from "@/lib/agent-graph";
 import MatchScore from "./MatchScore";
 import type { EditSession } from "./property/edit-session";
 import { editingEnabled } from "./property/health";
@@ -51,6 +53,8 @@ interface Props {
   findPhone?: boolean;
   /** Flag `templates`: the Text menu and the outreach line. */
   templates?: boolean;
+  /** Flag `agentGraph`: where the claims agent has this home, and what a person can do. Left out: no section. */
+  agent?: { home: AgentHome | null; send: AgentSend };
 }
 
 const STATUS_TOKEN: Record<MapStatus, { bg: string; ink: string; line: string }> = {
@@ -76,6 +80,7 @@ export default function PropertyPanel({
   submit,
   findPhone = false,
   templates = false,
+  agent,
 }: Props) {
   const [detail, setDetail] = useState<PropertyDetail | null>(null);
   // Edit waits for this panel's own read, so the form never starts from an older copy.
@@ -274,6 +279,12 @@ export default function PropertyPanel({
         {detail && (
           <>
             <KeyFacts detail={detail} />
+
+            {agent && (
+              <Section title="Claims agent">
+                <AgentStep home={agent.home} homeKey={detail.monday_item_id} listingUrl={detail.property_link} send={agent.send} />
+              </Section>
+            )}
 
             {/* Fit against the claim */}
             {needs && (

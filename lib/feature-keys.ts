@@ -2,7 +2,7 @@
 // lib/features.ts and reports the result in GET /api/health; the browser reads it with featuresOn()
 // (components/property/health.ts). Every feature is off unless MAP_FEATURES names it.
 
-export const FEATURE_KEYS = ["outside", "bestMatch", "chat", "addOutside", "submit", "mine", "nearsite", "findPhone", "templates"] as const;
+export const FEATURE_KEYS = ["outside", "bestMatch", "chat", "addOutside", "submit", "mine", "nearsite", "findPhone", "templates", "agentGraph"] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
@@ -16,6 +16,7 @@ export const NO_FEATURES: Readonly<Record<FeatureKey, boolean>> = Object.freeze(
   nearsite: false,
   findPhone: false,
   templates: false,
+  agentGraph: false,
 });
 
 /** What else must be set up before a named feature is really on. */
@@ -29,7 +30,7 @@ export interface FeatureNeeds {
 }
 
 // "mine" only filters claims the browser already has, so it needs nothing from the server.
-const NEEDS_SECRET: ReadonlySet<FeatureKey> = new Set(["outside", "bestMatch", "chat", "addOutside", "submit", "nearsite", "findPhone", "templates"]);
+const NEEDS_SECRET: ReadonlySet<FeatureKey> = new Set(["outside", "bestMatch", "chat", "addOutside", "submit", "nearsite", "findPhone", "templates", "agentGraph"]);
 const NEEDS_CHAT: ReadonlySet<FeatureKey> = new Set(["chat", "addOutside"]);
 const NEEDS_PHONE: ReadonlySet<FeatureKey> = new Set(["findPhone"]);
 

@@ -34,6 +34,8 @@ import { Section } from "./property/parts";
 import { useEditSession, type SavedOutcome } from "./property/edit-session";
 import { STATUS_ORDER, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
 import ClaimBrief, { claimGlance } from "./ClaimBrief";
+import ClaimAgentLine from "./ClaimAgentLine";
+import { homeStep, type AgentState } from "@/lib/agent-graph";
 import ResultsSheet, { type SheetSnap } from "./ResultsSheet";
 import MapKey from "./MapKey";
 import ResultRow, { type HoverSource } from "./ResultRow";
@@ -386,6 +388,38 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     [submitStatus],
   );
 
+  // Claims agent graph (flag `agentGraph`): where the agent has this claim, read per claim and after each decision.
+  const [agentState, setAgentState] = useState<AgentState | null>(null);
+  const agentClaimId = features.agentGraph && claim ? claim.id : null;
+  const loadAgent = useCallback(() => {
+    const id = agentClaimId;
+    if (!id) return;
+    getJson<AgentState>(`/api/claim/${id}/agent`)
+      .then((r) => workIdRef.current === id && setAgentState(r.enabled ? r : null))
+      .catch(() => undefined);
+  }, [agentClaimId]);
+  useEffect(() => {
+    setAgentState(null);
+    loadAgent();
+  }, [loadAgent]);
+  const sendAgent = useCallback(
+    async (ev: Record<string, unknown>) => {
+      if (!agentClaimId) return false;
+      try {
+        const res = await fetch(`/api/claim/${agentClaimId}/agent/event`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(ev),
+        });
+        if (res.ok) loadAgent();
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+    [agentClaimId, loadAgent],
+  );
+
   // Agent chat (flag `chat`).
   const [chatOpen, setChatOpen] = useState(false);
   const chat = useAgentChat({ claimId: features.chat ? workId : null, open: chatOpen, enabled: features.chat, onChanged: loadOutside });
@@ -687,6 +721,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
           hideGlance={touch}
           {...(features.submit && { submitCounts: submitStatus ? { ...submitStatus.counts, options: submitStatus.options.length } : null })}
         />
+        {features.agentGraph && agentState && <ClaimAgentLine state={agentState} send={sendAgent} />}
         <button
           type="button"
           disabled={attachedPins.length === 0}
@@ -838,6 +873,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       {...(features.submit && submitStatus && { submit: submitFor(selectedId) })}
       {...(features.findPhone && { findPhone: true })}
       {...(features.templates && { templates: true })}
+      {...(features.agentGraph && agentState?.claimKey && { agent: { home: homeStep(agentState, selectedId), send: sendAgent } })}
     />
   ) : null;
 
