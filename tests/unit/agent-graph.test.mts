@@ -1,6 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NO_AGENT, canSubmit, claimCounts, homeActions, homeStep, parseAgentEvent, toAgentState } from "../../lib/agent-graph.ts";
+import {
+  AGENT_FAST_WINDOW_MS,
+  AGENT_POLL_FAST_MS,
+  AGENT_POLL_SLOW_MS,
+  NO_AGENT,
+  agentClaimFor,
+  agentPollDelay,
+  canSubmit,
+  claimCounts,
+  homeActions,
+  homeStep,
+  parseAgentEvent,
+  toAgentState,
+} from "../../lib/agent-graph.ts";
 
 const answer = {
   ok: true,
@@ -84,4 +97,20 @@ test("parseAgentEvent accepts only the four decisions a person can make", () => 
   ]) {
     assert.equal(parseAgentEvent(bad).ok, false, JSON.stringify(bad));
   }
+});
+
+test("the cockpit follows the open work item: a Nearsite claim from the drawer counts too (review fix)", () => {
+  // MapApp's work item is the Claim Process claim or, with no claim, the Nearsite claim's Monday item.
+  assert.equal(agentClaimFor(true, { id: "9900000001" }), "9900000001");
+  assert.equal(agentClaimFor(true, null), null);
+  assert.equal(agentClaimFor(false, { id: "9900000001" }), null);
+});
+
+test("the cockpit keeps reading: fast right after a decision, slower otherwise, never in a hidden tab (review fix)", () => {
+  const now = 1_000_000;
+  assert.equal(agentPollDelay(now, null, false), AGENT_POLL_SLOW_MS);
+  assert.equal(agentPollDelay(now, now - 1_000, false), AGENT_POLL_FAST_MS);
+  assert.equal(agentPollDelay(now, now - AGENT_FAST_WINDOW_MS - 1, false), AGENT_POLL_SLOW_MS);
+  assert.equal(agentPollDelay(now, now - 1_000, true), null);
+  assert.ok(AGENT_POLL_FAST_MS < AGENT_POLL_SLOW_MS);
 });

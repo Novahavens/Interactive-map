@@ -102,3 +102,20 @@ export function claimCounts(st: AgentState): { homes: number; needYou: number; r
     ready: hs.filter((h) => h.status === "ready").length,
   };
 }
+
+/**
+ * Which claim the cockpit follows: the open work item, so a Nearsite claim opened from the drawer counts as
+ * much as a Claim Process claim (both are Monday item ids that map_claim_refs resolves).
+ */
+export function agentClaimFor(on: boolean, work: { id: string } | null | undefined): string | null {
+  return on && work?.id ? work.id : null;
+}
+
+/** Re-read soon after a decision (the agent picks it up within seconds), slower otherwise, never in a hidden tab. */
+export const AGENT_POLL_FAST_MS = 4_000;
+export const AGENT_POLL_SLOW_MS = 20_000;
+export const AGENT_FAST_WINDOW_MS = 60_000;
+export function agentPollDelay(now: number, lastSentAt: number | null, hidden: boolean): number | null {
+  if (hidden) return null;
+  return lastSentAt !== null && now - lastSentAt < AGENT_FAST_WINDOW_MS ? AGENT_POLL_FAST_MS : AGENT_POLL_SLOW_MS;
+}

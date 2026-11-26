@@ -675,7 +675,7 @@ The feature routes are listed under [API routes](#api-routes). Each answers `{ "
 
 **Database.** One additive migration, `supabase/migrations/20261126_map_agent.sql` (rollback statements in the file header). **Applied on 26 Nov 2026.** `tests/sql/map-agent-rollback.sql` runs every function on real claims inside a transaction that rolls itself back; it passed on 26 Nov 2026 with every expected answer (wrong or missing secret refused, outside homes fitting first, scores, submit status, Nearsite claims, phone lookup limits) and left nothing behind.
 
-**Tests.** `npm run typecheck`, `npm run test:unit` (204 tests), `npm run build`, and the browser suites `tests/browser/{agent-chat,agent-graph,claims-drawer,contacts,list-score,map-layer,outside-panel}.mjs` against `next dev` with `MAP_FEATURES=all` (routes mocked from `tests/fixtures/map-agent.mjs`; 585 checks). All pass on `main`.
+**Tests.** `npm run typecheck`, `npm run test:unit` (206 tests), `npm run build`, and the browser suites `tests/browser/{agent-chat,agent-graph,claims-drawer,contacts,list-score,map-layer,outside-panel}.mjs` against `next dev` with `MAP_FEATURES=all` (routes mocked from `tests/fixtures/map-agent.mjs`; 585 checks). All pass on `main`.
 
 **Switching it on** (owner's step):
 1. Pick the switches. `mine`, `outside`, `bestMatch`, `submit` and `nearsite` only read; `chat` and `addOutside` call the Search Chat workflow and `addOutside` writes a sub-item to the Monday claim; `findPhone` calls the lookup webhook.
