@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map agent UI mock — Nova Havens Property Map</title>
+<style>
+/* ---------- Real tokens from app/globals.css ---------- */
+:root{
+  --bg:#fafafa;--surface:#ffffff;--surface-muted:#f5f5f5;--line:#eaeaea;--line2:#d4d4d4;--ink:#171717;--muted:#666666;
+  --scrim:rgba(250,250,250,.72);
+  --amber-bg:#fff7e6;--amber-ink:#8a5a00;--amber-line:#f5d78e;
+  --ok-bg:#e8f9ef;--ok-ink:#0a6b3a;--ok-line:#a7e8c1;
+  --bad-bg:#fde8e8;--bad-ink:#b00020;--bad-line:#f5b5b5;
+  --info-ink:#0761d1;
+  --loss:#f5a623;--database:#17c964;--dnu:#ee0000;--focus:#0070f3;
+  /* mock only: the map placeholder */
+  --map-land:#e9edf0;--map-road:#ffffff;--map-water:#d3dde6;--page:#eeeeee;
+  color-scheme:light;
+}
+[data-theme="dark"]{
+  --bg:#000000;--surface:#0a0a0a;--surface-muted:#141414;--line:#262626;--line2:#333333;--ink:#ededed;--muted:#a1a1a1;
+  --scrim:rgba(0,0,0,.55);
+  --amber-bg:#2a1f06;--amber-ink:#f5a623;--amber-line:#4a3608;
+  --ok-bg:#062a19;--ok-ink:#17c964;--ok-line:#0b4a2e;
+  --bad-bg:#2a0606;--bad-ink:#ff6166;--bad-line:#4a0b0b;
+  --info-ink:#4da3ff;
+  --map-land:#1b1e22;--map-road:#2b3036;--map-water:#12202c;--page:#111111;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--page);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+button,input,textarea{font-family:inherit;font-size:inherit;color:inherit}
+button{cursor:pointer}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.muted{color:var(--muted)}
+svg.i{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- Existing classes, copied from globals.css ---------- */
+.nh-pin{display:flex;flex-direction:column;align-items:center;cursor:pointer;transform-origin:50% 100%}
+.nh-pin__chip{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 9px;border-radius:999px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:600;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.nh-pin__caret{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--line2)}
+.nh-dot{display:inline-block;flex:none;width:9px;height:9px;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+.nh-dot--circle{border-radius:999px}
+.nh-dot--diamond{width:8px;height:8px;border-radius:1px;transform:rotate(45deg)}
+.nh-dot--square{border-radius:2px}
+.nh-pin--attached .nh-pin__chip{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.nh-pin--attached .nh-pin__caret{border-top-color:var(--ink)}
+.nh-pin--selected{transform:scale(1.06)}
+.nh-pin--selected .nh-pin__chip{border-color:var(--focus);box-shadow:0 0 0 2px var(--focus),0 2px 8px rgba(0,0,0,.3)}
+.nh-pin--selected .nh-pin__caret{border-top-color:var(--focus)}
+.nh-pin--dnu .nh-pin__chip{opacity:.45;text-decoration:line-through}
+.nh-pin--dimmed{opacity:.18}
+.nh-pin--approx .nh-pin__chip{border-style:dashed}
+.nh-pin__approx{color:var(--muted);font-weight:500}
+.nh-pin--hover{transform:scale(1.25)}
+.nh-pin--hover .nh-pin__chip{border-color:var(--ink);box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--ink),0 2px 8px rgba(0,0,0,.3)}
+.nh-cluster{display:inline-flex;height:30px;min-width:30px;align-items:center;justify-content:center;padding:0 10px;border-radius:999px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);font-family:ui-monospace,monospace;font-size:13px;font-weight:600;box-shadow:0 0 0 3px var(--surface),0 0 0 4px var(--line2),0 1px 3px rgba(0,0,0,.25)}
+.nh-loss{display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3))}
+.nh-loss__chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:999px;background:var(--loss);color:#1a1a1a;font-size:12px;font-weight:600;white-space:nowrap}
+.nh-loss__caret{width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:7px solid var(--loss)}
+.nh-eyebrow{font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.nh-skeleton{border-radius:6px;background:var(--surface-muted)}
+.nh-chip{display:inline-flex;align-items:center;min-width:0;max-width:100%;height:18px;padding:0 6px;border:1px solid transparent;border-radius:4px;font-size:11px;font-weight:500;line-height:1;white-space:nowrap}
+.nh-chip--ok{color:var(--ok-ink)}.nh-chip--info{color:var(--info-ink)}.nh-chip--muted{color:var(--muted)}.nh-chip--bad{color:var(--bad-ink)}
+.nh-chip--amber{color:var(--amber-ink);background:var(--amber-bg);border-color:var(--amber-line)}
+
+/* ---------- NEW classes (this release) ---------- */
+/* Outside pin: ink outline, source letter instead of a status dot. No fourth colour. */
+.nh-pin--outside .nh-pin__chip{border:1.5px solid var(--ink);padding:0 9px 0 6px;gap:6px}
+.nh-pin--outside .nh-pin__caret{border-top-color:var(--ink)}
+.nh-pin--outside.nh-pin--approx .nh-pin__chip{border-style:dashed}
+.nh-pin--outside.nh-pin--selected .nh-pin__chip{border-color:var(--focus)}
+.nh-pin--outside.nh-pin--selected .nh-pin__caret{border-top-color:var(--focus)}
+.nh-src{display:inline-flex;flex:none;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:var(--ink);color:var(--surface);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;font-weight:700;line-height:1}
+.nh-src--sm{width:14px;height:14px;font-size:9px;border-radius:3px}
+.nh-src--none{background:transparent;color:var(--muted);border:1px dashed var(--line2)}
+.nh-chip--line{color:var(--ink);border-color:var(--line2)}
+.nh-score{display:inline-flex;align-items:center;gap:4px}
+.nh-score__bar{width:100%;height:4px;border-radius:999px;background:var(--surface-muted);overflow:hidden;border:1px solid var(--line)}
+.nh-score__bar>i{display:block;height:100%;background:var(--ink)}
+.nh-agent-bubble{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:999px;border:1px solid var(--ink);background:var(--ink);color:var(--bg);box-shadow:0 6px 20px rgba(0,0,0,.28);position:relative}
+.nh-agent-bubble svg{width:20px;height:20px}
+.nh-agent-bubble__badge{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--surface);color:var(--ink);border:1px solid var(--ink);font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
+.nh-agent{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line2);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);overflow:hidden}
+.nh-agent__head{display:flex;align-items:center;gap:8px;padding:10px 10px 10px 14px;border-bottom:1px solid var(--line)}
+.nh-agent__log{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:12px 14px}
+.nh-msg{max-width:86%;padding:8px 11px;border-radius:14px;font-size:13px;line-height:1.4}
+.nh-msg--me{align-self:flex-end;background:var(--ink);color:var(--bg);border-bottom-right-radius:4px}
+.nh-msg--agent{align-self:flex-start;background:var(--surface-muted);border:1px solid var(--line);border-bottom-left-radius:4px}
+.nh-msg__who{display:block;font-size:11px;font-weight:600;margin-bottom:2px;opacity:.75}
+.nh-result{align-self:stretch;display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;font-size:13px}
+.nh-suggest{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px}
+.nh-suggest button{height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line2);background:var(--surface);font-size:12.5px}
+.nh-prompt{margin:0 10px 10px;border:1px solid var(--line2);border-radius:16px;background:var(--surface);padding:8px 8px 6px 12px}
+.nh-prompt textarea{display:block;width:100%;border:0;outline:0;resize:none;background:transparent;font-size:14px;line-height:1.4;min-height:22px;padding:2px 0}
+.nh-prompt textarea::placeholder{color:#8f8f8f}
+.nh-prompt__row{display:flex;align-items:center;gap:6px;margin-top:4px}
+.nh-prompt__btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.nh-prompt__btn--send{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.nh-steps{display:flex;align-items:flex-start;list-style:none;margin:0;padding:0}
+.nh-steps li{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;position:relative;font-size:11.5px;text-align:center;color:var(--muted);line-height:1.2}
+.nh-steps li::before{content:"";position:absolute;top:9px;left:-50%;width:100%;height:1.5px;background:var(--line2)}
+.nh-steps li:first-child::before{display:none}
+.nh-steps li.is-done::before,.nh-steps li.is-now::before{background:var(--ink)}
+.nh-steps__dot{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;border:1.5px solid var(--line2);background:var(--surface);font-size:10px;font-weight:700;color:var(--muted)}
+.nh-steps li.is-done .nh-steps__dot{border-color:var(--ink);color:var(--ink)}
+.nh-steps li.is-now .nh-steps__dot{border-color:var(--ink);background:var(--ink);color:var(--bg)}
+.nh-steps li.is-now{color:var(--ink);font-weight:600}
+.nh-steps li.is-done{color:var(--ink)}
+
+/* ---------- Mock scaffolding ---------- */
+.page{width:1560px;margin:0 auto;padding:24px 24px 48px}
+.page>header{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.page h1{font-size:18px;margin:0;letter-spacing:-.01em}
+.page h2{font-size:13px;font-weight:600;margin:28px 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.frame{background:var(--bg);border:1px solid var(--line2);border-radius:10px;overflow:hidden;position:relative;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.cap{font-size:12px;color:var(--muted);margin:6px 2px 0}
+.row{display:flex;gap:24px;align-items:flex-start}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 10px;border-radius:6px;border:1px solid var(--line);background:var(--surface);font-size:12px;font-weight:500;white-space:nowrap}
+.btn--ink{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn[disabled]{background:var(--surface-muted);color:var(--muted);cursor:not-allowed}
+.pill{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line2);background:var(--surface);font-size:13px;white-space:nowrap}
+.pill--on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.pill .n{font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);background:var(--surface-muted);border-radius:7px;padding:2px}
+.seg>span{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:5px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.seg>span.on{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.kbd-focus{outline:2px solid var(--focus);outline-offset:2px}
+
+/* app header */
+.apphead{height:48px;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--surface);font-size:14px}
+.count{display:inline-flex;height:20px;min-width:20px;padding:0 6px;border-radius:999px;background:var(--ink);color:var(--bg);font:11px ui-monospace,monospace;align-items:center;justify-content:center}
+
+/* desktop */
+.desk{width:1510px;height:960px;display:flex;flex-direction:column}
+.work{display:flex;flex:1;min-height:0}
+.rail{width:320px;flex:none;border-right:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column}
+.rail .blk{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.field{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:13px}
+.wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.list{list-style:none;margin:0;padding:4px 8px;display:flex;flex-direction:column;gap:2px;overflow:hidden;flex:1;min-height:0}
+.rowi{display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid transparent;border-radius:8px}
+.rowi.sel{background:var(--surface-muted);border-color:var(--line)}
+.rowi .top{display:flex;align-items:center;gap:10px}
+.rowi .mid{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+.rowi .mid b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rowi .mid span{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rowi .end{display:flex;flex-direction:column;align-items:flex-end;line-height:1.25;flex:none}
+.rowi .end b{font:600 13px ui-monospace,monospace}
+.rowi .end span{font-size:12px;color:var(--muted)}
+.rowi .chips{display:flex;flex-wrap:wrap;gap:2px 4px;padding-left:20px}
+.rowi .why{padding-left:26px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dotslot{width:16px;display:inline-flex;justify-content:center;flex:none}
+.divider{font-size:11.5px;color:var(--muted);padding:8px 8px 2px;border-top:1px solid var(--line);margin-top:4px}
+
+/* map */
+.map{flex:1;min-width:0;position:relative;overflow:hidden;background:
+  linear-gradient(115deg,transparent 0 46.6%,var(--map-road) 46.6% 48%,transparent 48%),
+  linear-gradient(25deg,transparent 0 61.5%,var(--map-road) 61.5% 62.6%,transparent 62.6%),
+  repeating-linear-gradient(0deg,transparent 0 118px,var(--map-road) 118px 122px),
+  repeating-linear-gradient(90deg,transparent 0 148px,var(--map-road) 148px 152px),
+  var(--map-land)}
+.map .water{position:absolute;left:-60px;top:-80px;width:260px;height:190px;border-radius:50%;background:var(--map-water)}
+.map .ring{position:absolute;border-radius:50%;border:1px solid rgba(184,134,11,.7);background:rgba(245,166,35,.06)}
+.at{position:absolute;transform:translate(-50%,-100%)}
+.zoom{position:absolute;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line2);border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.2);font-size:18px;line-height:1}
+.zoom span{width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.zoom span+span{border-top:1px solid var(--line)}
+.attrib{position:absolute;right:0;bottom:0;font-size:10px;color:var(--muted);background:var(--scrim);padding:1px 6px}
+.key{position:absolute;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--muted)}
+.key>span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.kcheck{display:inline-flex;width:16px;height:16px;border-radius:999px;background:var(--ink);color:var(--bg);align-items:center;justify-content:center}
+.kcheck svg{width:10px;height:10px;stroke-width:3}
+.kgroup{display:inline-flex;min-width:16px;height:16px;padding:0 4px;border-radius:999px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);font:600 10px ui-monospace,monospace;align-items:center;justify-content:center}
+
+/* panel */
+.panel{width:400px;flex:none;border-left:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+.sec{padding:12px 16px;border-bottom:1px solid var(--line)}
+.sec h3{margin:0 0 8px}
+.fit{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.fit li{display:flex;gap:8px;align-items:flex-start}
+.fit .g{margin-top:1px;width:16px;height:16px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;flex:none}
+.fit .t{display:flex;flex-direction:column;line-height:1.35}
+.fit .t b{font-weight:500}.fit .t span{font-size:13px;color:var(--muted)}
+.g-ok{background:var(--ok-bg);color:var(--ok-ink)}.g-warn{background:var(--amber-bg);color:var(--amber-ink)}.g-unk{background:var(--surface-muted);color:var(--muted)}.g-bad{background:var(--bad-bg);color:var(--bad-ink)}
+.foot{border-top:1px solid var(--line);background:var(--surface);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.banner{display:flex;align-items:center;justify-content:center;gap:8px;height:40px;border-radius:8px;border:1px solid;font-size:14px;font-weight:500}
+.banner--ok{border-color:var(--ok-line);background:var(--ok-bg);color:var(--ok-ink)}
+.note{border:1px solid;border-radius:6px;padding:8px 10px;font-size:13px;display:flex;gap:8px;align-items:flex-start;line-height:1.35}
+.note--amber{border-color:var(--amber-line);background:var(--amber-bg);color:var(--amber-ink)}
+.note--bad{border-color:var(--bad-line);background:var(--bad-bg);color:var(--bad-ink)}
+.note--ok{border-color:var(--ok-line);background:var(--ok-bg);color:var(--ok-ink)}
+.big{height:40px;width:100%;border-radius:8px;border:0;background:var(--ink);color:var(--bg);font-size:14px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:8px}
+.big[disabled]{background:var(--surface-muted);color:var(--muted)}
+.small{font-size:12px;color:var(--muted)}
+.center{text-align:center}
+.linkchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:500;background:var(--surface)}
+.cline{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.cline .num{font:13px ui-monospace,monospace;padding:0 6px;height:32px;display:inline-flex;align-items:center;gap:6px}
+.cline .sp{margin-left:auto;display:inline-flex;gap:6px}
+
+/* phone */
+.phone{width:360px;height:740px;position:relative;display:flex;flex-direction:column}
+.sheetbar{position:absolute;left:0;right:0;bottom:0;height:56px;background:var(--surface);border-top:1px solid var(--line);border-radius:12px 12px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.18);display:flex;align-items:stretch}
+.sheetbar::before{content:"";position:absolute;left:50%;top:6px;width:36px;height:4px;border-radius:99px;background:var(--line2);transform:translateX(-50%)}
+.sheetbar .txt{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;padding:10px 12px 0}
+.sheetbar .txt b{font-size:14px;font-weight:500;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheetbar .txt span{font-size:12px;line-height:16px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scrim{position:absolute;inset:0;background:var(--scrim)}
+.chatsheet{position:absolute;left:0;right:0;bottom:0;height:88%;border-radius:14px 14px 0 0;border-bottom:0;border-left:0;border-right:0}
+.status{align-self:stretch;border:1px solid var(--line2);border-radius:10px;padding:10px 12px;font-size:13px;display:flex;flex-direction:column;gap:6px}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--line2);border-top-color:var(--ink);flex:none}
+.progress{height:4px;border-radius:99px;background:var(--surface-muted);border:1px solid var(--line);overflow:hidden}
+.progress i{display:block;height:100%;width:38%;background:var(--ink)}
+
+/* drawer */
+.drawer{width:360px;height:740px;background:var(--surface);display:flex;flex-direction:column}
+.tabs{display:flex;border-bottom:1px solid var(--line);padding:0 12px;gap:4px}
+.tabs>span{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 10px;font-size:13.5px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs>span.on{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+.tabs .n{font:11px ui-monospace,monospace;border:1px solid var(--line2);border-radius:99px;padding:1px 6px;color:var(--muted)}
+.toolbar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px}
+.citem{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:8px}
+.citem.sel{background:var(--surface-muted)}
+.citem .l{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;line-height:1.25}
+.citem .l b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.citem .l span{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.citem .r{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}
+.opt{display:inline-flex;height:20px;align-items:center;border:1px solid var(--line);border-radius:99px;padding:0 8px;font-size:11px;font-weight:500;white-space:nowrap}
+.am{background:var(--surface-muted);border-radius:4px;padding:1px 6px;font-size:11px;color:var(--muted);white-space:nowrap}
+
+/* states */
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;align-items:start}
+.card{background:var(--surface);border:1px solid var(--line2);border-radius:10px;overflow:hidden}
+.card>h4{margin:0;padding:8px 12px;font-size:12px;font-weight:600;border-bottom:1px solid var(--line);background:var(--surface-muted)}
+.card .st{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.card .st:last-child{border-bottom:0}
+.tag{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.menu{border:1px solid var(--line2);border-radius:10px;background:var(--surface);box-shadow:0 8px 24px rgba(0,0,0,.18);padding:4px;width:100%}
+.menu div{padding:7px 9px;border-radius:6px;display:flex;flex-direction:column;line-height:1.3}
+.menu div.hi{background:var(--surface-muted)}
+.menu div b{font-weight:500;font-size:13px}
+.menu div span{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+.pinstage{position:relative;height:150px;background:var(--map-land);border-radius:8px;border:1px solid var(--line)}
+.inp{height:32px;border:1px solid var(--line2);border-radius:6px;background:var(--surface);padding:0 9px;font-size:13px;flex:1;min-width:0;display:flex;align-items:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/><path d="M9 11h6M9 14h4"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13L22 12v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/></symbol>
+  <symbol id="i-min" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></symbol>
+</svg>
+
+<div class="page">
+  <header>
+    <h1>Map agent UI — static mock</h1>
+    <span class="muted">Fictional data. Real tokens from app/globals.css.</span>
+    <button class="btn" style="margin-left:auto" id="themeBtn" type="button" onclick="var h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark';this.textContent='Theme: '+h.dataset.theme">Theme: light</button>
+  </header>
+
+  <h2>1 · Desktop — outside homes, best match, chat open, home just added</h2>
+  <div class="frame desk">
+    <div class="apphead">
+      <span class="btn" style="height:32px"><svg class="i"><use href="#i-inbox"/></svg>Claims <span class="count">18</span></span>
+      <b style="letter-spacing:-.01em">Nova Havens</b><span style="color:var(--line2)">/</span><span class="muted">Claims</span><span style="color:var(--line2)">/</span><b style="font-weight:500">Ramirez family</b>
+      <span class="mono small" style="border:1px solid var(--line);border-radius:4px;padding:1px 6px">9000012345</span>
+      <span style="margin-left:auto" class="btn"><svg class="i"><use href="#i-refresh"/></svg>Refresh</span>
+    </div>
+    <div class="work">
+      <!-- RAIL -->
+      <aside class="rail">
+        <div class="blk">
+          <div class="field"><svg class="i muted"><use href="#i-search"/></svg><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">2207 Cedar Hollow Rd, Tulsa, OK</span></div>
+          <div class="wrap"><span class="seg"><span>5 mi</span><span class="on">10 mi</span><span>15 mi</span><span>25 mi</span></span></div>
+          <div class="wrap"><span class="pill pill--on"><svg class="i" style="width:11px;height:11px;stroke-width:3"><use href="#i-check"/></svg>Pets ok</span><span class="pill">Photos</span><span class="pill">Has rent</span></div>
+          <div class="wrap" aria-label="Dot colours">
+            <span class="pill"><span class="nh-dot nh-dot--circle" style="background:#17c964"></span>Used before <span class="n">14</span></span>
+            <span class="pill"><span class="nh-dot nh-dot--diamond" style="background:#facc15"></span>Neutral <span class="n">21</span></span>
+            <span class="pill"><span class="nh-dot nh-dot--square" style="background:#ee0000"></span>Do not use <span class="n">3</span></span>
+            <span class="pill kbd-focus" title="NEW: key entry that also filters"><span class="nh-src nh-src--sm">Z</span><span class="nh-src nh-src--sm" style="margin-left:-3px">F</span>Outside <span class="n">12</span></span>
+            <span class="small" style="display:inline-flex;gap:6px;align-items:center"><span class="kcheck"><svg class="i"><use href="#i-check"/></svg></span>On this claim</span>
+          </div>
+        </div>
+        <div class="blk">
+          <span class="nh-eyebrow">The family needs</span>
+          <div style="font-size:13px;font-weight:500">2 adults · 2 children · 1 pet · 3 bd / 2 ba · move-in 8 Dec</div>
+          <div style="display:flex;align-items:center;gap:8px;min-height:40px;padding:0 12px;border:1px solid var(--line);border-left:3px solid var(--focus);border-radius:8px;font-size:13px">
+            <b style="font-weight:600">Claim information</b>
+            <span class="small" style="margin-left:auto;white-space:nowrap" title="NEW: submit count">3 ready · 2 submitted</span>
+            <svg class="i"><use href="#i-down"/></svg>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px 4px">
+          <span class="muted" style="font-size:13px">50 within 10 mi</span>
+          <span class="seg" role="radiogroup" aria-label="Sort homes"><span class="on">Best match</span><span>Nearest</span></span>
+        </div>
+        <ul class="list">
+          <li class="rowi sel">
+            <div class="top"><span class="dotslot"><span class="kcheck"><svg class="i"><use href="#i-check"/></svg></span></span>
+              <span class="mid"><b>1418 Juniper Ct</b><span>3 bd · 2 ba · pets ok · furnished</span></span>
+              <span class="end"><b>$3,350</b><span>2.1 mi</span></span></div>
+            <div class="chips"><span class="nh-chip nh-chip--ok">Match 82 · Strong</span><span class="nh-chip nh-chip--line">Zillow</span><span class="nh-chip nh-chip--amber">Stretch +$150</span></div>
+          </li>
+          <li class="rowi">
+            <div class="top"><span class="dotslot"><span class="nh-dot nh-dot--circle" style="background:#17c964"></span></span>
+              <span class="mid"><b>Birchwood Townhome 4B</b><span>3 bd · 2.5 ba · pets ok · photos</span></span>
+              <span class="end"><b>$2,900</b><span>3.4 mi</span></span></div>
+            <div class="chips"><span class="nh-chip nh-chip--ok">Match 79 · Strong</span><span class="nh-chip nh-chip--ok">Available now</span></div>
+          </li>
+          <li class="rowi" style="border-color:var(--line2)">
+            <div class="top"><span class="dotslot"><span class="nh-src">Z</span></span>
+              <span class="mid"><b>905 Larkspur Ln</b><span>3 bd · 2 ba · pets ok</span></span>
+              <span class="end"><b>$3,100</b><span>4.0 mi</span></span></div>
+            <div class="chips"><span class="nh-chip nh-chip--ok">Match 77 · Strong</span><span class="nh-chip nh-chip--line">Zillow</span><span class="nh-chip nh-chip--info">New</span></div>
+            <div class="why">Right size, pets ok, inside the FRV</div>
+          </li>
+          <li class="rowi">
+            <div class="top"><span class="dotslot"><span class="nh-src">F</span></span>
+              <span class="mid"><b>≈ Near Maple Ridge</b><span>3 bd · 2 ba · furnished</span></span>
+              <span class="end"><b>$2,800</b><span>≈ 5 mi</span></span></div>
+            <div class="chips"><span class="nh-chip nh-chip--info">Match 64 · Fair</span><span class="nh-chip nh-chip--line">Furnished Finder</span><span class="nh-chip nh-chip--muted">≈ Area only</span></div>
+          </li>
+          <li class="rowi">
+            <div class="top"><span class="dotslot"><span class="nh-dot nh-dot--diamond" style="background:#facc15"></span></span>
+              <span class="mid"><b>Sycamore Flats 12</b><span>3 bd · 2 ba</span></span>
+              <span class="end"><b>$2,650</b><span>6.8 mi</span></span></div>
+            <div class="chips"><span class="nh-chip nh-chip--info">Match 58 · Fair</span><span class="nh-chip nh-chip--muted">Unverified</span></div>
+          </li>
+          <li class="rowi">
+            <div class="top"><span class="dotslot"><span class="nh-src nh-src--none">F</span></span>
+              <span class="mid"><b>Furnished 3 bed in Brookside</b><span>3 bd · 2 ba · furnished</span></span>
+              <span class="end"><b>$2,950</b><span>no pin</span></span></div>
+            <div class="chips"><span class="nh-chip nh-chip--info">Match 55 · Fair</span><span class="nh-chip nh-chip--line">Furnished Finder</span><span class="nh-chip nh-chip--muted">List only</span></div>
+          </li>
+        </ul>
+      </aside>
+
+      <!-- MAP -->
+      <div class="map">
+        <div class="water"></div>
+        <div class="ring" style="left:60px;top:150px;width:580px;height:580px"></div>
+        <div class="zoom" style="right:12px;top:12px" title="Zoom control moved to the top right"><span>+</span><span>−</span></div>
+        <div class="attrib">Map data ©2026 · Terms</div>
+
+        <div class="at" style="left:350px;top:440px"><div class="nh-loss"><span class="nh-loss__chip"><svg class="i" style="width:12px;height:12px;stroke-width:2.5"><use href="#i-home"/></svg>Loss</span><span class="nh-loss__caret"></span></div></div>
+
+        <div class="at" style="left:170px;top:215px"><div class="nh-pin"><span class="nh-pin__chip"><span class="nh-dot nh-dot--circle" style="background:#17c964"></span>$2.9k</span><span class="nh-pin__caret"></span></div></div>
+        <div class="at" style="left:455px;top:150px"><div class="nh-pin"><span class="nh-pin__chip"><span class="nh-dot nh-dot--diamond" style="background:#facc15"></span>$2.7k</span><span class="nh-pin__caret"></span></div></div>
+        <div class="at" style="left:610px;top:120px"><div class="nh-pin nh-pin--dnu"><span class="nh-pin__chip"><span class="nh-dot nh-dot--square" style="background:#ee0000"></span>$1.9k</span><span class="nh-pin__caret"></span></div></div>
+        <div class="at" style="left:320px;top:95px"><div class="nh-pin nh-pin--approx"><span class="nh-pin__chip"><span class="nh-dot nh-dot--diamond" style="background:#facc15"></span><span class="nh-pin__approx">≈</span>$2.6k</span><span class="nh-pin__caret"></span></div></div>
+        <div class="at" style="left:285px;top:690px"><div class="nh-pin"><span class="nh-pin__chip"><span class="nh-dot nh-dot--circle" style="background:#17c964"></span>$2.4k</span><span class="nh-pin__caret"></span></div></div>
+        <div class="at" style="left:120px;top:560px"><span class="nh-cluster">7</span></div>
+
+        <!-- selected: the outside home that was just added (black = on this claim) -->
+        <div class="at" style="left:245px;top:375px"><div class="nh-pin nh-pin--attached nh-pin--selected"><span class="nh-pin__chip"><svg class="i" style="width:11px;height:11px;stroke-width:3"><use href="#i-check"/></svg>$3.4k</span><span class="nh-pin__caret"></span></div></div>
+        <!-- NEW outside pins -->
+        <div class="at" style="left:205px;top:600px"><div class="nh-pin nh-pin--outside"><span class="nh-pin__chip"><span class="nh-src">Z</span>$3.1k</span><span class="nh-pin__caret"></span></div></div>
+        <div class="at" style="left:120px;top:330px"><div class="nh-pin nh-pin--outside nh-pin--approx"><span class="nh-pin__chip"><span class="nh-src">F</span><span class="nh-pin__approx">≈</span>$2.8k</span><span class="nh-pin__caret"></span></div></div>
+        <div class="at" style="left:560px;top:215px"><div class="nh-pin nh-pin--outside"><span class="nh-pin__chip"><span class="nh-src">Z</span>$3.0k</span><span class="nh-pin__caret"></span></div></div>
+
+        <!-- Key: bottom-left, narrowed while the chat is open -->
+        <div class="key" style="left:12px;bottom:12px;max-width:calc(100% - 396px)">
+          <span><span style="width:6px;height:6px;border-radius:99px;background:var(--loss)"></span>Loss</span>
+          <span><span class="nh-dot nh-dot--circle" style="background:#17c964"></span>Used before</span>
+          <span><span class="nh-dot nh-dot--diamond" style="background:#facc15"></span>Neutral</span>
+          <span><span class="nh-dot nh-dot--square" style="background:#ee0000"></span>Do not use</span>
+          <span><span class="kcheck"><svg class="i"><use href="#i-check"/></svg></span>On this claim (3)</span>
+          <span><span class="kgroup">7</span>Nearby grouped · zoom in to split</span>
+          <span style="color:var(--ink)"><span class="nh-src nh-src--sm">Z</span><span class="nh-src nh-src--sm" style="margin-left:-3px">F</span>Outside listing (12)</span>
+        </div>
+
+        <!-- Chat window + bubble -->
+        <section class="nh-agent" role="dialog" aria-label="Housing agent" style="position:absolute;right:12px;bottom:84px;width:360px;height:520px">
+          <div class="nh-agent__head">
+            <span style="display:flex;flex-direction:column;line-height:1.25;min-width:0;flex:1"><b style="font-size:14px">Housing agent</b><span class="small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ramirez family · FRV $3,200</span></span>
+            <span class="btn" style="height:28px;padding:0 8px"><svg class="i"><use href="#i-undo"/></svg>Undo</span>
+            <span class="btn" style="width:28px;height:28px;padding:0" aria-label="Close chat"><svg class="i"><use href="#i-x"/></svg></span>
+          </div>
+          <div class="nh-agent__log" role="log" aria-live="polite">
+            <div class="nh-msg nh-msg--me"><span class="nh-msg__who">You</span>Within 10 miles, and show unfurnished too</div>
+            <div class="nh-msg nh-msg--agent"><span class="nh-msg__who">Agent</span>Done. 12 homes within 10 miles, 4 of them new. Best match is 1418 Juniper Ct: right size, pets ok, $150 over the FRV.</div>
+            <div class="nh-result"><b style="font-weight:600;white-space:nowrap">12 homes · 4 new</b><span class="small" style="white-space:nowrap">Map and list updated</span><span class="btn" style="height:26px;margin-left:auto;padding:0 8px"><svg class="i"><use href="#i-undo"/></svg>Undo</span></div>
+          </div>
+          <div class="nh-suggest" aria-label="Suggestions">
+            <button type="button">Within 10 miles</button><button type="button">Show unfurnished</button><button type="button">Cheaper</button><button type="button">More like this one</button>
+          </div>
+          <div class="nh-prompt">
+            <textarea rows="1" placeholder="Ask for homes, or change the search" aria-label="Message the housing agent"></textarea>
+            <div class="nh-prompt__row"><span class="small" style="flex:1">Enter to send</span>
+              <span class="nh-prompt__btn" aria-label="Speak"><svg class="i"><use href="#i-mic"/></svg></span>
+              <span class="nh-prompt__btn nh-prompt__btn--send" aria-label="Send"><svg class="i"><use href="#i-up"/></svg></span></div>
+          </div>
+        </section>
+        <span class="nh-agent-bubble" style="position:absolute;right:12px;bottom:24px" aria-label="Close the housing agent" aria-expanded="true"><svg class="i"><use href="#i-down"/></svg></span>
+      </div>
+
+      <!-- PANEL -->
+      <aside class="panel">
+        <div style="padding:14px 16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            <div class="wrap"><span style="display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 6px;border:1px solid var(--line2);border-radius:4px;font-size:11px;font-weight:500"><span class="nh-src nh-src--sm">Z</span>From Zillow</span><span class="muted" style="font-size:13px">2.1 mi from the loss</span></div>
+            <div class="wrap" style="margin-top:6px;gap:2px 4px"><span class="nh-chip nh-chip--ok">Saved to our database</span><span class="nh-chip nh-chip--muted">Listing checked 26 Nov</span></div>
+            <div style="margin-top:6px;font-size:17px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">1418 Juniper Ct</div>
+            <div class="muted" style="font-size:13px">Tulsa, OK 74105 · 3 bd · 2 ba · 1,640 sq ft · <span class="mono" style="color:var(--ink);font-weight:600">$3,350</span>/mo</div>
+          </div>
+          <span class="btn" style="width:32px;padding:0"><svg class="i" style="width:12px;height:12px"><use href="#i-x"/></svg></span>
+        </div>
+        <div style="flex:1;min-height:0;overflow:hidden">
+          <div class="sec">
+            <h3 class="nh-eyebrow">Fit against this claim</h3>
+            <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;align-items:baseline;gap:8px"><span class="mono" style="font-size:22px;font-weight:600;line-height:1">82</span><span class="muted" style="font-size:12px">/ 100</span><span class="nh-chip nh-chip--ok" style="margin-left:auto">Strong match</span></div>
+              <div class="nh-score__bar" role="img" aria-label="Match score 82 out of 100"><i style="width:82%"></i></div>
+              <div style="font-size:13px"><b style="font-weight:500">Why:</b> <span class="muted">Right size, pets ok, 2.1 mi from the loss address. $150 over the FRV.</span></div>
+            </div>
+            <ul class="fit">
+              <li><span class="g g-ok">✓</span><span class="t"><b>Family fit</b><span>3 bd / 2 ba meets the claim's 3 bd / 2 ba.</span></span></li>
+              <li><span class="g g-ok">✓</span><span class="t"><b>Pets</b><span>Pets allowed; the family has 1.</span></span></li>
+              <li><span class="g g-warn">!</span><span class="t"><b>Stretch · $150 over</b><span>$3,350/mo is $150 above the FRV of $3,200. Ask before you offer it.</span></span></li>
+              <li><span class="g g-unk">?</span><span class="t"><b>Available by move-in</b><span>Availability not on the listing; move-in is Dec 8, 2026.</span></span></li>
+            </ul>
+          </div>
+          <div class="sec">
+            <h3 class="nh-eyebrow">Contacts</h3>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="display:flex;flex-direction:column;line-height:1.25"><span class="small">Listed by</span><b style="font-weight:500">Marisol Vega</b></span>
+              <div class="cline"><span class="num">(918) 555-0142</span><span class="sp"><span class="btn"><svg class="i"><use href="#i-phone"/></svg>Call</span><span class="btn"><svg class="i"><use href="#i-msg"/></svg>Text<svg class="i" style="width:12px;height:12px"><use href="#i-down"/></svg></span></span></div>
+              <div class="note note--ok" role="status" style="align-items:center"><span style="flex:1"><b style="font-weight:600">Number found.</b> Public records · likely right</span><span class="btn" style="height:28px">Save to listing</span><span class="btn" style="height:28px">Not right</span></div>
+              <div class="small">Asked Nov 24 · no reply yet</div>
+            </div>
+          </div>
+          <div class="sec">
+            <h3 class="nh-eyebrow">Notes &amp; links</h3>
+            <div class="wrap"><span class="linkchip"><svg class="i"><use href="#i-ext"/></svg>Open on Zillow</span><span class="linkchip"><svg class="i"><use href="#i-ext"/></svg>Open in Monday</span></div>
+          </div>
+        </div>
+        <div class="foot">
+          <div class="banner banner--ok" role="status"><svg class="i"><use href="#i-check"/></svg>On this claim</div>
+          <ol class="nh-steps" aria-label="Submit status: To Do, step 1 of 3">
+            <li class="is-now"><span class="nh-steps__dot">1</span>To Do</li>
+            <li><span class="nh-steps__dot">2</span>Ready to Submit</li>
+            <li><span class="nh-steps__dot">3</span>Option Submitted</li>
+          </ol>
+          <div class="small center">Added Nov 26 by Dana · saved to our database · <span style="color:var(--focus)">Monday →</span></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <p class="cap">Chat: 360 × 520, bottom-right of the map area only, never over the docked panel. Key narrows to make room. Zoom control moves to the top right. Outside pins: ink outline + Z / F letter; dashed ≈ = area only.</p>
+
+  <h2>2 · Phone 360 px and claims drawer</h2>
+  <div class="row">
+    <div>
+      <div class="frame phone">
+        <div class="apphead"><span class="btn" style="height:32px;padding:0 8px"><svg class="i"><use href="#i-inbox"/></svg><span class="count">18</span></span><b style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ramirez family</b></div>
+        <div class="map">
+          <div class="ring" style="left:-10px;top:120px;width:380px;height:380px"></div>
+          <div class="zoom" style="right:12px;top:12px"><span>+</span><span>−</span></div>
+          <div class="at" style="left:180px;top:320px"><div class="nh-loss"><span class="nh-loss__chip"><svg class="i" style="width:12px;height:12px;stroke-width:2.5"><use href="#i-home"/></svg>Loss</span><span class="nh-loss__caret"></span></div></div>
+          <div class="at" style="left:90px;top:200px"><div class="nh-pin"><span class="nh-pin__chip"><span class="nh-dot nh-dot--circle" style="background:#17c964"></span>$2.9k</span><span class="nh-pin__caret"></span></div></div>
+          <div class="at" style="left:270px;top:160px"><div class="nh-pin nh-pin--outside"><span class="nh-pin__chip"><span class="nh-src">Z</span>$3.1k</span><span class="nh-pin__caret"></span></div></div>
+          <div class="at" style="left:255px;top:420px"><div class="nh-pin nh-pin--outside nh-pin--approx"><span class="nh-pin__chip"><span class="nh-src">F</span><span class="nh-pin__approx">≈</span>$2.8k</span><span class="nh-pin__caret"></span></div></div>
+          <div class="at" style="left:80px;top:440px"><div class="nh-pin"><span class="nh-pin__chip"><span class="nh-dot nh-dot--diamond" style="background:#facc15"></span>$2.7k</span><span class="nh-pin__caret"></span></div></div>
+          <!-- key keeps 72 px free on the right for the bubble -->
+          <div class="key" style="left:12px;bottom:68px;max-width:calc(100% - 84px);padding:6px 10px;gap:4px 10px">
+            <span><span style="width:6px;height:6px;border-radius:99px;background:var(--loss)"></span>Loss</span>
+            <span><span class="nh-dot nh-dot--circle" style="background:#17c964"></span>Used before</span>
+            <span><span class="nh-dot nh-dot--diamond" style="background:#facc15"></span>Neutral</span>
+            <span><span class="nh-dot nh-dot--square" style="background:#ee0000"></span>Do not use</span>
+            <span><span class="kcheck"><svg class="i"><use href="#i-check"/></svg></span>On claim (3)</span>
+            <span><span class="kgroup">7</span>Grouped</span>
+            <span style="color:var(--ink)"><span class="nh-src nh-src--sm">Z</span><span class="nh-src nh-src--sm" style="margin-left:-3px">F</span>Outside (12)</span>
+          </div>
+          <span class="nh-agent-bubble" style="position:absolute;right:12px;bottom:68px" aria-label="Ask the housing agent"><svg class="i"><use href="#i-chat"/></svg><span class="nh-agent-bubble__badge">4</span></span>
+          <div class="sheetbar"><div class="txt"><b>50 within 10 mi · 12 outside</b><span>2 adults · 2 children · 1 pet · 3 bd / 2 ba · move-in 8 Dec</span></div></div>
+        </div>
+      </div>
+      <p class="cap">Phone, chat closed. Bubble sits 12 px above the 56 px sheet bar. Badge = new homes.</p>
+    </div>
+
+    <div>
+      <div class="frame phone">
+        <div class="apphead"><span class="btn" style="height:32px;padding:0 8px"><svg class="i"><use href="#i-inbox"/></svg><span class="count">18</span></span><b style="font-weight:500">Ramirez family</b></div>
+        <div class="map">
+          <div class="at" style="left:90px;top:60px"><div class="nh-pin"><span class="nh-pin__chip"><span class="nh-dot nh-dot--circle" style="background:#17c964"></span>$2.9k</span><span class="nh-pin__caret"></span></div></div>
+          <div class="scrim"></div>
+          <section class="nh-agent chatsheet" role="dialog" aria-modal="true" aria-label="Housing agent">
+            <div class="nh-agent__head">
+              <span style="display:flex;flex-direction:column;line-height:1.25;min-width:0;flex:1"><b style="font-size:14px">Housing agent</b><span class="small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ramirez family · FRV $3,200</span></span>
+              <span class="btn" style="height:44px;padding:0 10px"><svg class="i"><use href="#i-undo"/></svg>Undo</span>
+              <span class="btn" style="width:44px;height:44px;padding:0" aria-label="Close chat"><svg class="i"><use href="#i-x"/></svg></span>
+            </div>
+            <div class="nh-agent__log">
+              <div class="nh-msg nh-msg--agent"><span class="nh-msg__who">Agent</span>Done. 12 homes within 10 miles, 4 of them new.</div>
+              <div class="nh-result"><b style="font-weight:600">12 homes · 4 new</b><span class="btn" style="height:32px;margin-left:auto">Show on map</span></div>
+              <div class="nh-msg nh-msg--me"><span class="nh-msg__who">You</span>Cheaper</div>
+              <div class="status" role="status">
+                <div style="display:flex;align-items:center;gap:8px"><span class="spin"></span><b style="font-weight:500">Searching Zillow and Furnished Finder…</b></div>
+                <div class="progress"><i></i></div>
+                <div style="display:flex;align-items:center;gap:8px"><span class="small" style="flex:1">0:34 · usually under 90 seconds. You can keep using the map.</span><span class="btn" style="height:32px"><svg class="i"><use href="#i-stop"/></svg>Stop</span></div>
+              </div>
+            </div>
+            <div class="nh-suggest" style="opacity:.5" aria-disabled="true">
+              <button type="button" disabled>Within 10 miles</button><button type="button" disabled>Show unfurnished</button><button type="button" disabled>Cheaper</button>
+            </div>
+            <div class="nh-prompt">
+              <textarea rows="1" placeholder="Wait for this search, or stop it" aria-label="Message the housing agent"></textarea>
+              <div class="nh-prompt__row"><span class="small" style="flex:1"></span>
+                <span class="nh-prompt__btn" style="width:44px;height:44px" aria-label="Speak"><svg class="i"><use href="#i-mic"/></svg></span>
+                <span class="nh-prompt__btn" style="width:44px;height:44px;opacity:.45" aria-label="Send" aria-disabled="true"><svg class="i"><use href="#i-up"/></svg></span></div>
+            </div>
+          </section>
+        </div>
+      </div>
+      <p class="cap">Phone, chat open: full-width bottom sheet, 88% tall, modal. Running state.</p>
+    </div>
+
+    <div>
+      <div class="frame drawer">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--line)"><b style="font-size:15px;letter-spacing:-.01em">Active claims</b><div class="small">Waiting on housing options. Pick one to search around its loss address.</div></div>
+        <div class="tabs" role="tablist"><span class="on" role="tab" aria-selected="true">Claims <span class="n">18</span></span><span role="tab">Nearsite <span class="n">6</span></span></div>
+        <div class="toolbar"><span class="seg" role="radiogroup" aria-label="Whose claims"><span class="on">Mine</span><span>All</span></span><span class="pill" style="height:28px">Test claims</span><span class="btn" style="margin-left:auto;height:28px"><svg class="i" style="width:12px;height:12px"><use href="#i-refresh"/></svg>Refresh</span></div>
+        <div style="padding:6px 16px;border-bottom:1px solid var(--line);font-size:12px" class="muted">Showing 5 claims for <b style="color:var(--ink);font-weight:500">Dana</b> · <span style="color:var(--focus)">Change name</span></div>
+        <div style="display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-bottom:1px solid var(--line)" class="muted"><svg class="i"><use href="#i-search"/></svg>Search name or address</div>
+        <div style="padding:6px;display:flex;flex-direction:column;overflow:hidden;flex:1">
+          <div class="citem sel"><span class="l"><b>Ramirez family</b><span>2207 Cedar Hollow Rd, Tulsa, OK</span><span>3 bd · 2 ba · 1 pet · Searching · Nov 18</span><span style="color:var(--ink)">3 ready · 2 submitted</span></span><span class="r"><span class="opt">7 options</span><span class="am">Dana Whitfield</span><svg class="i"><use href="#i-check"/></svg></span></div>
+          <div class="citem"><span class="l"><b>Okafor household</b><span>88 Quarry Bend Dr, Broken Arrow, OK</span><span>4 bd · 3 ba · Searching · Nov 21</span><span style="color:var(--ink)">1 ready · 0 submitted</span></span><span class="r"><span class="opt">2 options</span><span class="am">Dana Whitfield</span></span></div>
+          <div class="citem"><span class="l"><b>Lindqvist, Ada</b><span>410 Peach Orchard Way, Owasso, OK</span><span>2 bd · 1 ba · 2 pets · New · Nov 24</span><span>No options yet</span></span><span class="r"><span class="opt">0 options</span><span class="am">Dana Whitfield</span></span></div>
+          <div class="citem"><span class="l"><b>Tran / Nguyen</b><span>19 Harbor Mill Ct, Jenks, OK</span><span>3 bd · 2 ba · Searching · Nov 25</span><span style="color:var(--ink)">0 ready · 4 submitted</span></span><span class="r"><span class="opt">4 options</span><span class="am">Dana Whitfield</span></span></div>
+          <div class="citem"><span class="l"><b>Abernathy, Joel</b><span>No loss address on the claim</span><span>Needs not set · New · Nov 26</span><span>No options yet</span></span><span class="r"><span class="opt">0 options</span><span class="am">Dana Whitfield</span></span></div>
+        </div>
+      </div>
+      <p class="cap">Drawer · Claims tab · Mine. Count line under each claim.</p>
+    </div>
+
+    <div>
+      <div class="frame drawer">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--line)"><b style="font-size:15px;letter-spacing:-.01em">Active claims</b><div class="small">Nearsite claims that are still open.</div></div>
+        <div class="tabs" role="tablist"><span role="tab">Claims <span class="n">18</span></span><span class="on" role="tab" aria-selected="true">Nearsite <span class="n">6</span></span></div>
+        <div class="toolbar"><span class="seg" role="radiogroup" aria-label="Whose claims"><span>Mine</span><span class="on">All</span></span><span class="btn" style="margin-left:auto;height:28px"><svg class="i" style="width:12px;height:12px"><use href="#i-refresh"/></svg>Refresh</span></div>
+        <div style="padding:6px;display:flex;flex-direction:column;overflow:hidden;flex:1">
+          <div class="citem"><span class="l"><b>Castellanos family</b><span>Sand Springs, OK</span><span style="color:var(--ink)">4 bd · 2 ba · budget $3,600/mo</span><span>Fee group B · 3 homes found</span></span><span class="r"><span class="nh-chip nh-chip--amber">2 days left</span><span class="nh-chip nh-chip--line">Free for all</span><span class="btn" style="height:28px">Pick up</span></span></div>
+          <div class="citem"><span class="l"><b>Hartwell, Priya</b><span>Bixby, OK</span><span style="color:var(--ink)">2 bd · 2 ba · budget $2,400/mo</span><span>Fee group A · 0 homes found</span></span><span class="r"><span class="nh-chip nh-chip--muted">9 days left</span><span class="nh-chip nh-chip--line">Free for all</span><span class="btn" style="height:28px">Pick up</span></span></div>
+          <div class="citem"><span class="l"><b>Mbeki household</b><span>Claremore, OK</span><span style="color:var(--ink)">3 bd · 2 ba · budget $2,900/mo</span><span>Fee group C · 6 homes found</span></span><span class="r"><span class="nh-chip nh-chip--muted">12 days left</span><span class="am">Dana Whitfield</span><span class="btn" style="height:28px">Open</span></span></div>
+          <div class="citem"><span class="l"><b>Sorensen, Lars</b><span>Sapulpa, OK</span><span style="color:var(--ink)">3 bd · 1 ba · budget not set</span><span>Fee group A · 1 home found</span></span><span class="r"><span class="nh-chip nh-chip--bad" style="border-color:var(--bad-line)">Due today</span><span class="am">Theo Brandt</span><span class="btn" style="height:28px">Open</span></span></div>
+          <div class="citem"><span class="l"><b>Delacroix, Inès</b><span>Glenpool, OK</span><span style="color:var(--ink)">1 bd · 1 ba · budget $1,800/mo</span><span>Fee group B · 2 homes found</span></span><span class="r"><span class="nh-chip nh-chip--muted">15 days left</span><span class="nh-chip nh-chip--line">Free for all</span><span class="btn" style="height:28px">Pick up</span></span></div>
+          <div class="citem"><span class="l"><b>Yamada family</b><span>Skiatook, OK</span><span style="color:var(--ink)">4 bd · 3 ba · budget $4,100/mo</span><span>Fee group C · 0 homes found</span></span><span class="r"><span class="nh-chip nh-chip--muted">21 days left</span><span class="am">Theo Brandt</span><span class="btn" style="height:28px">Open</span></span></div>
+        </div>
+      </div>
+      <p class="cap">Drawer · Nearsite tab · All. Soonest first.</p>
+    </div>
+  </div>
+
+  <h2>3 · States</h2>
+  <div class="grid">
+    <div class="card">
+      <h4>Pin + key anatomy (new)</h4>
+      <div class="st"><span class="tag">Top: exact · area only · filtered off. Bottom: hover · selected</span>
+        <div class="pinstage">
+          <div class="at" style="left:56px;top:60px"><div class="nh-pin nh-pin--outside"><span class="nh-pin__chip"><span class="nh-src">Z</span>$3.1k</span><span class="nh-pin__caret"></span></div></div>
+          <div class="at" style="left:166px;top:60px"><div class="nh-pin nh-pin--outside nh-pin--approx"><span class="nh-pin__chip"><span class="nh-src">F</span><span class="nh-pin__approx">≈</span>$2.8k</span><span class="nh-pin__caret"></span></div></div>
+          <div class="at" style="left:100px;top:128px"><div class="nh-pin nh-pin--outside nh-pin--hover" style="transform:scale(1.12)"><span class="nh-pin__chip"><span class="nh-src">Z</span>$3.0k</span><span class="nh-pin__caret"></span></div></div>
+          <div class="at" style="left:230px;top:126px"><div class="nh-pin nh-pin--outside nh-pin--selected"><span class="nh-pin__chip"><span class="nh-src">F</span>$2.6k</span><span class="nh-pin__caret"></span></div></div>
+          <div class="at" style="left:278px;top:60px"><div class="nh-pin nh-pin--outside nh-pin--dimmed"><span class="nh-pin__chip"><span class="nh-src">Z</span>$3k</span><span class="nh-pin__caret"></span></div></div>
+        </div>
+      </div>
+      <div class="st"><span class="tag">Key entry in the rail: on / off</span>
+        <div class="wrap"><span class="pill"><span class="nh-src nh-src--sm">Z</span><span class="nh-src nh-src--sm" style="margin-left:-3px">F</span>Outside <span class="n">12</span></span>
+        <span class="pill" style="background:var(--surface-muted);color:var(--muted);text-decoration:line-through;border-color:var(--line)"><span class="nh-src nh-src--sm">Z</span><span class="nh-src nh-src--sm" style="margin-left:-3px">F</span>Outside <span class="n">12</span></span></div>
+      </div>
+      <div class="st"><span class="tag">Sort toggle · scores loading</span>
+        <div style="display:flex;justify-content:space-between;align-items:center"><span class="muted" style="font-size:13px">50 within 10 mi</span><span class="seg"><span class="on">Best match</span><span>Nearest</span></span></div>
+        <div class="small">Scoring homes for this claim…</div>
+      </div>
+      <div class="st"><span class="tag">Sort toggle · no claim open</span>
+        <div style="display:flex;justify-content:space-between;align-items:center"><span class="muted" style="font-size:13px">38 within 10 mi</span><span class="seg"><span style="opacity:.5">Best match</span><span class="on">Nearest</span></span></div>
+        <div class="small">Pick a claim to sort by best match.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>Panel footer (PanelFooter + SubmitStatus)</h4>
+      <div class="st"><span class="tag">Outside home, not added yet</span>
+        <div class="small">Adding to: <b style="color:var(--ink);font-weight:500">Ramirez family</b> · Dana Whitfield</div>
+        <button class="big" type="button"><svg class="i"><use href="#i-plus"/></svg>Add to claim</button>
+        <div class="small center">Also saves this home to our database. Starts as “To Do”.</div>
+      </div>
+      <div class="st"><span class="tag">Blocked · address unknown</span>
+        <div class="note note--amber"><svg class="i" style="margin-top:2px"><use href="#i-ban"/></svg><span><b style="font-weight:600">Ask the landlord for the address first.</b> We can't add a home without a street address.</span></div>
+        <button class="big" type="button" disabled><svg class="i"><use href="#i-plus"/></svg>Add to claim</button>
+        <div class="wrap" style="justify-content:center"><span class="btn"><svg class="i"><use href="#i-msg"/></svg>Text: Ask for the address</span></div>
+      </div>
+      <div class="st"><span class="tag">Ready to Submit</span>
+        <ol class="nh-steps"><li class="is-done"><span class="nh-steps__dot">✓</span>To Do</li><li class="is-now"><span class="nh-steps__dot">2</span>Ready to Submit</li><li><span class="nh-steps__dot">3</span>Option Submitted</li></ol>
+        <div class="small center">Approved by Theo Brandt · Nov 25</div>
+      </div>
+      <div class="st"><span class="tag">Option Submitted</span>
+        <ol class="nh-steps"><li class="is-done"><span class="nh-steps__dot">✓</span>To Do</li><li class="is-done"><span class="nh-steps__dot">✓</span>Ready to Submit</li><li class="is-now"><span class="nh-steps__dot">✓</span>Option Submitted</li></ol>
+        <div class="small center">Submitted Nov 26 · approved by Theo Brandt</div>
+      </div>
+      <div class="st"><span class="tag">Blocked</span>
+        <div class="note note--bad"><svg class="i" style="margin-top:2px"><use href="#i-ban"/></svg><span><b style="font-weight:600">Blocked: claim closed.</b> This home can't be submitted.</span></div>
+        <div class="note note--bad"><svg class="i" style="margin-top:2px"><use href="#i-ban"/></svg><span><b style="font-weight:600">Blocked: already submitted.</b> This home was sent on Nov 20.</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>Find phone (FindPhone) — in Contacts</h4>
+      <div class="st"><span class="tag">Idle</span>
+        <div class="cline"><span class="muted" style="font-size:13px">No phone number yet</span><span class="sp"><button class="btn" type="button"><svg class="i"><use href="#i-search"/></svg>Find phone</button></span></div></div>
+      <div class="st"><span class="tag">Searching</span>
+        <div class="cline" role="status"><span class="spin"></span><span style="font-size:13px">Looking for a number…</span><span class="sp"><button class="btn" type="button" disabled>Find phone</button></span></div>
+        <div class="small">Takes up to 30 seconds.</div></div>
+      <div class="st"><span class="tag">Found</span>
+        <div class="cline"><span class="num">(918) 555-0142</span><span class="sp"><span class="btn"><svg class="i"><use href="#i-phone"/></svg>Call</span><span class="btn"><svg class="i"><use href="#i-msg"/></svg>Text</span></span></div>
+        <div class="small">Public records · likely right (high)</div>
+        <div class="wrap"><button class="btn btn--ink" type="button">Save to listing</button><button class="btn" type="button">Not right</button></div></div>
+      <div class="st"><span class="tag">Not found</span>
+        <div class="cline"><span style="font-size:13px">No number found.</span><span class="sp"><button class="btn" type="button">Try again</button></span></div>
+        <div class="small">Checked Nov 26. Try the listing page, or text through the listing site.</div></div>
+      <div class="st"><span class="tag">Off</span>
+        <div class="cline"><span class="muted" style="font-size:13px">No phone number yet</span><span class="sp"><button class="btn" type="button" disabled>Find phone</button></span></div>
+        <div class="small">Not set up yet.</div></div>
+      <div class="st"><span class="tag">Error</span>
+        <div class="note note--bad"><span><b style="font-weight:600">Couldn't look that up.</b> Nothing was saved. Try again in a minute.</span></div></div>
+    </div>
+
+    <div class="card">
+      <h4>Text templates · outreach · Mine with no name · chat</h4>
+      <div class="st"><span class="tag">Text ▾ menu open</span>
+        <div class="cline"><span class="num">(918) 555-0142</span><span class="sp"><span class="btn"><svg class="i"><use href="#i-phone"/></svg>Call</span><span class="btn kbd-focus"><svg class="i"><use href="#i-msg"/></svg>Text<svg class="i" style="width:12px;height:12px"><use href="#i-down"/></svg></span></span></div>
+        <div class="menu" role="menu">
+          <div class="hi" role="menuitem"><b>Ask availability</b><span>Hi Marisol, is 1418 Juniper Ct still available from…</span></div>
+          <div role="menuitem"><b>Ask for the address</b><span>Hi Marisol, could you send the street address of…</span></div>
+          <div role="menuitem"><b>Confirm the rate</b><span>Hi Marisol, can you confirm $3,350 a month for…</span></div>
+          <hr><div role="menuitem"><b>Blank text</b></div>
+        </div></div>
+      <div class="st"><span class="tag">Outreach status line</span>
+        <div class="small">Asked Nov 24 · no reply yet</div>
+        <div style="font-size:12px;color:var(--ok-ink);display:flex;gap:6px;align-items:center"><svg class="i" style="width:12px;height:12px;stroke-width:3"><use href="#i-check"/></svg>Replied Nov 25</div></div>
+      <div class="st"><span class="tag">Mine · no name remembered</span>
+        <label class="small" for="x">Your name, as it is on Monday</label>
+        <div style="display:flex;gap:6px"><span class="inp" id="x">e.g. Dana Whitfield</span><button class="btn btn--ink" type="button">Save</button></div>
+        <div class="small">Remembered on this device only. Showing all claims until then.</div></div>
+      <div class="st"><span class="tag">Chat · error · listening · no claim</span>
+        <div class="note note--bad"><span style="flex:1"><b style="font-weight:600">The search didn't finish.</b> Nothing changed on the map.</span><span class="btn" style="height:26px">Try again</span></div>
+        <div class="nh-prompt" style="margin:0;border-color:var(--ink)"><div style="font-size:14px;padding:2px 0" class="muted">Listening… speak now</div><div class="nh-prompt__row"><span class="small" style="flex:1">Tap the mic to stop</span><span class="nh-prompt__btn nh-prompt__btn--send" aria-pressed="true"><svg class="i"><use href="#i-mic"/></svg></span></div></div>
+        <div class="small">Pick a claim first. The agent searches for one claim at a time. <span style="color:var(--focus)">Open claims</span></div></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
