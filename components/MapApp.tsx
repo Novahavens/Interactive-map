@@ -807,6 +807,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         claim={claim ? { id: claim.id, name: claim.name, accountManager: claim.brief?.accountManager ?? null } : null}
         canAdd={features.addOutside}
         onAdded={handleOutsideAdded}
+        onAddressSaved={loadOutside}
         onClose={closePanel}
         {...(features.bestMatch &&
           (scoresLoading || scoreFor(selectedOutside.propertyItemId)) && {
