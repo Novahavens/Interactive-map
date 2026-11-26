@@ -16,7 +16,7 @@
 --   ctx_unknown has known=false; scores_typed src=typed; scores_ns src=nearsite; scores_none source null;
 --   submit states only from todo|ready|submitted|blocked; nearsite>0; outreach ok=true;
 --   guard_wrong=forbidden; get_empty lookup null; guard=ok; save=true rows=1 with state found and the phone as
---   +15550100199; save_none=true rows=2 state=not_found; save_wrong=false; guard_20th=ok; guard_21st=ip_limit;
+--   +15550100199; save_none=true rows=2 state=not_found; save_wrong=false; guard_5th=ok; guard_6th=ip_limit;
 --   other_ip=ok; anon_read_log=denied; anon_no_secret=forbidden; anon_refs_no_secret=0;
 --   anon_guard_no_secret=forbidden
 --   Measured the same day: outside_ms about 9 warm (63 homes), about 500 on a cold cache; 46 for a 182-home run.
@@ -101,10 +101,10 @@ begin
   r := r || 'save_none=' || ok || ' rows=' || n || ' state=' || (j->'lookup'->>'state') || '; ';
   ok := public.map_phone_lookup_save('wrong', pid, null, '5550100199', 'x', 'high', 'Test', '203.0.113.250');
   r := r || 'save_wrong=' || ok || '; ';
-  for i in 1..18 loop g := public.map_phone_lookup_guard(k, pid, '203.0.113.250', 'Test'); end loop;
-  r := r || 'guard_20th=' || g || '; ';
+  for i in 1..3 loop g := public.map_phone_lookup_guard(k, pid, '203.0.113.250', 'Test'); end loop;
+  r := r || 'guard_5th=' || g || '; ';
   g := public.map_phone_lookup_guard(k, pid, '203.0.113.250', 'Test');
-  r := r || 'guard_21st=' || g || '; ';
+  r := r || 'guard_6th=' || g || '; ';
   g := public.map_phone_lookup_guard(k, pid, '203.0.113.251', 'Test');
   r := r || 'other_ip=' || g || '; ';
 
