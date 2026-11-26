@@ -214,6 +214,8 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   // Attached options: what the claim already carries, plus anything added this session.
   const [attachedPins, setAttachedPins] = useState<AttachedPin[]>([]);
   const attachedIds = useMemo(() => new Set(attachedPins.map((a) => a.monday_item_id)), [attachedPins]);
+  // Bumped after an attach: the claims drawer reads its option counts fresh (they are cached on the server for a minute).
+  const [drawerRefresh, setDrawerRefresh] = useState(0);
 
   // ---- 1. read the claim ----
   const loadClaim = useCallback(async () => {
@@ -328,15 +330,24 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   // Outside homes (flag `outside`): read once per claim, again after the agent or an add changed them.
   const [outside, setOutside] = useState<OutsideResponse | null>(null);
   const [outsideHidden, setOutsideHidden] = useState(false);
+  // A failed read keeps the last good list and shows a short message with Retry (in the list area).
+  const [outsideError, setOutsideError] = useState(false);
   const loadOutside = useCallback(() => {
     const id = workIdRef.current;
     if (!features.outside || !id) return;
     getJson<OutsideResponse>(`/api/claim/${id}/outside`)
-      .then((r) => workIdRef.current === id && setOutside(r))
-      .catch(() => undefined); // keep what is shown; the next change reads again
+      .then((r) => {
+        if (workIdRef.current !== id) return;
+        setOutside(r);
+        setOutsideError(false);
+      })
+      .catch(() => {
+        if (workIdRef.current === id) setOutsideError(true);
+      });
   }, [features.outside]);
   useEffect(() => {
     setOutside(null);
+    setOutsideError(false);
     loadOutside();
   }, [workId, loadOutside]);
   const outsideHomes = useMemo<OutsideHome[]>(() => (features.outside && workId && outside?.enabled ? outside.homes : []), [features.outside, workId, outside]);
@@ -439,8 +450,12 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
               },
             ],
       );
+      // The option counts and the outside list (which homes are on the claim now) change with the attach.
+      loadSubmit();
+      loadOutside();
+      setDrawerRefresh((n) => n + 1);
     },
-    [pins],
+    [pins, loadSubmit, loadOutside],
   );
 
   const onSelect = useCallback(
@@ -705,6 +720,18 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     );
   const resultRows = (
     <>
+      {features.outside && workId && outsideError && !outsideHidden && (
+        <li role="alert" className="mx-1 my-1 flex flex-col items-start gap-2 rounded-lg border border-dashed border-line2 p-2.5 text-[13px] text-muted">
+          <span>Could not load the homes found outside our database.</span>
+          <button
+            type="button"
+            onClick={loadOutside}
+            className="inline-flex min-h-[44px] items-center rounded-md border border-line bg-surface px-3 font-medium text-ink lg:h-8 lg:min-h-0"
+          >
+            Retry
+          </button>
+        </li>
+      )}
       {pinsLoading && visiblePins.length === 0 ? (
         [...Array(6)].map((_, i) => <li key={i} className="nh-skeleton m-1 h-12" />)
       ) : (
@@ -934,6 +961,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         selectedId={claimId}
         onSelect={selectClaim}
         onCount={setActiveCount}
+        refreshKey={drawerRefresh}
         {...(features.nearsite && { onSelectNearsite: selectNearsite })}
       />
 

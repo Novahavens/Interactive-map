@@ -23,6 +23,8 @@ interface Props {
   onCount?: (count: number) => void;
   /** Feature `nearsite`: "Pick up" / "Open" on a Nearsite claim. It only opens the claim; nothing is assigned. */
   onSelectNearsite?: (claim: NearsiteClaim) => void;
+  /** Change it to re-read the claims with a fresh read (the option counts change when an option is added). */
+  refreshKey?: number;
 }
 
 type DrawerTab = "claims" | "nearsite";
@@ -75,7 +77,7 @@ const store = {
  *  - `mine`: a Mine | All control, filtering by the name remembered on this device against the account manager.
  *  - `nearsite`: tabs Claims | Nearsite; the Nearsite tab lists the open Nearsite claims (NearsiteList).
  */
-export default function ActiveClaimsDrawer({ open, onOpenChange, selectedId, onSelect, onCount, onSelectNearsite }: Props) {
+export default function ActiveClaimsDrawer({ open, onOpenChange, selectedId, onSelect, onCount, onSelectNearsite, refreshKey }: Props) {
   const [claims, setClaims] = useState<ActiveClaim[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +124,13 @@ export default function ActiveClaimsDrawer({ open, onOpenChange, selectedId, onS
     if (open) void load(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  // A change of refreshKey (an option was just added) reads the claims fresh, not from the server's one-minute cache.
+  const seenRefresh = useRef(refreshKey);
+  useEffect(() => {
+    if (seenRefresh.current === refreshKey) return;
+    seenRefresh.current = refreshKey;
+    void load(true);
+  }, [refreshKey, load]);
 
   useEffect(() => {
     let live = true;

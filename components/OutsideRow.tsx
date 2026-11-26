@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import { NO_MAP_LOCATION, outsideChips, sourceLabel, sourceLetter, type Chip } from "@/lib/chips";
+import { notFitText } from "@/lib/outside-pins";
 import { hasPin, stretchOf } from "@/lib/result-sort";
 import type { MatchScore, OutsideHome } from "@/lib/types";
 import { cn, money, num, petsAllowed } from "@/lib/utils";
@@ -78,6 +79,8 @@ export default memo(function OutsideRow({ home, score = null, selected, hovered,
   const name = pinned && !home.addressKnown ? `≈ ${home.title}` : home.title;
   const pets = petsAllowed(home.pets) === true || /^(pets? )?(allowed|ok|welcome)\b/i.test((home.pets ?? "").trim());
   const facts = [`${num(home.beds)} bd`, `${num(home.baths)} ba`, pets ? "pets ok" : "", home.source === "furnished_finder" ? "furnished" : ""].filter(Boolean).join(" · ");
+  // A home that broke a search rule is listed after the ones that fit, and says why (the panel gives the detail).
+  const notFit = home.fits === false ? (notFitText(home.excludedBy) ?? "Not a fit") : null;
   const label = [
     home.title,
     `outside listing from ${sourceLabel(home.source)}`,
@@ -87,6 +90,7 @@ export default memo(function OutsideRow({ home, score = null, selected, hovered,
     home.isNew ? "new" : "",
     home.onClaim ? "on this claim" : "",
     !pinned ? "no map location" : home.precision === "area" || home.precision === "approx" ? "approximate location" : "",
+    notFit ?? "",
   ]
     .filter(Boolean)
     .join(", ");
@@ -125,7 +129,13 @@ export default memo(function OutsideRow({ home, score = null, selected, hovered,
           </span>
         </span>
         <Chips chips={chips} />
-        {why ? <span className="w-full truncate pl-[19px] text-xs text-muted">{why}</span> : null}
+        {notFit ? (
+          <span data-not-fit="" className="w-full truncate pl-[19px] text-xs text-muted">
+            {notFit}
+          </span>
+        ) : why ? (
+          <span className="w-full truncate pl-[19px] text-xs text-muted">{why}</span>
+        ) : null}
       </button>
     </li>
   );
