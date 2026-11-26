@@ -6,6 +6,7 @@ import type { AddOutsideResponse, OutsideHome, SubmitStatus as SubmitStatusRow }
 import { submitDate } from "@/lib/submit-status";
 import { LinkChip, Section, Tile } from "./property/parts";
 import OutsideFooter from "./property/OutsideFooter";
+import LandlordReplyBox from "./property/LandlordReplyBox";
 import { MONDAY_BOARDS, miles, mondayItemUrl, money, num } from "@/lib/utils";
 
 interface Props {
@@ -234,6 +235,8 @@ export default function OutsidePanel({ home, claim, onAdded, onClose, canAdd, sc
         </Section>
 
         {children}
+
+        {home.source === "furnished_finder" && !home.addressKnown && <LandlordReplyBox listingId={home.listingId} />}
 
         <Section title="Notes & links">
           <p className="mb-2.5 text-[13px] text-muted">
