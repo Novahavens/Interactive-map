@@ -1,5 +1,6 @@
 // Shared types between API routes and the client.
 
+import type { FeatureKey } from "./feature-keys";
 import type { MapStatus } from "./status";
 
 /** Link-quality label (ZZ.Status on the property board) that "Report bad link" sets. Other labels are free text from Monday. */
@@ -252,6 +253,8 @@ export interface HealthResponse {
   quo: boolean;
   /** Listing edits from the map are switched on: MAP_EDIT_SECRET is set and MAP_EDITING is not "off". */
   editing: boolean;
+  /** Housing-agent features, one switch each (lib/feature-keys.ts). All false unless MAP_FEATURES turns them on. */
+  features: Record<FeatureKey, boolean>;
 }
 
 /** POST /api/properties/:id/edit → 200. `detail` is the property as the map now has it. */
@@ -315,4 +318,204 @@ export interface OwnerSaidCall {
 export interface OwnerSaidResponse {
   enabled: boolean;
   calls: OwnerSaidCall[];
+}
+
+
+// ---------------------------------------------------------------------------------------------------------
+// Housing agent on the map (release of 26 Nov 2026). Every route below answers `enabled: false` (or state
+// "off") with 200 when its feature switch is off. Fixtures for all of them: tests/fixtures/map-agent.mjs.
+// ---------------------------------------------------------------------------------------------------------
+
+/** Latest message to a landlord about a home (never failed or cancelled ones). */
+export interface OutreachStatus {
+  /** queued | sending | sent | replied | address_found | no_answer */
+  status: string;
+  channel: string | null;
+  sentAt: string | null;
+  sentBy: string | null;
+  repliedAt: string | null;
+}
+
+/** A home the search agent found outside our database (Zillow, Furnished Finder) for the open claim. */
+export interface OutsideHome {
+  listingId: string;
+  source: "zillow" | "furnished_finder" | string;
+  url: string | null;
+  /** The street address when known, otherwise the listing's own title. */
+  title: string;
+  addressKnown: boolean;
+  city: string | null;
+  state: string | null;
+  beds: number | null;
+  baths: number | null;
+  rent: number | null;
+  /** Null when the listing site gives no pin (most Furnished Finder homes): list row only, no pin. */
+  lat: number | null;
+  lng: number | null;
+  /** "exact" street pin, "approx" (near), "area" (area-level, draw dashed), null when unknown. */
+  precision: "exact" | "approx" | "area" | null;
+  distanceMiles: number | null;
+  rank: number;
+  score: number | null;
+  /** False = it broke a search rule; `excludedBy` says which (rent, beds, distance, available_late, no_price, no_location). */
+  fits: boolean;
+  excludedBy: string[];
+  isNew: boolean;
+  /** Already an item in PROPERTY DATABASE; `propertyItemId` is its id (it may also be a normal pin). */
+  inPropertyDb: boolean;
+  propertyItemId: string | null;
+  /** Already an option on this claim. */
+  onClaim: boolean;
+  hasPhone: boolean;
+  availableFrom: string | null;
+  pets: string | null;
+  photo: string | null;
+  outreach: OutreachStatus | null;
+}
+
+/** GET /api/claim/:claimId/outside. `searchId` null = the agent has not searched for this claim yet. */
+export interface OutsideResponse {
+  enabled: boolean;
+  searchId: string | null;
+  versionNo: number | null;
+  run: { status: string; found: number; fitting: number; newHomes: number; finishedAt: string | null } | null;
+  /** Fitting homes first, then by rank. */
+  homes: OutsideHome[];
+}
+
+/** One of our own homes scored against the open claim. */
+export interface MatchScore {
+  propertyId: string;
+  rank: number;
+  /** 0–100. */
+  score: number;
+  why: string | null;
+  stretch: boolean;
+  /** Dollars per month above the claim's cap; null when the stretch is not about price (e.g. far away). */
+  stretchBy: number | null;
+  distanceMiles: number | null;
+}
+
+/** GET /api/claim/:claimId/scores. Empty when the claim has not been matched. */
+export interface ScoresResponse {
+  enabled: boolean;
+  scores: MatchScore[];
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "agent";
+  text: string;
+  at: string;
+}
+
+/** POST /api/claim/:claimId/ask */
+export interface AskRequest {
+  action: "open" | "message" | "reject" | "more_like" | "undo";
+  /** Required for "message", max 1000 chars. */
+  message?: string;
+  /** Required for "reject" and "more_like". */
+  listingId?: string;
+  /** The name remembered on this device, max 80 chars. */
+  user?: string;
+}
+
+export interface AskResponse {
+  ok: boolean;
+  /** What the agent says, ready to show. */
+  say: string;
+  /** A search is still going; read /outside again shortly. */
+  running: boolean;
+  searchId: string | null;
+  versionNo: number | null;
+  /** Homes that fit after this step, and how many of them are new. Null when the step listed no homes. */
+  summary: { homes: number; newHomes: number } | null;
+}
+
+export type SubmitState = "todo" | "ready" | "submitted" | "blocked";
+
+/** Where one option (claim sub-item) is on the way to the adjuster. */
+export interface SubmitStatus {
+  subitemId: string;
+  propertyId: string | null;
+  state: SubmitState;
+  /** Why it is blocked. */
+  reason: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  submittedBy: string | null;
+  submittedAt: string | null;
+}
+
+/** GET /api/claim/:claimId/submit-status */
+export interface SubmitStatusResponse {
+  enabled: boolean;
+  options: SubmitStatus[];
+  counts: { ready: number; submitted: number };
+}
+
+/** An open claim on the Nearsite marketplace. No tenant contact details. */
+export interface NearsiteClaim {
+  id: string;
+  /** Its item on the Nearsite Claims board. */
+  mondayItemId: string | null;
+  title: string;
+  company: string | null;
+  city: string | null;
+  state: string | null;
+  lat: number | null;
+  lng: number | null;
+  lossAddress: string | null;
+  beds: number | null;
+  baths: number | null;
+  budgetMonthly: number | null;
+  maxRate: number | null;
+  moveIn: string | null;
+  /** Days until it expires on Nearsite (0 = today). */
+  daysLeft: number | null;
+  feeGroup: string | null;
+  /** How many of our homes matched it. */
+  homesFound: number | null;
+  status: string | null;
+  assignedTo: string | null;
+  url: string | null;
+}
+
+/** GET /api/claims/nearsite?fresh= */
+export interface NearsiteClaimsResponse {
+  enabled: boolean;
+  claims: NearsiteClaim[];
+}
+
+/**
+ * GET|POST /api/properties/:id/find-phone. "off" = the feature is off. "not_found" with `lookedUpAt: null`
+ * means nobody has looked this property up yet (the idle state).
+ */
+export interface PhoneLookup {
+  state: "found" | "not_found" | "off";
+  phone: string | null;
+  source: string | null;
+  confidence: "high" | "medium" | "low" | null;
+  lookedUpAt: string | null;
+}
+
+export interface TextTemplate {
+  key: "availability" | "address" | "rate";
+  label: string;
+}
+
+/** GET /api/properties/:id/outreach (feature `templates`). */
+export interface OutreachResponse {
+  enabled: boolean;
+  outreach: OutreachStatus | null;
+}
+
+/** POST /api/claim/:claimId/add-outside { listingId } */
+export interface AddOutsideResponse {
+  ok: true;
+  /** The home's PROPERTY DATABASE item, when it has one. */
+  propertyId: string | null;
+  subitemId: string | null;
+  alreadyOnClaim: boolean;
+  dryRun?: boolean;
 }

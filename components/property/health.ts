@@ -1,3 +1,4 @@
+import { NO_FEATURES, type FeatureKey } from "@/lib/feature-keys";
 import type { HealthResponse } from "@/lib/types";
 
 // GET /api/health, asked once per page and shared by every caller (the panel is mounted twice: desktop rail
@@ -14,4 +15,9 @@ export function readHealth(): Promise<HealthResponse | null> {
 /** Listing edits from the map are switched on. */
 export function editingEnabled(): Promise<boolean> {
   return readHealth().then((h) => h?.editing === true);
+}
+
+/** Which housing-agent features are switched on (MAP_FEATURES). All false when health can't be read. */
+export function featuresOn(): Promise<Record<FeatureKey, boolean>> {
+  return readHealth().then((h) => ({ ...NO_FEATURES, ...(h?.features ?? {}) }));
 }
