@@ -1,5 +1,5 @@
 import type { OutsideHome } from "@/lib/types";
-import { outsideChipText, outsidePinLabel, pinPrecision, sourceLetter } from "@/lib/outside-pins";
+import { outsideChipText, outsidePinLabel, pinPrecision, sourceLetter, sourceLogo, sourceName } from "@/lib/outside-pins";
 
 export interface OutsidePinState {
   selected?: boolean;
@@ -9,9 +9,10 @@ export interface OutsidePinState {
 }
 
 /**
- * The pin for a home that is not in our database: ink outline and the source letter (Z / F) on an ink square
- * where our pins carry a status dot. No colour of its own. Plain DOM, styled entirely by globals.css, and built
- * with textContent only (the source and title come from listing sites).
+ * The pin for a home that is not in our database: ink outline and the listing site's logo (Zillow, Furnished
+ * Finder) in a square where our pins carry a status dot. A site without a logo keeps its first letter. The logo is
+ * the only colour, and it is decorative: the pin's aria-label already names the source. Plain DOM, styled entirely
+ * by globals.css, and built with textContent and attributes only (the source and title come from listing sites).
  */
 export function buildOutsidePin(
   home: Pick<OutsideHome, "title" | "rent" | "source" | "score" | "precision">,
@@ -33,9 +34,21 @@ export function buildOutsidePin(
   chip.className = "nh-pin__chip";
 
   const src = document.createElement("span");
-  src.className = "nh-src";
   src.setAttribute("aria-hidden", "true");
-  src.textContent = sourceLetter(home.source);
+  const logo = sourceLogo(home.source);
+  if (logo) {
+    src.className = "nh-src nh-src--logo";
+    const img = document.createElement("img");
+    img.src = logo;
+    img.alt = sourceName(home.source);
+    img.width = 16;
+    img.height = 16;
+    img.setAttribute("aria-hidden", "true");
+    src.appendChild(img);
+  } else {
+    src.className = "nh-src";
+    src.textContent = sourceLetter(home.source);
+  }
   chip.appendChild(src);
 
   if (precision !== "exact") {

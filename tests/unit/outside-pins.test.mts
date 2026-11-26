@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -13,6 +14,7 @@ import {
   pinWeight,
   pinnableOutside,
   sourceLetter,
+  sourceLogo,
   sourceName,
 } from "../../lib/outside-pins.ts";
 import type { OutsideHome } from "../../lib/types";
@@ -41,6 +43,25 @@ test("source name for labels", () => {
   assert.equal(sourceName("apartments_com"), "Apartments com");
   assert.equal(sourceName(null), "another site");
   assert.equal(sourceName("  "), "another site");
+});
+
+test("source logo: Zillow and Furnished Finder have one, other sites keep their letter", () => {
+  assert.equal(sourceLogo("zillow"), "/logos/zillow.png");
+  assert.equal(sourceLogo(" Zillow "), "/logos/zillow.png");
+  assert.equal(sourceLogo("furnished_finder"), "/logos/furnished-finder.png");
+  assert.equal(sourceLogo("apartments_com"), null);
+  assert.equal(sourceLogo("constructor"), null);
+  assert.equal(sourceLogo(""), null);
+  assert.equal(sourceLogo(null), null);
+  assert.equal(sourceLetter("apartments_com"), "A");
+});
+
+test("every source logo is a file in public/", () => {
+  for (const source of ["zillow", "furnished_finder"]) {
+    const path = sourceLogo(source);
+    assert.ok(path, `no logo for ${source}`);
+    assert.ok(existsSync(new URL(`../../public${path}`, import.meta.url)), `missing ${path}`);
+  }
 });
 
 test("chip text matches our own pins", () => {
