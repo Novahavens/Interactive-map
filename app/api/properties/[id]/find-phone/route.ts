@@ -10,6 +10,7 @@ export const maxDuration = 60;
 
 const MAX_BODY = 4096;
 const LOOKUP_TIMEOUT_MS = 30_000;
+const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 
 // What map_phone_lookup_guard (Postgres) can answer besides "ok". The guard owns the limits: 20 per IP per
 // 10 minutes, 200 a day overall.
@@ -50,7 +51,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 /**
  * POST /api/properties/:id/find-phone  { by? }
  *
- * Looks the owner's phone up: a found number saved in the last 90 days is returned as is; otherwise the guard
+ * Looks the owner's phone up: a found number saved in the last 90 days, or a "not found" from the last 24 hours, is returned as is; otherwise the guard
  * (rate limits), then the lookup service (MAP_PHONE_URL gets { propertyId, address, city, state, zip } and
  * answers { phone, source?, confidence? }), then the answer is saved and returned. Nothing is written to
  * Monday: saving the number on the property goes through the Edit form.
@@ -90,6 +91,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     const before = await saved(secret, id);
     if (before.state === "found") return answer(before);
+    // Each lookup costs money and draws on the shared daily cap: a "not found" from the last day is the answer.
+    if (before.state === "not_found" && before.lookedUpAt && Date.now() - Date.parse(before.lookedUpAt) < RETRY_AFTER_MS) {
+      return answer(before);
+    }
 
     const guard = await sb.rpc("map_phone_lookup_guard", { p_secret: secret, p_property_item_id: id, p_ip: ip, p_by: by });
     if (guard.error) throw guard.error;
