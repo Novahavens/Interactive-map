@@ -8,12 +8,29 @@ import SearchBox from "./SearchBox";
 import ActiveClaimsDrawer from "./ActiveClaimsDrawer";
 import SummarySheet from "./SummarySheet";
 import { useTheme } from "@/lib/useTheme";
-import { BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, type PropertyDetail } from "@/lib/types";
+import {
+  BAD_LINK, type ActiveClaim, ClaimResponse, Pin, Coverage, PropertiesResponse, ApiError, AttachedPin, type PropertyDetail,
+  type ClaimNeeds, type MatchScore as Score, type NearsiteClaim, type OutsideHome, type OutsideResponse, type ScoresResponse,
+  type SubmitStatusResponse,
+} from "@/lib/types";
 import { EDIT_FIELDS } from "@/lib/listing-edit";
 import { milesBetween } from "@/lib/utils";
 
 const COST_KEYS = new Set<string>(EDIT_FIELDS.filter((f) => f.group === "costs").map((f) => f.key));
-import { readHealth } from "./property/health";
+import { featuresOn, readHealth } from "./property/health";
+import { NO_FEATURES, type FeatureKey } from "@/lib/feature-keys";
+import { isListingId } from "@/lib/agent-chat-ui";
+import { pinnableOutside } from "@/lib/outside-pins";
+import { bestMatchAvailable, effectiveSort, itemId, noLocationStart, sortResults, type SortMode } from "@/lib/result-sort";
+import { useAgentChat } from "@/lib/use-agent-chat";
+import AgentBubble from "./AgentBubble";
+import AgentChat from "./AgentChat";
+import MatchScore from "./MatchScore";
+import OutsidePanel from "./OutsidePanel";
+import OutsideRow, { NoLocationDivider } from "./OutsideRow";
+import SortToggle, { readSortChoice, saveSortChoice } from "./SortToggle";
+import OutreachLine from "./property/OutreachLine";
+import { Section } from "./property/parts";
 import { useEditSession, type SavedOutcome } from "./property/edit-session";
 import { STATUS_ORDER, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
 import ClaimBrief, { claimGlance } from "./ClaimBrief";
@@ -33,6 +50,22 @@ interface Props {
 
 type Center = { lat: number; lng: number; address: string; source: "claim" | "search" };
 const NONE_HIDDEN: Record<MapStatus, boolean> = { green: false, yellow: false, red: false };
+/** Pixels the open chat window covers on the map's right edge (lg+). */
+const CHAT_AVOID = { right: 384, bottom: 0 };
+/** How many outside rows get the agent's "why" line. */
+const WHY_ROWS = 3;
+
+/** A Nearsite claim's needs, in the shape the panel's fit rows read. */
+function nearsiteNeeds(n: NearsiteClaim): ClaimNeeds {
+  return { bedrooms: n.beds, bathrooms: n.baths, pets: null, frv: n.budgetMonthly ?? n.maxRate, moveIn: n.moveIn, adults: null, children: null };
+}
+
+/** GET a JSON route; throws on a non-2xx answer. */
+async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, { cache: "no-store", signal });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as T;
+}
 
 // The docked rail (Tailwind's lg, 64rem and up) or the phone sheet: which panel copy is on screen. In rem, like
 // Tailwind, so it follows the browser's default font size the same way the lg: classes do.
@@ -59,6 +92,19 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   const [claim, setClaim] = useState<ClaimResponse | null>(null);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [claimLoading, setClaimLoading] = useState<boolean>(!!claimId);
+
+  // Housing-agent features (MAP_FEATURES via /api/health, the one shared read). All off = today's screen.
+  const [features, setFeatures] = useState<Record<FeatureKey, boolean>>(NO_FEATURES);
+  useEffect(() => {
+    let live = true;
+    void featuresOn().then((f) => live && setFeatures(f));
+    return () => {
+      live = false;
+    };
+  }, []);
+  // A Nearsite claim opened from the drawer (flag `nearsite`). It lives on another Monday board, so it is opened
+  // from its own location and needs, and its mondayItemId is the claim id for the outside / scores / ask routes.
+  const [nearsite, setNearsite] = useState<NearsiteClaim | null>(null);
 
   const [center, setCenter] = useState<Center | null>(null);
   const [radius, setRadius] = useState<number>(DEFAULT_RADIUS);
@@ -151,7 +197,9 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
 
   // List row <-> map pin highlight. `from` decides whether the list follows (map hover) or the map pans (pointer on a row).
   const [hover, setHover] = useState<{ id: string; from: HoverSource } | null>(null);
-  const hoveredId = hover?.id ?? null;
+  // Outside rows and pins carry a listing uuid, our homes a Monday id: the uuid says which layer it is.
+  const hoveredId = hover && !isListingId(hover.id) ? hover.id : null;
+  const hoveredOutsideId = hover && isListingId(hover.id) ? hover.id : null;
   const onHover = useCallback(
     (id: string | null, from: HoverSource = "map") =>
       setHover((prev) => (id === null ? null : prev?.id === id && prev.from === from ? prev : { id, from })),
@@ -169,7 +217,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
 
   // ---- 1. read the claim ----
   const loadClaim = useCallback(async () => {
-    if (!claimId) return;
+    if (!claimId || nearsite) return;
     setClaimLoading(true);
     setClaimError(null);
     try {
@@ -191,13 +239,14 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     } finally {
       if (claimIdRef.current === claimId) setClaimLoading(false);
     }
-  }, [claimId]);
+  }, [claimId, nearsite]);
 
   // Switching claims: drop everything scoped to the old one before the new claim loads,
   // so nothing (selection, attached set, an in-flight add) can land on the wrong claim.
   const switchClaim = useCallback((c: ActiveClaim) => {
     claimIdRef.current = c.id;
     setClaimId(c.id);
+    setNearsite(null);
     setClaim(null);
     setClaimError(null);
     setAttachedPins([]);
@@ -212,6 +261,29 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     if (c.id === claimIdRef.current) return;
     guard(() => switchClaim(c));
   }, [guard, switchClaim]);
+  // Opening a Nearsite claim only opens it ("Pick up" assigns nothing): centre on it, use its needs.
+  const selectNearsite = useCallback(
+    (n: NearsiteClaim) => {
+      setDrawerOpen(false);
+      const id = n.mondayItemId;
+      if (!id || id === claimIdRef.current) return;
+      guard(() => {
+        claimIdRef.current = id;
+        setClaimId(id);
+        setNearsite(n);
+        setClaim(null);
+        setClaimLoading(false);
+        setAttachedPins([]);
+        setSelectedId(null);
+        setCenter(n.lat != null && n.lng != null ? { lat: n.lat, lng: n.lng, address: n.lossAddress ?? n.title, source: "claim" } : null);
+        setClaimError(n.lat != null && n.lng != null ? null : "This Nearsite claim has no location yet. Search an address below.");
+        const url = new URL(window.location.href);
+        url.searchParams.delete("claimId"); // not a Claim Process Board item: a reload starts from the claims drawer
+        window.history.replaceState(null, "", url);
+      });
+    },
+    [guard],
+  );
 
   // Cmd/Ctrl+K toggles the drawer.
   useEffect(() => {
@@ -238,6 +310,85 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       live = false;
     };
   }, []);
+
+  // ---- 1b. the claim being worked, for the housing-agent pieces: a Claim Process claim or an open Nearsite one ----
+  const work = useMemo(
+    () =>
+      claim
+        ? { id: claim.id, name: claim.name, needs: claim.needs, accountManager: claim.brief?.accountManager ?? null }
+        : nearsite?.mondayItemId
+          ? { id: nearsite.mondayItemId, name: nearsite.title, needs: nearsiteNeeds(nearsite), accountManager: nearsite.assignedTo }
+          : null,
+    [claim, nearsite],
+  );
+  const workId = work?.id ?? null;
+  const workIdRef = useRef(workId);
+  workIdRef.current = workId;
+
+  // Outside homes (flag `outside`): read once per claim, again after the agent or an add changed them.
+  const [outside, setOutside] = useState<OutsideResponse | null>(null);
+  const [outsideHidden, setOutsideHidden] = useState(false);
+  const loadOutside = useCallback(() => {
+    const id = workIdRef.current;
+    if (!features.outside || !id) return;
+    getJson<OutsideResponse>(`/api/claim/${id}/outside`)
+      .then((r) => workIdRef.current === id && setOutside(r))
+      .catch(() => undefined); // keep what is shown; the next change reads again
+  }, [features.outside]);
+  useEffect(() => {
+    setOutside(null);
+    loadOutside();
+  }, [workId, loadOutside]);
+  const outsideHomes = useMemo<OutsideHome[]>(() => (features.outside && workId && outside?.enabled ? outside.homes : []), [features.outside, workId, outside]);
+
+  // Match scores (flag `bestMatch`).
+  const [scores, setScores] = useState<Score[] | null>(null);
+  const [scoresLoading, setScoresLoading] = useState(false);
+  const [scoresError, setScoresError] = useState(false);
+  const [scoresTry, setScoresTry] = useState(0);
+  useEffect(() => {
+    setScores(null);
+    setScoresError(false);
+    if (!features.bestMatch || !workId) {
+      setScoresLoading(false);
+      return;
+    }
+    const ctrl = new AbortController();
+    setScoresLoading(true);
+    getJson<ScoresResponse>(`/api/claim/${workId}/scores`, ctrl.signal)
+      .then((r) => setScores(r.enabled ? r.scores : []))
+      .catch((e) => {
+        if ((e as Error).name !== "AbortError") setScoresError(true);
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setScoresLoading(false);
+      });
+    return () => ctrl.abort();
+  }, [features.bestMatch, workId, scoresTry]);
+  const scoreFor = useCallback((propertyId: string | null | undefined) => (propertyId && scores?.find((x) => x.propertyId === propertyId)) || null, [scores]);
+
+  // Submit status (flag `submit`): read once per claim (Claim Process claims only: Nearsite ones have no options yet).
+  const [submitStatus, setSubmitStatus] = useState<SubmitStatusResponse | null>(null);
+  const submitClaimId = features.submit && claim ? claim.id : null;
+  const loadSubmit = useCallback(() => {
+    const id = submitClaimId;
+    if (!id) return;
+    getJson<SubmitStatusResponse>(`/api/claim/${id}/submit-status`)
+      .then((r) => workIdRef.current === id && setSubmitStatus(r.enabled ? r : null))
+      .catch(() => undefined);
+  }, [submitClaimId]);
+  useEffect(() => {
+    setSubmitStatus(null);
+    loadSubmit();
+  }, [loadSubmit]);
+  const submitFor = useCallback(
+    (propertyId: string | null | undefined) => (submitStatus && propertyId ? submitStatus.options.find((o) => o.propertyId === propertyId) ?? null : null),
+    [submitStatus],
+  );
+
+  // Agent chat (flag `chat`).
+  const [chatOpen, setChatOpen] = useState(false);
+  const chat = useAgentChat({ claimId: features.chat ? workId : null, open: chatOpen, enabled: features.chat, onChanged: loadOutside });
 
   // ---- 2. pins inside the radius ----
   useEffect(() => {
@@ -308,7 +459,8 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   // Pointing at a pin on the map brings its row into view in whichever results list is showing.
   useEffect(() => {
     if (hover?.from !== "map") return;
-    const rows = [railRef, sheetRef].map((r) => r.current?.querySelector<HTMLElement>(`#row-${CSS.escape(hover.id)}`));
+    const rowId = `${isListingId(hover.id) ? "row-out-" : "row-"}${hover.id}`;
+    const rows = [railRef, sheetRef].map((r) => r.current?.querySelector<HTMLElement>(`#${CSS.escape(rowId)}`));
     rows.find((row) => row && row.offsetParent !== null)?.scrollIntoView({ block: "nearest" });
   }, [hover]);
 
@@ -318,19 +470,82 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   }, []);
 
   const visiblePins = useMemo(() => pins.filter((p) => passesFilters(p, filters)), [pins, filters]);
-  const sortedPins = useMemo(
-    () =>
-      [...visiblePins].sort(
-        (a, b) =>
-          STATUS_ORDER.indexOf(asMapStatus(a.map_status)) - STATUS_ORDER.indexOf(asMapStatus(b.map_status)) || a.distance_miles - b.distance_miles,
-      ),
-    [visiblePins],
+
+  // The list: our homes, plus outside homes (flag `outside`), ordered Nearest (today's rule) or Best match (flag `bestMatch`).
+  const listedOutside = features.outside && workId && !outsideHidden ? outsideHomes : null;
+  const listedScores = features.bestMatch ? scores : null;
+  // Outside homes that are already one of ours (on the map, filtered out, or attached) are not listed twice.
+  const knownPropertyIds = useMemo(() => new Set([...attachedIds, ...pins.map((p) => p.monday_item_id)]), [attachedIds, pins]);
+  const [sortChoice, setSortChoice] = useState<SortMode>("best");
+  useEffect(() => {
+    if (features.bestMatch) setSortChoice(readSortChoice());
+  }, [features.bestMatch]);
+  // Spec: while scores load the list stays Nearest; when they land it switches to Best match only if nobody has
+  // scrolled the list yet (otherwise it holds Nearest until the toggle is used).
+  const listScrolled = useRef(false);
+  const [holdNearest, setHoldNearest] = useState(false);
+  useEffect(() => {
+    listScrolled.current = false;
+    setHoldNearest(false);
+  }, [workId]);
+  useEffect(() => {
+    if (!features.bestMatch) return;
+    const onScroll = (e: Event) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.matches?.('ul[aria-label="Results"]') && t.scrollTop > 0) listScrolled.current = true;
+    };
+    document.addEventListener("scroll", onScroll, true);
+    return () => document.removeEventListener("scroll", onScroll, true);
+  }, [features.bestMatch]);
+  const wasScoring = useRef(false);
+  useEffect(() => {
+    if (wasScoring.current && !scoresLoading && listScrolled.current) setHoldNearest(true);
+    wasScoring.current = scoresLoading;
+  }, [scoresLoading]);
+  const sortValue: SortMode = holdNearest ? "nearest" : sortChoice;
+  const bestAvailable = useMemo(
+    () => !!listedScores && bestMatchAvailable(sortResults({ pins: visiblePins, outside: listedOutside, scores: listedScores, mode: "nearest", knownPropertyIds })),
+    [visiblePins, listedOutside, listedScores, knownPropertyIds],
   );
+  const sortMode: SortMode = features.bestMatch ? effectiveSort(sortValue, bestAvailable) : "nearest";
+  const items = useMemo(
+    () => sortResults({ pins: visiblePins, outside: listedOutside, scores: listedScores, mode: sortMode, knownPropertyIds }),
+    [visiblePins, listedOutside, listedScores, sortMode, knownPropertyIds],
+  );
+  const noLocation = useMemo(() => noLocationStart(items, sortMode), [items, sortMode]);
+  const outsideListed = useMemo(() => items.filter((i) => i.kind === "outside").length, [items]);
+  const changeSort = useCallback((m: SortMode) => {
+    setHoldNearest(false);
+    setSortChoice(m);
+    saveSortChoice(m);
+  }, []);
+
+  // Outside pins: homes with coordinates that are not already drawn as one of ours (at most 50).
+  const outsidePins = useMemo(
+    () => (features.outside && workId ? pinnableOutside(outsideHomes, { drawnPropertyIds: knownPropertyIds }) : null),
+    [features.outside, workId, outsideHomes, knownPropertyIds],
+  );
+
+  // The selected outside home (a listing uuid in selectedId). When it leaves the list, the panel closes.
+  const selectedOutside = useMemo(
+    () => (isListingId(selectedId) ? outsideHomes.find((h) => h.listingId === selectedId) ?? null : null),
+    [selectedId, outsideHomes],
+  );
+  const panelOpen = !!selectedId && (!isListingId(selectedId) || !!selectedOutside);
+  useEffect(() => {
+    if (isListingId(selectedId) && outside && !selectedOutside) setSelectedId(null);
+  }, [selectedId, outside, selectedOutside]);
+  const handleOutsideAdded = useCallback(() => {
+    void loadClaim();
+    loadOutside();
+    loadSubmit();
+  }, [loadClaim, loadOutside, loadSubmit]);
 
   // A hovered row or pin that filtering, the radius or an add took off the map never sends a mouseleave.
   useEffect(() => {
     if (hoveredId && !attachedIds.has(hoveredId) && !visiblePins.some((p) => p.monday_item_id === hoveredId)) setHover(null);
-  }, [hoveredId, visiblePins, attachedIds]);
+    if (hoveredOutsideId && (outsideHidden || !outsideHomes.some((h) => h.listingId === hoveredOutsideId))) setHover(null);
+  }, [hoveredId, visiblePins, attachedIds, hoveredOutsideId, outsideHidden, outsideHomes]);
 
   // The legend counts what the other filters leave in view, so a hidden colour still shows its number.
   const statusCounts = useMemo(() => {
@@ -438,6 +653,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         counts={statusCounts}
         hidden={filters.hidden}
         onToggle={(st) => setFilters((f) => ({ ...f, hidden: { ...f.hidden, [st]: !f.hidden[st] } }))}
+        {...(outsidePins && { outsideCount: outsideHomes.length, outsideHidden, onToggleOutside: () => setOutsideHidden((h) => !h) })}
       />
         </div>
       </details>
@@ -465,7 +681,12 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
             {needsMissing.join(" · ")} not on claim
           </p>
         )}
-        <ClaimBrief name={claim.name} brief={claim.brief} hideGlance={touch} />
+        <ClaimBrief
+          name={claim.name}
+          brief={claim.brief}
+          hideGlance={touch}
+          {...(features.submit && { submitCounts: submitStatus ? { ...submitStatus.counts, options: submitStatus.options.length } : null })}
+        />
         <button
           type="button"
           disabled={attachedPins.length === 0}
@@ -487,17 +708,41 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       {pinsLoading && visiblePins.length === 0 ? (
         [...Array(6)].map((_, i) => <li key={i} className="nh-skeleton m-1 h-12" />)
       ) : (
-        sortedPins.map((p) => (
-          <ResultRow
-            key={p.monday_item_id}
-            pin={p}
-            selected={selectedId === p.monday_item_id}
-            hovered={hoveredId === p.monday_item_id}
-            claimId={claimId}
-            onSelect={onSelect}
-            onHover={onHover}
-          />
-        ))
+        (() => {
+          let outsideSeen = 0;
+          return items.map((item, i) => {
+            const id = itemId(item);
+            const row =
+              item.kind === "ours" ? (
+                <ResultRow
+                  key={id}
+                  pin={item.pin}
+                  {...(features.bestMatch && { score: item.score })}
+                  selected={selectedId === id}
+                  hovered={hoveredId === id}
+                  claimId={claimId}
+                  onSelect={onSelect}
+                  onHover={onHover}
+                />
+              ) : (
+                <OutsideRow
+                  key={id}
+                  home={item.home}
+                  score={item.score}
+                  frv={work?.needs.frv ?? null}
+                  why={outsideSeen++ < WHY_ROWS ? (item.score?.why ?? null) : null}
+                  selected={selectedId === id}
+                  hovered={hoveredOutsideId === id}
+                  onSelect={onSelect}
+                  onHover={onHover}
+                />
+              );
+            return noLocation?.index === i ? [<NoLocationDivider key="no-location" count={noLocation.count} />, row] : row;
+          });
+        })()
+      )}
+      {outsidePins && outsidePins.capped > 0 && !outsideHidden && (
+        <li className="px-1 py-2 text-xs text-muted">Showing the best 50 outside homes on the map.</li>
       )}
       {coverage && coverage.unmapped > 0 && (
         <li className="mt-1 flex flex-col gap-1 border-t border-line px-1 py-2.5 text-xs text-muted">
@@ -509,7 +754,22 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       )}
     </>
   );
-  const countLabel = center ? `${visiblePins.length.toLocaleString("en-US")} within ${radius} mi` : "—";
+  const countLabel = center
+    ? `${visiblePins.length.toLocaleString("en-US")} within ${radius} mi${outsideListed ? ` · ${outsideListed} outside` : ""}`
+    : "—";
+  const sortToggle = (className: string, withCount: boolean) => (
+    <SortToggle
+      className={className}
+      value={sortValue}
+      onChange={changeSort}
+      bestAvailable={bestAvailable}
+      loading={scoresLoading}
+      claimOpen={!!workId}
+      error={scoresError}
+      onRetry={() => setScoresTry((n) => n + 1)}
+      {...(withCount && { countLabel })}
+    />
+  );
   const compactSummary = [center?.address || "Loss address", `${radius} mi`, activeFilters ? `${activeFilters} filter${activeFilters === 1 ? "" : "s"}` : "no filters"].join(" · ");
 
   // Desktop rail, two rows: the controls take what they need but shrink and scroll when the column is short, and the results
@@ -522,10 +782,14 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       </div>
 
       <div className="flex min-h-0 flex-col">
-        <div className="flex items-baseline justify-between px-3 pb-1.5 pt-2.5">
-          <span className="text-[13px] text-muted">{countLabel}</span>
-          <span className="text-xs text-muted">green first, then nearest</span>
-        </div>
+        {features.bestMatch ? (
+          sortToggle("px-3 pb-1.5 pt-2.5", true)
+        ) : (
+          <div className="flex items-baseline justify-between px-3 pb-1.5 pt-2.5">
+            <span className="text-[13px] text-muted">{countLabel}</span>
+            <span className="text-xs text-muted">green first, then nearest</span>
+          </div>
+        )}
 
         <ul aria-label="Results" className="nh-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">
           {resultRows}
@@ -536,13 +800,33 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
 
   // One copy per layout; `active` says which one is on screen, and only that one shows the edit form.
   const panelFor = (rail: boolean) =>
-    selectedId ? (
+    selectedOutside ? (
+      <OutsidePanel
+        key={`${workId ?? "none"}:${selectedOutside.listingId}`}
+        home={selectedOutside}
+        claim={claim ? { id: claim.id, name: claim.name, accountManager: claim.brief?.accountManager ?? null } : null}
+        canAdd={features.addOutside}
+        onAdded={handleOutsideAdded}
+        onClose={closePanel}
+        {...(features.bestMatch &&
+          (scoresLoading || scoreFor(selectedOutside.propertyItemId)) && {
+            score: <MatchScore score={scoreFor(selectedOutside.propertyItemId)} loading={scoresLoading} />,
+          })}
+        {...(features.submit && { submit: submitFor(selectedOutside.propertyItemId) })}
+      >
+        {features.templates && selectedOutside.outreach && (
+          <Section title="Outreach">
+            <OutreachLine enabled outreach={selectedOutside.outreach} />
+          </Section>
+        )}
+      </OutsidePanel>
+    ) : selectedId && !isListingId(selectedId) ? (
     <PropertyPanel
       key={`${claim?.id ?? "none"}:${selectedId}`}
       propertyId={selectedId}
       pin={selectedPin}
       claim={claim ? { id: claim.id, name: claim.name, accountManager: claim.brief?.accountManager ?? null } : null}
-      needs={claim?.needs ?? null}
+      needs={work?.needs ?? null}
       attached={attachedIds.has(selectedId)}
       onAttached={handleAttached}
       onFlagged={handleFlagged}
@@ -550,6 +834,10 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       session={session}
       active={rail === wide}
       onClose={closePanel}
+      {...(features.bestMatch && workId && { score: scoreFor(selectedId), scoreLoading: scoresLoading })}
+      {...(features.submit && submitStatus && { submit: submitFor(selectedId) })}
+      {...(features.findPhone && { findPhone: true })}
+      {...(features.templates && { templates: true })}
     />
   ) : null;
 
@@ -585,6 +873,15 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
               </span>
             </>
           )}
+          {nearsite && !claim && (
+            <>
+              <span className="hidden text-line2 sm:inline">/</span>
+              <span className="truncate font-medium">{nearsite.title}</span>
+              <span className="hidden shrink-0 rounded px-1.5 py-px font-mono text-[11px] text-muted sm:inline" style={{ border: "1px solid var(--line)" }}>
+                Nearsite
+              </span>
+            </>
+          )}
           {!claimId && !claim && <span className="truncate text-muted">Property map</span>}
         </div>
 
@@ -617,7 +914,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
           >
             {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
           </button>
-          {claimId && (
+          {claimId && !nearsite && (
             <button
               type="button"
               onClick={() => void loadClaim()}
@@ -637,6 +934,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         selectedId={claimId}
         onSelect={selectClaim}
         onCount={setActiveCount}
+        {...(features.nearsite && { onSelectNearsite: selectNearsite })}
       />
 
       {claim && <SummarySheet claimId={claim.id} open={summaryOpen} onOpenChange={setSummaryOpen} />}
@@ -661,13 +959,22 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
               pins={pins}
               attachedPins={attachedPins}
               attachedIds={attachedIds}
-              selectedId={selectedId}
+              selectedId={isListingId(selectedId) ? null : selectedId}
               hoveredId={hoveredId}
               panToHovered={hover?.from === "list"}
               filters={filters}
               onSelect={onSelect}
               onHover={onHover}
               onError={setMapError}
+              {...(outsidePins && {
+                outside: outsidePins.homes,
+                selectedOutsideId: selectedOutside?.listingId ?? null,
+                hoveredOutsideId,
+                outsideHidden,
+                onSelectOutside: onSelect,
+                onHoverOutside: onHover,
+              })}
+              {...(features.chat && { zoomTopRight: true, avoid: chatOpen && wide ? CHAT_AVOID : null })}
             />
           ) : (
             <Blocker title="Google Maps key missing" body="Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in the deployment environment." />
@@ -722,12 +1029,58 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
           {/* Legend */}
           {center && (
             <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[calc(100%-24px)] max-lg:bottom-[68px]">
-              <MapKey variant="floating" attachedCount={attachedPins.length} loading={pinsLoading} />
+              <MapKey
+                variant="floating"
+                attachedCount={attachedPins.length}
+                loading={pinsLoading}
+                {...(outsidePins && { outsideCount: outsideHomes.length, outsideHidden })}
+                {...((outsidePins || features.chat) && { short: !wide })}
+                {...(features.chat && { chatOpen: chatOpen && wide })}
+              />
             </div>
           )}
 
+          {/* Agent chat (flag `chat`): bubble bottom right of the map, window over the map */}
+          {features.chat && (
+            <>
+              <AgentBubble
+                open={chatOpen}
+                onOpenChange={setChatOpen}
+                badge={chat.badge}
+                running={chat.running}
+                noClaim={!work}
+                sheetSnap={sheetSnap}
+                hidden={panelOpen && !wide}
+              />
+              <AgentChat
+                open={chatOpen}
+                onClose={() => setChatOpen(false)}
+                claim={work ? { id: work.id, name: work.name, frv: work.needs.frv } : null}
+                selectedHome={
+                  selectedOutside
+                    ? { id: selectedOutside.listingId, name: selectedOutside.title }
+                    : selectedPin
+                      ? { id: selectedPin.monday_item_id, name: selectedPin.name ?? "this home" }
+                      : null
+                }
+                messages={chat.messages}
+                status={chat.status}
+                canUndo={chat.canUndo}
+                onSend={(t) => chat.send(t)}
+                onMoreLike={chat.moreLike}
+                onStop={chat.stop}
+                onUndo={chat.undo}
+                onRetry={chat.retry}
+                onOpenClaims={() => {
+                  setChatOpen(false);
+                  setDrawerOpen(true);
+                }}
+              />
+            </>
+          )}
+
           {/* Compact: panel floats over the map */}
-          {selectedId && (
+          {panelOpen && (
             <div className="absolute inset-0 z-30 lg:hidden">
               <div className="absolute inset-0" style={{ background: "var(--scrim)" }} onClick={closePanel} />
               <div className="absolute inset-x-3 bottom-3 top-3 flex overflow-hidden rounded-xl border border-line shadow-[0_12px_40px_rgba(0,0,0,0.25)] sm:inset-x-auto sm:right-3 sm:w-[400px]">
@@ -738,7 +1091,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         </div>
 
         {/* ---------- Docked panel (lg+) ---------- */}
-        {selectedId && (
+        {panelOpen && (
           <div className="hidden w-[400px] shrink-0 border-l border-line lg:flex">
             {panelFor(true)}
           </div>
@@ -750,7 +1103,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
             sheetRef={sheetRef}
             snap={sheetSnap}
             onSnap={setSheetSnap}
-            hidden={!!selectedId}
+            hidden={panelOpen}
             countLabel={countLabel}
             glance={claim ? claimGlance(claim.brief).join(" · ") : ""}
             headerOpen={sheetHeaderOpen}
@@ -763,6 +1116,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
               </>
             }
             rows={resultRows}
+            {...(features.bestMatch && { listHeader: sortToggle("shrink-0 px-3 pt-1.5", false) })}
           />
         )}
       </div>
