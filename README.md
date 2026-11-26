@@ -60,6 +60,17 @@ Nova Havens places families displaced by insurance claims into temporary housing
 
 ---
 
+## 🆕 What's new — November 2026
+
+| | Change | PR |
+|---|---|---|
+| 🧩 | **Housing agent on the map, merged switched off.** Outside homes (Zillow, Furnished Finder) as pins and rows, *Best match* sort, the agent chat, *Add to claim* for outside homes, submit status, *Mine / All* and a *Nearsite* tab in the claims drawer, *Find phone* and text templates. Every part is behind a switch in `MAP_FEATURES` and off on the live map until it is named there. The database functions are applied and checked (see [Housing agent on the map](#-housing-agent-on-the-map-switched-off)). | [#26](https://github.com/Novahavens/Interactive-map/pull/26) |
+| 🟢 | **"Available now" read from the status.** The panel and the summary say *Available now* when the status says so and no later date is set; *Next availability* is read-only on listings the availability check watches. | [#25](https://github.com/Novahavens/Interactive-map/pull/25) |
+| 📍 | **Address field in Edit**, with Google's suggestions; saving it moves the pin. | [#24](https://github.com/Novahavens/Interactive-map/pull/24) |
+| 🔕 | **Quo notes no longer email everyone who follows a Monday item.** The one-line notes are off by default (`QUO_MONDAY_NOTES`); *Last Contact Date* still moves. | [#23](https://github.com/Novahavens/Interactive-map/pull/23) |
+
+---
+
 ## 🆕 What's new — October 2026
 
 | | Change | PR |
@@ -302,14 +313,20 @@ sequenceDiagram
 .
 ├── app/
 │   ├── layout.tsx · page.tsx · globals.css     # shell, ?claimId=, design tokens (+ shadcn mapping)
-│   └── api/
-│       ├── health/route.ts                     # GET  { ok, dryRun }
+│   ├── api/
+│       ├── health/route.ts                     # GET  { ok, dryRun, quo, editing, features }
 │       ├── properties/route.ts                 # GET  pins + coverage inside a radius
 │       ├── properties/[id]/route.ts            # GET  full record for the side panel
+│       ├── properties/[id]/{contact,edit,owner-said,flag-link}/   # Quo history, listing edits, Owner said, bad link
+│       ├── properties/[id]/{find-phone,outreach}/                 # housing agent: phone lookup, outreach line
 │       ├── claims/active/route.ts              # GET  claims waiting on options (drawer)
+│       ├── claims/nearsite/route.ts            # GET  housing agent: Nearsite claims tab
 │       ├── claim/[claimId]/route.ts            # GET  loss address, needs, attached options
 │       ├── claim/[claimId]/summary/route.ts    # GET  summary preview · POST log it on the claim
-│       └── claim/add/route.ts                  # POST attach a property (Monday sub-item)
+│       ├── claim/[claimId]/{outside,scores,submit-status,ask,add-outside}/   # housing agent
+│       ├── claim/add/route.ts                  # POST attach a property (Monday sub-item)
+│       └── quo/{webhook,setup,backfill}/       # Quo contact log
+│   └── dev/                                    # component preview pages for the browser tests (404 in production)
 ├── components/
 │   ├── MapApp.tsx                # page shell: header, claim state, filters, list
 │   ├── MapCanvas.tsx             # Google map, markers, clustering, radius circle
@@ -319,7 +336,13 @@ sequenceDiagram
 │   ├── SearchBox.tsx             # Places (New) autocomplete
 │   ├── ActiveClaimsDrawer.tsx    # Ctrl/⌘ K drawer (shadcn Sheet + cmdk)
 │   ├── SummarySheet.tsx          # Send summary preview / copy / email
-│   └── ui/                       # shadcn/ui: sheet, dialog, command, button
+│   ├── ResultsSheet.tsx · ResultRow.tsx · StatusChips.tsx · MapKey.tsx   # results list, phone sheet, chips, map key
+│   ├── AgentBubble.tsx · AgentChat.tsx            # housing agent chat (switch: chat)
+│   ├── OutsidePanel.tsx · OutsideRow.tsx · map/outside-pin.ts   # outside homes (switch: outside)
+│   ├── SortToggle.tsx · MatchScore.tsx            # Best match / Nearest (switch: bestMatch)
+│   ├── NearsiteList.tsx                           # Nearsite tab in the claims drawer (switch: nearsite)
+│   ├── property/                 # panel parts: edit form, availability pill, Quo, Owner said, Find phone, templates, submit status
+│   └── ui/                       # shadcn/ui: sheet, dialog, command, button, tabs, toggle, tooltip, popover, badge, …
 ├── lib/
 │   ├── monday.ts                 # server-only Monday client, columns, dry-run guard
 │   ├── summary.ts                # pure buildSummary() + parseEmails()
@@ -327,9 +350,14 @@ sequenceDiagram
 │   ├── quo-links.ts              # openphone:// and tel: links for the Call / Text buttons, the text draft
 │   ├── quo-events.ts · owner-said.ts · quo-signature.ts · quo-config.ts  # the contact log's rules, reading summaries, webhook signatures, switches
 │   ├── status.ts                 # green / yellow / red: names, colours, shapes, reasons (the rule is in the database)
+│   ├── feature-keys.ts · features.ts   # housing agent switches (MAP_FEATURES), read once through /api/health
+│   ├── map-agent.ts · agent-chat.ts    # housing agent: database mappers, the Search Chat and add-outside calls (server only)
+│   ├── result-sort.ts · outside-pins.ts · mine.ts · submit-status.ts · text-templates.ts   # pure rules behind each switch
 │   ├── supabase.ts · google.ts · types.ts · utils.ts · useTheme.ts
 ├── supabase/                     # edge functions (property-locate, used-before-sync, landlord-webhook) + migrations
 ├── docs/                         # PRD, build plan, QUO-INTEGRATION.md (Quo), LISTING-EDITS.md (edits + availability pill), screenshots
+├── tests/                        # unit (node --test), browser (Playwright, against /dev pages), api, sql (rolled-back live checks)
+├── .10x/                         # housing agent design notes: spec, decisions, handoffs, status
 ├── legacy/                       # retired AI Studio prototype (reference only)
 ├── components.json               # shadcn/ui config
 └── vercel.json · next.config.ts · .env.example
@@ -339,7 +367,7 @@ sequenceDiagram
 
 | Route | Returns | Backed by |
 |---|---|---|
-| `GET /api/health` | `{ ok, dryRun, quo, editing }`: `quo` is whether `QUO_API_KEY` is set (the panel shows the Quo drawer only then); `editing` is whether listing edits are on (`MAP_EDIT_SECRET` set and `MAP_EDITING` not `off`) | env |
+| `GET /api/health` | `{ ok, dryRun, quo, editing, features }`: `features` lists each housing agent switch as on or off; `quo` is whether `QUO_API_KEY` is set (the panel shows the Quo drawer only then); `editing` is whether listing edits are on (`MAP_EDIT_SECRET` set and `MAP_EDITING` not `off`) | env |
 | `GET /api/properties?lat=&lng=&miles=` | `{ pins, coverage }`, every pin has `map_status`, `availability`, `link_status`, `last_contact` and `other_claims` | `properties_within_radius_v4`, `database_coverage` |
 | `GET /api/properties/[id]` | Full property record plus `map_status`, `map_reason` and `other_claims` | `property_detail`, `property_map_status`, `property_claim_options` |
 | `GET /api/properties/[id]/contact` | `{ enabled, numbers, digest }`: calls and texts with the property's owner and landlord/PM phones. `enabled: false` with no Quo key; 502 `quo_error` if Quo can't be read; 120 per IP per minute; cached 10 min per phone; a refused key shows nothing (logged) | Quo `GET /v1/calls`, `/v1/messages`, `/v1/phone-numbers`, `/v1/users` — see [docs/QUO-INTEGRATION.md](docs/QUO-INTEGRATION.md) |
@@ -354,6 +382,16 @@ sequenceDiagram
 | `GET /api/claim/[claimId]/summary` | `{ subject, text, html, optionCount, recipient }` | Monday + `property_detail` + `property_distance_miles` |
 | `POST /api/claim/[claimId]/summary` | Logs the summary as a Monday update (body rebuilt server-side) | Monday `create_update` |
 | `POST /api/claim/add` | Creates the linked sub-item (status *To Do*) and writes *Distance to Loss* into `numeric_mm7np0z7`. Refuses a red property, by group or owner | Monday + `property_map_status` + `property_distance_miles` |
+| `GET /api/claim/[claimId]/outside` | Housing agent (`outside`). Outside homes from the agent's latest search, fitting first, then by rank. Cached 15 s | `map_outside_homes` |
+| `GET /api/claim/[claimId]/scores` | Housing agent (`bestMatch`). Match scores for the claim's options; empty is normal for unscored claims | `map_claim_scores` |
+| `GET /api/claim/[claimId]/submit-status` | Housing agent (`submit`). Read-only: To Do → Ready → Submitted, or Blocked with a reason | `map_submit_status` |
+| `POST /api/claim/[claimId]/ask` | Housing agent (`chat`). Actions `open`, `message`, `reject`, `more_like`, `undo`. 30 per IP per 10 min; can take up to ~100 s while a search runs. Agent words are cleaned of phone numbers and emails | Search Chat workflow (`MAP_CHAT_URL`) + `map_claim_context` |
+| `POST /api/claim/[claimId]/add-outside` | Housing agent (`addOutside`). 201 added, 200 already on the claim, 409 `no_address`, 503 `feature_off` while off | Search Chat workflow + `map_claim_context` |
+| `GET /api/claims/nearsite?fresh=1` | Housing agent (`nearsite`). Claims on the Nearsite Claims board, 60 s cache | `map_nearsite_claims` |
+| `GET\|POST /api/properties/[id]/find-phone` | Housing agent (`findPhone`). GET the latest saved lookup (90 days); POST runs one (5 per IP per hour, 200 a day) | Phone lookup webhook (`MAP_PHONE_URL`) + `map_phone_lookup_*` |
+| `GET /api/properties/[id]/outreach` | Housing agent (`templates`). The outreach line under the text templates | `map_outreach_status` |
+
+Each housing agent route answers `{ "enabled": false, … }` (or `state: "off"`, or 503 `feature_off` for add-outside) while its switch is off.
 
 ---
 
@@ -451,8 +489,12 @@ Browser and API checks run against a server on `BASE` (default `http://localhost
 | `QUO_TIMEZONE` | Server | Optional. Days and note times for the contact log; default `America/Chicago`. The contact log's switches (`QUO_LOG_MODE`, `QUO_LIVE_USERS`) and the webhook's signing key live in Supabase `sync_config`, not here. |
 | `MONDAY_ACTIVE_CLAIM_GROUPS` | Server | Optional. Groups that count as active. Default `topics,group_mkvngrgz`. |
 | `MONDAY_TEST_CLAIM_GROUP` | Server | Optional. The testing group for *Show test claims*. Default `group_mm1jnpwf`. |
+| `MAP_FEATURES` | Server | Housing agent switches. Comma list of `outside`, `bestMatch`, `chat`, `addOutside`, `submit`, `mine`, `nearsite`, `findPhone`, `templates`, or `all`. **Not set = everything off** (the live map today). |
+| `MAP_CHAT_URL` · `MAP_CHAT_TOKEN` | Server | For `chat` and `addOutside`: the Search Chat webhook address and its panel key. Never `NEXT_PUBLIC_`. |
+| `MAP_CHAT_USER_ID` | Server | Optional. Who the map is to the Search Chat workflow (default `map`); must be on its pilot list if it has one. |
+| `MAP_PHONE_URL` · `MAP_PHONE_TOKEN` | Server | For `findPhone`: the owner-phone lookup webhook, and an optional shared secret sent as `x-map-secret`. |
 
-Production and Preview already have everything they need on Vercel. Never commit `.env.local`.
+Production and Preview have everything the map needs today. The housing agent's `MAP_FEATURES`, `MAP_CHAT_*` and `MAP_PHONE_*` are **not set yet**, which is what keeps it off. Never commit `.env.local`.
 
 ---
 
@@ -594,12 +636,16 @@ One rule, in the database (`map_status_reason`, migration `20261022_map_status.s
 
 - [x] **Contact history from Quo** on the owner card ([#15](https://github.com/Novahavens/Interactive-map/pull/15)) and **Call / Text via Quo** from the panel ([#16](https://github.com/Novahavens/Interactive-map/pull/16), [#19](https://github.com/Novahavens/Interactive-map/pull/19))
 - [x] **Availability** and **last contact** on the property card ([#14](https://github.com/Novahavens/Interactive-map/pull/14), [#17](https://github.com/Novahavens/Interactive-map/pull/17))
+- [x] **Address field** in Edit ([#24](https://github.com/Novahavens/Interactive-map/pull/24)) and **Available now** from the status ([#25](https://github.com/Novahavens/Interactive-map/pull/25))
+- [x] **Housing agent on the map**, merged switched off, database applied and checked ([#26](https://github.com/Novahavens/Interactive-map/pull/26))
 
 **Next**
 - [ ] **Fill in past Last Contact Dates** from Quo's history (report first, then apply; `POST /api/quo/backfill`).
 - [ ] **Coverage badge** — the header mixes in-radius and table-wide counts; switch it to `database_coverage()`.
 - [ ] **Grey out claims that already have options sent** in the drawer.
-- [ ] **Search agent** embed.
+- [ ] **Switch the housing agent on**, one switch at a time (see [Housing agent on the map](#-housing-agent-on-the-map-switched-off)).
+- [ ] *Add to claim* and the agent chat for **Nearsite claims** (today they work on the Claim Process Board only).
+- [ ] **Report a problem** (screenshot + note to Slack): open in [#12](https://github.com/Novahavens/Interactive-map/pull/12), held until the owner says merge.
 - [ ] Real Google **Map ID**; optional server-only Supabase access.
 
 ---
@@ -622,7 +668,17 @@ The map can show the housing agent's work for the open claim: homes from outside
 
 `MAP_FEATURES=all` turns every switch on; a comma list turns on only those named. `/api/health` reports which switches are on (`features`), and the page reads that one response.
 
-The feature routes are `GET /api/claim/[claimId]/outside`, `…/scores`, `…/submit-status`, `POST …/ask`, `POST …/add-outside`, `GET /api/claims/nearsite`, `GET|POST /api/properties/[id]/find-phone` and `GET /api/properties/[id]/outreach`. Each answers `{ "enabled": false, … }` (or `state: "off"`) while its switch is off. The database side is one additive migration, `supabase/migrations/20261126_map_agent.sql`; its rollback statements are in the file header.
+The feature routes are listed under [API routes](#api-routes). Each answers `{ "enabled": false, … }` (or `state: "off"`) while its switch is off.
+
+**Database.** One additive migration, `supabase/migrations/20261126_map_agent.sql` (rollback statements in the file header). **Applied on 26 Nov 2026.** `tests/sql/map-agent-rollback.sql` runs every function on real claims inside a transaction that rolls itself back; it passed on 26 Nov 2026 with every expected answer (wrong or missing secret refused, outside homes fitting first, scores, submit status, Nearsite claims, phone lookup limits) and left nothing behind.
+
+**Tests.** `npm run typecheck`, `npm run test:unit` (198 tests), `npm run build`, and the browser suites `tests/browser/{agent-chat,claims-drawer,contacts,list-score,map-layer,outside-panel}.mjs` against `next dev` with `MAP_FEATURES=all` (routes mocked from `tests/fixtures/map-agent.mjs`; 585 checks). All pass on `main`.
+
+**Switching it on** (owner's step):
+1. Pick the switches. `mine`, `outside`, `bestMatch`, `submit` and `nearsite` only read; `chat` and `addOutside` call the Search Chat workflow and `addOutside` writes a sub-item to the Monday claim; `findPhone` calls the lookup webhook.
+2. In Vercel → *nova-havens-map* → Environment Variables, set `MAP_FEATURES` (and `MAP_CHAT_URL` / `MAP_CHAT_TOKEN` for chat and add, `MAP_PHONE_URL` for Find phone). Try it on a Preview first.
+3. Redeploy, then open `/api/health`: `features` shows what is really on.
+4. To switch off, remove the name from `MAP_FEATURES` and redeploy.
 
 Known limits: *Add to claim* and the agent work on the Claim Process Board, so they do not yet apply to Nearsite claims. *Save to listing* for a found phone waits until the edit form has a phone field.
 
