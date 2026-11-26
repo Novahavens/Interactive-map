@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
+import { sourceLetter, sourceLogo, sourceName } from "@/lib/outside-pins";
 import { STATUS, STATUS_ORDER, type MapStatus } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { StatusDot } from "./StatusDot";
@@ -79,7 +80,7 @@ function RailKey({ counts, hidden, onToggle, touch, outsideCount, outsideHidden 
           onClick={onToggleOutside}
           className={cn(pill(outsideOn), "disabled:cursor-not-allowed disabled:opacity-60")}
         >
-          <SourcePair />
+          <SourcePair off={outsideHidden} />
           <span>Outside</span>
           <span className="font-mono text-xs text-muted">{outsideCount.toLocaleString("en-US")}</span>
         </button>
@@ -130,7 +131,7 @@ function FloatingKey({ attachedCount, loading, outsideCount, outsideHidden = fal
           className={cn(entry, outsideHidden ? "line-through" : "text-ink")}
           title={glyphs ? outside : outsideHidden ? `${OUTSIDE_HELP}. Hidden.` : `${OUTSIDE_HELP}.`}
         >
-          <SourcePair />
+          <SourcePair off={outsideHidden} />
           {text(outsideHidden ? `${outside}, hidden` : outside)}
         </span>
       )}
@@ -163,12 +164,25 @@ function useMapWidth(ref: React.RefObject<HTMLDivElement | null>, active: boolea
   return width;
 }
 
-/** The Z and F squares, overlapping by 3 px: what an outside listing's pin carries instead of a status dot. */
-function SourcePair() {
+/**
+ * The Zillow and Furnished Finder logos, overlapping by 3 px: what an outside listing's pin carries instead of a status
+ * dot. Decorative (the entry's label says "Outside"). `off` fades them: a struck-through text label cannot reach an image.
+ */
+function SourcePair({ off = false }: { off?: boolean }) {
   return (
-    <span className="inline-flex flex-none items-center" aria-hidden="true">
-      <span className="nh-src nh-src--sm">Z</span>
-      <span className="nh-src nh-src--sm nh-src--overlap">F</span>
+    <span className={cn("inline-flex flex-none items-center", off && "opacity-40")} aria-hidden="true">
+      <SourceSquare source="zillow" />
+      <SourceSquare source="furnished_finder" overlap />
+    </span>
+  );
+}
+
+/** One site in a 14 px square: its logo, or its letter for a site without one (as on the pins). */
+function SourceSquare({ source, overlap = false }: { source: string; overlap?: boolean }) {
+  const logo = sourceLogo(source);
+  return (
+    <span className={cn("nh-src nh-src--sm", logo && "nh-src--logo", overlap && "nh-src--overlap")}>
+      {logo ? <img src={logo} alt={sourceName(source)} width={14} height={14} /> : sourceLetter(source)}
     </span>
   );
 }

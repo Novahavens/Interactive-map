@@ -21,13 +21,23 @@ export function sourceName(source: string | null | undefined): string {
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : "another site";
 }
 
-/** The letter on the ink square: Z, F, else the first letter or digit of the source, else "?". Always one uppercase character. */
+/** The letter for a site without a logo: Z, F, else the first letter or digit of the source, else "?". Always one uppercase character. */
 export function sourceLetter(source: string | null | undefined): string {
   const s = (source ?? "").trim().toLowerCase();
   if (s === "zillow") return "Z";
   if (s === "furnished_finder") return "F";
   const m = s.match(/[a-z0-9]/);
   return m ? m[0].toUpperCase() : "?";
+}
+
+const SOURCE_LOGO = new Map<string, string>([
+  ["zillow", "/logos/zillow.png"],
+  ["furnished_finder", "/logos/furnished-finder.png"],
+]);
+
+/** The site's own icon in public/logos, shown in the pin's square and in the key. Null for a site without one: it keeps sourceLetter. */
+export function sourceLogo(source: string | null | undefined): string | null {
+  return SOURCE_LOGO.get((source ?? "").trim().toLowerCase()) ?? null;
 }
 
 /** Rent on the chip, same format as our own pins: $3.1k, $3k, $950, or — when unknown. */

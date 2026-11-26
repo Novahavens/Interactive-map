@@ -64,7 +64,7 @@ export default function MapLayerPreview() {
           </Stage>
         </Block>
 
-        <Block title="Outside pin, every state" note="Ink outline and the source letter. No colour of its own.">
+        <Block title="Outside pin, every state" note="Ink outline and the listing site's logo. The logo is the only colour; a site without one keeps its first letter.">
           <Stage testId="stage-outside">
             <Cell label="Exact · Zillow" testId="pin-exact"><Pin build={() => buildOutsidePin(Z)} /></Cell>
             <Cell label="Exact · Furnished Finder" testId="pin-exact-f"><Pin build={() => buildOutsidePin({ ...F, precision: "exact" })} /></Cell>
@@ -75,7 +75,7 @@ export default function MapLayerPreview() {
             <Cell label="Selected · area only" testId="pin-selected-area"><Pin build={() => buildOutsidePin(F, { selected: true })} /></Cell>
             <Cell label="Dimmed by a filter" testId="pin-dimmed"><Pin build={() => buildOutsidePin(Z, { shown: false })} /></Cell>
             <Cell label="No rent yet" testId="pin-noprice"><Pin build={() => buildOutsidePin({ ...Z, rent: null })} /></Cell>
-            <Cell label="Another site" testId="pin-other"><Pin build={() => buildOutsidePin({ ...Z, source: "apartments_com", score: null })} /></Cell>
+            <Cell label="Another site (letter)" testId="pin-other"><Pin build={() => buildOutsidePin({ ...Z, source: "apartments_com", score: null })} /></Cell>
           </Stage>
         </Block>
 
