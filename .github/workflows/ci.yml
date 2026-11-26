@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4.2.2
       - uses: actions/setup-node@v4.4.0
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run typecheck
@@ -94,7 +94,7 @@ jobs:
           python-version: "3.12"
       - uses: actions/setup-node@v4.4.0
         with:
-          node-version: 20
+          node-version: 22
       - name: SQL_ASCII database for the encoding check
         run: PGPASSWORD=postgres psql -h localhost -U postgres -c "create database asciitest encoding 'SQL_ASCII' lc_collate 'C' lc_ctype 'C' template template0"
       - run: pip install -r requirements-dev.txt
