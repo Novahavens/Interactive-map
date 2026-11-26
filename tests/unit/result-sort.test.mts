@@ -133,9 +133,34 @@ test("best with no scores and no outside homes is the same order as nearest", ()
   assert.deepEqual(ids(sortResults({ pins, scores: [], mode: "best" })), ids(sortResults({ pins, mode: "nearest" })));
 });
 
-test("fits:false outside homes are left out in both orders", () => {
-  const outside = [home("ok"), home("no", { fits: false, excludedBy: ["rent"], score: 99 })];
-  for (const mode of ["best", "nearest"] as const) assert.deepEqual(ids(sortResults({ pins: [], outside, mode })), ["ok"]);
+test("fits:false outside homes are listed after the ones that fit, in both orders", () => {
+  const outside = [home("no", { fits: false, excludedBy: ["rent"], score: 99 }), home("ok", { distanceMiles: 9 })];
+  assert.deepEqual(ids(sortResults({ pins: [], outside, mode: "best" })), ["ok", "no"]);
+  assert.deepEqual(ids(sortResults({ pins: [], outside, mode: "nearest" })), ["ok", "no"]);
+});
+
+test("every home the API returns is listed: Furnished Finder homes with no coordinates and no fit included", () => {
+  const ff = (id: string, extra: Partial<OutsideHome> = {}) =>
+    home(id, { source: "furnished_finder", ...noPin, distanceMiles: null, score: null, ...extra });
+  const pins = [pin("y", 2)];
+  const outside = [
+    ff("ff-ok-2", { rank: 2, fits: true }),
+    ff("ff-no-1", { rank: 1, fits: false, excludedBy: ["available_late"] }),
+    ff("ff-ok-1", { rank: 1, fits: true, excludedBy: [] }),
+    ff("ff-unknown-fit", { rank: 3, fits: undefined as unknown as boolean }),
+    home("zillow-no", { fits: false, excludedBy: ["distance"], distanceMiles: 14 }),
+  ];
+  for (const mode of ["best", "nearest"] as const) {
+    const out = ids(sortResults({ pins, outside, mode }));
+    assert.equal(out.length, 6, `${mode}: one row for every home returned`);
+    assert.deepEqual([...out].sort(), ["y", "ff-no-1", "ff-ok-1", "ff-ok-2", "ff-unknown-fit", "zillow-no"].sort());
+  }
+  // Nearest: the Furnished Finder homes have no pin, so they are the trailing divider group: fitting ones by rank, then the rest.
+  const near = sortResults({ pins, outside, mode: "nearest" });
+  assert.deepEqual(ids(near), ["y", "zillow-no", "ff-ok-1", "ff-ok-2", "ff-unknown-fit", "ff-no-1"]);
+  assert.deepEqual(noLocationStart(near, "nearest"), { index: 2, count: 4 });
+  // Best: fitting homes by rank, then our rest, then the homes that did not fit (by rank).
+  assert.deepEqual(ids(sortResults({ pins, outside, mode: "best" })), ["ff-ok-1", "ff-ok-2", "ff-unknown-fit", "y", "ff-no-1", "zillow-no"]);
 });
 
 test("a home already in our database that is also one of our pins is not listed twice", () => {
@@ -215,17 +240,18 @@ test("the shared fixtures: both orders, end to end", () => {
   const pins = ["9900000101", "9900000102", "9900000103", "9900000104", "9900000105", "9900000106"].map((id, i) => pin(id, SCORES[i].distanceMiles!));
   const H = fx.HOME;
   const best = sortResults({ pins, outside: HOMES, scores: SCORES, mode: "best" });
-  // 912 Example St is pin 9900000101 (in the database, on the claim): only our row. 5 Stretch Ct does not fit.
+  // 912 Example St is pin 9900000101 (in the database, on the claim): only our row. 5 Stretch Ct does not fit (rent),
+  // so it is listed last, after the homes that fit.
   assert.deepEqual(ids(best), [
     "9900000101", H.zillowExact, "9900000102", H.zillowNew, "9900000103", "9900000104", H.zillowApprox, "9900000105", "9900000106",
-    H.ffArea, H.ffNoCoords, H.ffAsked,
+    H.ffArea, H.ffNoCoords, H.ffAsked, H.stretch,
   ]);
-  assert.ok(!ids(best).includes(H.zillowOnClaim) && !ids(best).includes(H.stretch));
+  assert.ok(!ids(best).includes(H.zillowOnClaim));
   const nearest = sortResults({ pins, outside: HOMES, scores: SCORES, mode: "nearest" });
   assert.deepEqual(ids(nearest), [
     H.zillowExact, "9900000101", H.zillowNew, H.ffArea, "9900000102", "9900000105", H.zillowApprox, "9900000103", "9900000104", "9900000106",
-    H.ffNoCoords, H.ffAsked,
+    H.stretch, H.ffNoCoords, H.ffAsked,
   ]);
-  assert.deepEqual(noLocationStart(nearest, "nearest"), { index: 10, count: 2 });
+  assert.deepEqual(noLocationStart(nearest, "nearest"), { index: 11, count: 2 });
   assert.equal(best.length, nearest.length);
 });

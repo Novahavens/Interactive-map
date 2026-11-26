@@ -9,6 +9,7 @@ import {
   outsidePetsOk,
   outsidePinLabel,
   outsideStyleKey,
+  notFitText,
   outsideZIndex,
   pinPrecision,
   pinWeight,
@@ -191,4 +192,12 @@ test("style key changes with anything the pin shows, and only then", () => {
     outsideStyleKey(make({ title: "Other" }), base),
   ];
   assert.equal(new Set([k, ...others]).size, others.length + 1);
+});
+
+test("notFitText: the reasons in plain words, none when the home fits", () => {
+  assert.equal(notFitText(["available_late"]), "Not a fit: available too late");
+  assert.equal(notFitText(["no_price", "available_late"]), "Not a fit: no price listed, available too late");
+  assert.equal(notFitText(["rent", "beds", "distance", "no_location"]), "Not a fit: rent over the limit, too few bedrooms, too far from the loss, no location listed");
+  assert.equal(notFitText(["pet_policy", " "]), "Not a fit: pet policy");
+  for (const none of [[], null, undefined]) assert.equal(notFitText(none as string[] | null | undefined), null);
 });

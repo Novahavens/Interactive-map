@@ -82,16 +82,20 @@ function byStatusThenNearest(a: Pin, b: Pin): number {
 /**
  * One ordered list of our homes and outside listings.
  *
- * Left out: outside homes that broke a search rule (`fits: false`), and outside homes that are already one of our
- * pins (`inPropertyDb` and its `propertyItemId` is in `pins` or `knownPropertyIds`), so nothing is listed twice.
+ * Left out: outside homes that are already one of our pins (`inPropertyDb` and its `propertyItemId` is in `pins`
+ * or `knownPropertyIds`), and a listing that appears twice, so nothing is listed twice. Every other outside home
+ * the API returns is listed. A home that broke a search rule (`fits: false`) is listed after the homes that fit,
+ * and its row says why; a home with no map location is a list row only (see `hasPin`).
  *
  * "nearest": our homes exactly as today (green, then neutral, then red, each nearest first). Outside listings
- * have no colour, so they sit with the neutral homes by distance (ours first on a tie). Listings with no map
- * location come last, in the search's own order: see `noLocationStart` for the divider.
+ * have no colour, so they sit with the neutral homes by distance (ours first on a tie). Then the mapped homes that
+ * did not fit, by distance. Listings with no map location come last, fitting ones first, each in the search's rank
+ * order: see `noLocationStart` for the divider.
  *
  * "best": 1. everything with a score, highest first, ties nearest first; 2. outside listings without a score, in
- * the search's rank order (the search ranked them for this claim); 3. the rest of our homes, green then nearest.
- * Red (do not use) homes are always last, scored or not. Homes on the claim are not pulled up.
+ * the search's rank order (the search ranked them for this claim); 3. the rest of our homes, green then nearest;
+ * 4. outside homes that did not fit, scored ones first, then by rank. Red (do not use) homes are always last, scored
+ * or not. Homes on the claim are not pulled up.
  * With no scores at all and no outside homes this is the same order as "nearest".
  */
 export function sortResults({ pins, outside, scores, mode, knownPropertyIds }: SortInput): ResultItem[] {
@@ -105,33 +109,41 @@ export function sortResults({ pins, outside, scores, mode, knownPropertyIds }: S
   const seen = new Set<string>();
   const theirs: Extract<ResultItem, { kind: "outside" }>[] = [];
   for (const home of outside ?? []) {
-    if (!home || home.fits === false || seen.has(home.listingId)) continue;
+    if (!home || seen.has(home.listingId)) continue;
     if (home.inPropertyDb && home.propertyItemId != null && known.has(String(home.propertyItemId))) continue;
     seen.add(home.listingId);
     theirs.push({ kind: "outside", home, score: (home.propertyItemId != null && byProperty.get(String(home.propertyItemId))) || null });
   }
   const byRank = (a: (typeof theirs)[number], b: (typeof theirs)[number]) => cmp(far(a.home.rank), far(b.home.rank));
   const oursFirst = (a: ResultItem, b: ResultItem) => (a.kind === b.kind ? 0 : a.kind === "ours" ? -1 : 1);
+  // A home that broke a search rule still gets a row, after the ones that fit. `fits` is missing on some rows: those fit.
+  const fits = (t: (typeof theirs)[number]) => t.home.fits !== false;
+  const fitsItem = (i: ResultItem) => i.kind === "ours" || fits(i);
 
   if (mode === "nearest") {
     const located = theirs.filter((t) => hasPin(t.home));
-    const listOnly = theirs.filter((t) => !hasPin(t.home)).sort(byRank);
+    const listOnly = theirs.filter((t) => !hasPin(t.home));
     const rowTier = (i: ResultItem) => (i.kind === "ours" ? tier(i.pin.map_status) : 1);
-    const main = [...ours, ...located].sort((a, b) => rowTier(a) - rowTier(b) || cmp(distanceOf(a), distanceOf(b)) || oursFirst(a, b));
-    return [...main, ...listOnly];
+    const main = [...ours, ...located.filter(fits)].sort((a, b) => rowTier(a) - rowTier(b) || cmp(distanceOf(a), distanceOf(b)) || oursFirst(a, b));
+    const mappedNotFit = located.filter((t) => !fits(t)).sort((a, b) => cmp(distanceOf(a), distanceOf(b)) || byRank(a, b));
+    // The trailing list-only rows are the "No map location" group: fitting first, then the ones that did not fit.
+    return [...main, ...mappedNotFit, ...listOnly.filter(fits).sort(byRank), ...listOnly.filter((t) => !fits(t)).sort(byRank)];
   }
 
   const red = (i: ResultItem) => i.kind === "ours" && tier(i.pin.map_status) === 2;
   const all: ResultItem[] = [...ours, ...theirs];
   const scored = all
-    .filter((i) => !red(i) && scoreOf(i) != null)
+    .filter((i) => !red(i) && fitsItem(i) && scoreOf(i) != null)
     .sort((a, b) => cmp(scoreOf(b)!, scoreOf(a)!) || cmp(distanceOf(a), distanceOf(b)) || oursFirst(a, b));
-  const unscoredOutside = theirs.filter((t) => scoreOf(t) == null).sort(byRank);
+  const unscoredOutside = theirs.filter((t) => fits(t) && scoreOf(t) == null).sort(byRank);
   const rest = ours.filter((i) => !red(i) && scoreOf(i) == null).sort((a, b) => byStatusThenNearest((a as { pin: Pin }).pin, (b as { pin: Pin }).pin));
+  const notFit = theirs
+    .filter((t) => !fits(t))
+    .sort((a, b) => cmp(scoreOf(b) ?? -1, scoreOf(a) ?? -1) || byRank(a, b));
   const last = ours
     .filter(red)
     .sort((a, b) => cmp(scoreOf(b) ?? -1, scoreOf(a) ?? -1) || cmp(distanceOf(a), distanceOf(b)));
-  return [...scored, ...unscoredOutside, ...rest, ...last];
+  return [...scored, ...unscoredOutside, ...rest, ...notFit, ...last];
 }
 
 /**

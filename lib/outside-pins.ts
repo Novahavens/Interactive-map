@@ -98,6 +98,27 @@ export function pinnableOutside(
   return { homes: ok.slice(0, Math.max(0, cap)), capped: Math.max(0, ok.length - Math.max(0, cap)) };
 }
 
+/** The search's exclusion keys in plain words (the same wording the panel uses). */
+const NOT_FIT_WORDS: Record<string, string> = {
+  rent: "rent over the limit",
+  beds: "too few bedrooms",
+  distance: "too far from the loss",
+  available_late: "available too late",
+  no_price: "no price listed",
+  no_location: "no location listed",
+};
+
+/**
+ * "Not a fit: available too late, no price listed" for a home that broke a search rule; null when it fits (no
+ * reasons). An unknown key reads as its words ("pet_policy" → "pet policy").
+ */
+export function notFitText(excludedBy: readonly string[] | null | undefined): string | null {
+  const reasons = (excludedBy ?? []).filter((k): k is string => typeof k === "string" && k.trim() !== "");
+  if (reasons.length === 0) return null;
+  const words = reasons.map((k) => NOT_FIT_WORDS[k] ?? k.replace(/_/g, " ").trim());
+  return `Not a fit: ${words.join(", ")}`;
+}
+
 /** The listing sites write pets as free text ("Pets allowed", "No pets", "Cats only"). Null = it does not say. */
 export function outsidePetsOk(pets: string | null | undefined): boolean | null {
   const t = (pets ?? "").trim().toLowerCase();
