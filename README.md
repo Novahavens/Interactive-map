@@ -610,7 +610,7 @@ The map can show the housing agent's work for the open claim: homes from outside
 | Switch (`MAP_FEATURES`) | Shows | Needs |
 |---|---|---|
 | `outside` | Outside homes as pins (outlined, letter Z / F) and rows | `MAP_EDIT_SECRET` (the database functions) |
-| `bestMatch` | *Best match | Nearest* sort, score and Stretch | `MAP_EDIT_SECRET` |
+| `bestMatch` | *Best match* / *Nearest* sort, score and Stretch | `MAP_EDIT_SECRET` |
 | `chat` | Chat bubble, bottom right of the map | `MAP_CHAT_URL`, `MAP_CHAT_TOKEN` |
 | `addOutside` | *Add to claim* for outside homes | `MAP_CHAT_URL`, `MAP_CHAT_TOKEN` |
 | `submit` | To Do → Ready to Submit → Option Submitted on the claim | `MAP_EDIT_SECRET` |
