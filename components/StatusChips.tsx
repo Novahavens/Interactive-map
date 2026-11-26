@@ -10,7 +10,7 @@ export default function StatusChips({ chips, className }: { chips: Chip[]; class
         <span
           key={c.key}
           title={c.title}
-          className={cn("nh-chip", `nh-chip--${c.tone}`, c.outline && "nh-chip--outline", c.strike && "nh-chip--strike")}
+          className={cn("nh-chip", `nh-chip--${c.tone}`, c.outline && "nh-chip--outline", c.strike && "nh-chip--strike", c.line && "nh-chip--line")}
         >
           <span>{c.label}</span>
         </span>

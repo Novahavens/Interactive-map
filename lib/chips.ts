@@ -1,5 +1,6 @@
-import type { ClaimOption, Pin, PropertyDetail } from "./types";
+import type { ClaimOption, OutsideHome, Pin, PropertyDetail } from "./types";
 import { BAD_LINK } from "./types";
+import { hasPin, strengthLabel, stretchText } from "./result-sort";
 import { dayMonth } from "./utils";
 
 export type ChipTone = "ok" | "info" | "muted" | "bad" | "amber";
@@ -11,6 +12,8 @@ export interface Chip {
   /** Red outline instead of plain red text (Bad link). */
   outline?: boolean;
   strike?: boolean;
+  /** Ink text in a thin outline (the source of an outside listing). */
+  line?: boolean;
   title?: string;
 }
 
@@ -74,4 +77,56 @@ export function chipsFor(
   if (badLink) chips.push({ key: "bad-link", label: "Bad link", tone: "bad", outline: true, title: "Reported as a broken listing link" });
   if (src.last_contact) chips.push({ key: "last-contact", label: `Last contact ${dayMonth(src.last_contact)}`, tone: "muted" });
   return { chips, otherClaims, badLink };
+}
+
+const SCORE_TONE = { Strong: "ok", Fair: "info", Weak: "muted" } as const;
+
+/** "Match 82 · Strong". Strong reads green, Fair blue, Weak grey; the word carries it without the colour. */
+export function scoreChip(score: number): Chip {
+  const n = Math.max(0, Math.min(100, Math.round(score)));
+  const band = strengthLabel(n);
+  return { key: "score", label: `Match ${n} · ${band}`, tone: SCORE_TONE[band], title: `Match score ${n} out of 100` };
+}
+
+/** "Stretch +$150", or plain "Stretch" when it is not about the price. */
+export function stretchChip(by: number | null | undefined): Chip {
+  const priced = typeof by === "number" && by > 0;
+  return {
+    key: "stretch",
+    label: stretchText(by),
+    tone: "amber",
+    title: priced
+      ? `$${Math.round(by).toLocaleString("en-US")} a month above the FRV. Ask before you offer it.`
+      : "Outside what the claim asked for. Ask before you offer it.",
+  };
+}
+
+const SOURCE_LABEL: Record<string, string> = { zillow: "Zillow", furnished_finder: "Furnished Finder" };
+
+/** "Zillow" / "Furnished Finder"; any other site is shown as a plain "Listing site". */
+export function sourceLabel(source: string): string {
+  return SOURCE_LABEL[source] ?? "Listing site";
+}
+
+/** The letter on the ink square: Z, F, or the first letter of an unknown site. */
+export function sourceLetter(source: string): string {
+  return source === "zillow" ? "Z" : source === "furnished_finder" ? "F" : (source.trim()[0] ?? "?").toUpperCase();
+}
+
+export const NO_MAP_LOCATION = "This listing has no map location";
+
+/**
+ * Chips of an outside listing's row, in the order score, source, on this claim, New, location, Stretch.
+ * `score` is the number to show (null = no chip); `stretch` comes from `stretchOf` in lib/result-sort.ts.
+ */
+export function outsideChips(home: OutsideHome, opts: { score?: number | null; stretch?: { by: number | null } | null } = {}): Chip[] {
+  const chips: Chip[] = [];
+  if (typeof opts.score === "number" && Number.isFinite(opts.score)) chips.push(scoreChip(opts.score));
+  chips.push({ key: "source", label: sourceLabel(home.source), tone: "muted", line: true, title: "Not in our database yet" });
+  if (home.onClaim) chips.push({ key: "on-claim", label: "On this claim", tone: "ok" });
+  if (home.isNew) chips.push({ key: "new", label: "New", tone: "info", title: "New since the last search" });
+  if (!hasPin(home)) chips.push({ key: "location", label: "List only", tone: "muted", title: NO_MAP_LOCATION });
+  else if (home.precision === "area") chips.push({ key: "location", label: "≈ Area only", tone: "muted", title: "The listing site gives the area, not the street address" });
+  if (opts.stretch) chips.push(stretchChip(opts.stretch.by));
+  return chips;
 }

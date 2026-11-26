@@ -9,3 +9,6 @@ out
 next-env.d.ts
 .next-*
 .handoff/
+
+# Screenshots from browser checks
+test-results/

@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Plus, Check, Loader2, Ban } from "lucide-react";
-import type { ApiError, ClaimOption, PropertyDetail } from "@/lib/types";
+import type { ApiError, ClaimOption, PropertyDetail, SubmitStatus as SubmitStatusRow } from "@/lib/types";
 import { reasonText, type MapStatus } from "@/lib/status";
 import { cn, MONDAY_BOARDS, mondayItemUrl } from "@/lib/utils";
+import SubmitStatus from "./SubmitStatus";
 
 type AddState = { kind: "idle" } | { kind: "adding" } | { kind: "done"; subitemId: string } | { kind: "error"; message: string };
 
@@ -16,10 +17,12 @@ interface Props {
   otherClaims: ClaimOption[];
   attached: boolean;
   onAttached: (propertyId: string, subitemId: string) => void;
+  /** This home's submit step on the claim (flag `submit`). Left out or null: the footer is as it was. */
+  submit?: SubmitStatusRow | null;
 }
 
 /** Add to claim, with the already-on-another-claim confirm. Call and Text sit by each number in the Contacts card. */
-export default function PanelFooter({ propertyId, detail, status, claim, otherClaims, attached, onAttached }: Props) {
+export default function PanelFooter({ propertyId, detail, status, claim, otherClaims, attached, onAttached, submit }: Props) {
   // The panel is keyed by claim + property, so a claim switch unmounts it; this stops a late
   // add response from reporting into the next claim's state.
   const alive = useRef(true);
@@ -160,6 +163,7 @@ export default function PanelFooter({ propertyId, detail, status, claim, otherCl
           >
             <Check className="h-3.5 w-3.5" /> On this claim
           </div>
+          {submit && <SubmitStatus status={submit} />}
           <p className="text-center text-xs text-muted">
             Sub-item created · “To Do” ·{" "}
             <a

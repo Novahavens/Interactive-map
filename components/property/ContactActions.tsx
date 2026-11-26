@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Copy, MessageSquare, Phone } from "lucide-react";
 import { toE164List } from "@/lib/contact";
 import { callHref, detectPlatform, draftText, quoMessageUrl, type Platform } from "@/lib/quo-links";
+import type { TemplateContext } from "@/lib/phone-lookup-ui";
 import { readReporterName } from "./ReportBadLink";
+import TextTemplates from "./TextTemplates";
 
 const CLICK_TO_CALL_HELP = "https://support.quo.com/core-concepts/calling/click-to-call";
 const QUO_WEB = "https://my.quo.com";
@@ -54,14 +56,28 @@ function numbersIn(phone: string): { numbers: string[]; parsed: boolean } {
 }
 
 // 28px tall with a mouse (root font is 14px), 44px on a touch screen.
-const touch = "[@media(pointer:coarse)]:h-[44px]";
-const btn = `inline-flex h-8 min-w-[44px] items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink no-underline hover:bg-surface-muted ${touch}`;
+export const touch = "[@media(pointer:coarse)]:h-[44px]";
+export const btn = `inline-flex h-8 min-w-[44px] items-center justify-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-xs font-medium text-ink no-underline hover:bg-surface-muted ${touch}`;
 
 /**
  * The number with Call and Text buttons that open Quo on this device, so the call or text goes from
  * the user's own Quo account. One row per number when a Monday cell holds two.
+ * With `templates` (feature `templates`) the Text button opens a menu of ready-made texts instead, filled
+ * in from `templateContext`. Without it nothing changes.
  */
-export default function ContactActions({ phone, name, address }: { phone: string; name: string | null; address: string | null }) {
+export default function ContactActions({
+  phone,
+  name,
+  address,
+  templates = false,
+  templateContext,
+}: {
+  phone: string;
+  name: string | null;
+  address: string | null;
+  templates?: boolean;
+  templateContext?: TemplateContext;
+}) {
   const { numbers, parsed } = numbersIn(phone);
   // The platform and the sender name are read after mount, so the server render and the first client
   // render agree; an iPad reports itself as a Mac with touch.
@@ -147,7 +163,10 @@ export default function ContactActions({ phone, name, address }: { phone: string
                 <Phone className="h-3.5 w-3.5" aria-hidden="true" />
                 Call
               </a>
-              {parsed && (
+              {parsed && templates && (
+                <TextTemplates number={number} shown={shown} name={name} address={address} from={from} context={templateContext} className={btn} onOpen={onText} />
+              )}
+              {parsed && !templates && (
                 <a href={quoMessageUrl(number, draft)} onClick={() => onText(number, shown)} className={btn} data-quo="text" aria-label={`Text ${shown} with Quo`}>
                   <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
                   Text
@@ -177,7 +196,7 @@ export default function ContactActions({ phone, name, address }: { phone: string
 }
 
 /** "+19187409628" → "(918) 740-9628"; other countries stay as E.164. */
-function pretty(e164: string): string {
+export function pretty(e164: string): string {
   const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
   return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
 }
