@@ -458,7 +458,7 @@ revoke all on sequence public.map_phone_lookups_id_seq from anon, authenticated;
 comment on table public.map_phone_lookups is
   'Owner-phone lookups asked from the map (Find phone). Written only by map_phone_lookup_guard and map_phone_lookup_save.';
 
--- 9. The guard. Answers forbidden | ip_limit | daily_cap, or logs the lookup and answers 'ok'. Limits: 20 per IP
+-- 9. The guard. Answers forbidden | ip_limit | daily_cap, or logs the lookup and answers 'ok'. Limits: 5 per IP
 --    per hour (a missing IP is its own 'unknown' bucket) and 200 per 24 hours overall, because each lookup
 --    costs money. The advisory lock makes two lookups at the same instant count one after the other.
 create or replace function public.map_phone_lookup_guard(p_secret text, p_property_item_id text, p_ip text, p_by text)
