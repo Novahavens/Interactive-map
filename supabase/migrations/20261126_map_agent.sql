@@ -115,6 +115,13 @@ begin
              'property_item_id', coalesce(a.property_item_id, l.property_item_id),
              'subitem_id', a.subitem_id,
              'on_claim', a.listing_id is not null,
+             -- Only a home the claim's latest search actually found can be added (the add route refuses the rest).
+             'in_run', exists (select 1 from public.search_run_results x
+                                where x.listing_id = p_listing_id
+                                  and x.run_id = (select r.id from public.search_runs r
+                                                    join public.search_versions vv on vv.id = r.version_id
+                                                   where vv.search_id = v_search
+                                                   order by r.created_at desc limit 1)),
              'address_known', l.property_item_id is not null
                               or not ((l.address_line is null or l.lat is null) and public.nearsite_listing_ref(l.url) is null))
       into v_listing
@@ -452,7 +459,7 @@ comment on table public.map_phone_lookups is
   'Owner-phone lookups asked from the map (Find phone). Written only by map_phone_lookup_guard and map_phone_lookup_save.';
 
 -- 9. The guard. Answers forbidden | ip_limit | daily_cap, or logs the lookup and answers 'ok'. Limits: 20 per IP
---    per 10 minutes (a missing IP is its own 'unknown' bucket) and 200 per 24 hours overall, because each lookup
+--    per hour (a missing IP is its own 'unknown' bucket) and 200 per 24 hours overall, because each lookup
 --    costs money. The advisory lock makes two lookups at the same instant count one after the other.
 create or replace function public.map_phone_lookup_guard(p_secret text, p_property_item_id text, p_ip text, p_by text)
 returns text
@@ -465,7 +472,7 @@ begin
   if not public.listing_edit_key_ok(p_secret) then return 'forbidden'; end if;
   if p_property_item_id is null or p_property_item_id !~ '^\d{1,20}$' then return 'forbidden'; end if;
   perform pg_advisory_xact_lock(hashtext('map_phone_lookups'));
-  if (select count(*) from public.map_phone_lookups where ip = v_ip and created_at > now() - interval '10 minutes') >= 20 then
+  if (select count(*) from public.map_phone_lookups where ip = v_ip and created_at > now() - interval '1 hour') >= 5 then
     return 'ip_limit';
   end if;
   if (select count(*) from public.map_phone_lookups where created_at > now() - interval '24 hours') >= 200 then

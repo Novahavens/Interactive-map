@@ -311,7 +311,7 @@ export interface ClaimContext {
   boardId: string | null;
   searchId: string | null;
   versionNo: number | null;
-  listing: { found: boolean; addressKnown: boolean; onClaim: boolean; propertyItemId: string | null; subitemId: string | null } | null;
+  listing: { found: boolean; inRun: boolean; addressKnown: boolean; onClaim: boolean; propertyItemId: string | null; subitemId: string | null } | null;
 }
 
 export function toClaimContext(data: unknown): ClaimContext {
@@ -325,6 +325,7 @@ export function toClaimContext(data: unknown): ClaimContext {
     listing: l
       ? {
           found: l.found === true,
+          inRun: l.in_run === true,
           addressKnown: l.address_known === true,
           onClaim: l.on_claim === true,
           propertyItemId: id(l.property_item_id),
@@ -390,7 +391,11 @@ export function cleanSay(v: unknown): string {
   const s = cleanText(typeof v === "string" ? v.slice(0, SAY_MAX * 2) : "", SAY_MAX * 2) ?? "";
   if (!s) return "";
   if (/bad key|not set up correctly/i.test(s)) return "The agent is not set up yet. Tell the person who looks after the map.";
-  return s.length > SAY_MAX ? `${s.slice(0, SAY_MAX - 1)}…` : s;
+  // The map has no login, so nothing the agent writes may show a tenant's or an owner's contact details.
+  const redacted = s
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[email removed]")
+    .replace(/(\+?1[\s.-]?)?\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g, "[number removed]");
+  return redacted.length > SAY_MAX ? `${redacted.slice(0, SAY_MAX - 1)}…` : redacted;
 }
 
 /**

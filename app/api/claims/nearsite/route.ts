@@ -10,6 +10,9 @@ export const dynamic = "force-dynamic";
 // Per-instance cache, like /api/claims/active. `fresh=1` (the Refresh button) bypasses it.
 const TTL_MS = 60_000;
 let cache: { at: number; claims: NearsiteClaim[] } | null = null;
+// `fresh=1` skips the cache, but not more than once every FRESH_GAP_MS: a caller cannot force a query per request.
+const FRESH_GAP_MS = 10_000;
+let lastFresh = 0;
 
 const fail = (status: number, code: string, error: string) => NextResponse.json<ApiError>({ error, code }, { status });
 
@@ -23,7 +26,9 @@ export async function GET(req: NextRequest) {
   if (!featureOn("nearsite") || !secret) return NextResponse.json<NearsiteClaimsResponse>({ enabled: false, claims: [] });
 
   try {
-    if (!cache || req.nextUrl.searchParams.get("fresh") === "1" || Date.now() - cache.at > TTL_MS) {
+    const wantFresh = req.nextUrl.searchParams.get("fresh") === "1" && Date.now() - lastFresh > FRESH_GAP_MS;
+    if (!cache || wantFresh || Date.now() - cache.at > TTL_MS) {
+      if (wantFresh) lastFresh = Date.now();
       const { data, error } = await supabase().rpc("map_nearsite_claims", { p_secret: secret, p_limit: 200 });
       if (error) throw error;
       if (refused(data)) {

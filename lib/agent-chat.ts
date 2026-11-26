@@ -86,6 +86,7 @@ export async function askAgent(claimId: string, req: unknown, ip: string): Promi
   if (!limiter.allow(ip)) throw new AgentError(429, "rate_limited", "Too many messages; try again in a few minutes");
 
   const ctx = await claimContext(claimId, null);
+  if (!ctx.known) throw new AgentError(404, "not_found", "This claim is not in the search system yet.");
   const step = upstreamFor(ask, ctx.versionNo);
   if ("say" in step) {
     return { ok: true, say: step.say, running: false, searchId: ctx.searchId, versionNo: ctx.versionNo, summary: null };
@@ -126,8 +127,9 @@ export async function addOutsideHome(claimId: string, listingId: string, user: u
   if (!limiter.allow(ip)) throw new AgentError(429, "rate_limited", "Too many requests; try again in a few minutes");
 
   const ctx = await claimContext(claimId, listingId);
+  if (!ctx.known) throw new AgentError(404, "not_found", "This claim is not in the search system yet.");
   const home = ctx.listing;
-  if (!home?.found) throw new AgentError(404, "not_found", "That home is no longer in the search results");
+  if (!home?.found || !home.inRun) throw new AgentError(404, "not_found", "That home is no longer in this claim's search results");
   if (home.onClaim) {
     return { ok: true, propertyId: home.propertyItemId, subitemId: home.subitemId, alreadyOnClaim: true, created: false };
   }

@@ -12,10 +12,10 @@ const MAX_BODY = 4096;
 const LOOKUP_TIMEOUT_MS = 30_000;
 const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 
-// What map_phone_lookup_guard (Postgres) can answer besides "ok". The guard owns the limits: 20 per IP per
+// What map_phone_lookup_guard (Postgres) can answer besides "ok". The guard owns the limits: 5 per IP per
 // 10 minutes, 200 a day overall.
 const REFUSALS: Record<string, { status: number; code: string; error: string }> = {
-  ip_limit: { status: 429, code: "rate_limited", error: "Too many lookups; try again in a few minutes" },
+  ip_limit: { status: 429, code: "rate_limited", error: "Too many lookups from this device; try again later" },
   daily_cap: { status: 429, code: "rate_limited", error: "Today's lookups are used up; try again tomorrow" },
   forbidden: { status: 502, code: "db_error", error: "Lookup failed" },
 };

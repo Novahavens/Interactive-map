@@ -498,6 +498,7 @@ https://nova-havens-map.vercel.app/?claimId={claim item id}
 | `MONDAY_API_TOKEN` | Server only (Vercel *Sensitive*) | Rotate in Monday → Developers if it leaks, update Vercel, redeploy. |
 | `SUPABASE_KEY` | Server only | Table is RLS-locked; functions are `SECURITY DEFINER`. Hardening option: service-role key + revoke `anon`. |
 | Summary email | Searcher's own mailbox | Built server-side from Monday + Supabase; owner contacts excluded; preview rendered in a sandboxed frame. |
+| Housing agent (switched off by default) | Anyone with the link can read outside homes, scores, submit status, the Nearsite list and a saved phone lookup; can ask the agent to search and add an outside home to a claim; can start a phone lookup | Each switch in `MAP_FEATURES`; the database functions need the server secret; per-device limits (ask and add: 30 per 10 minutes; phone lookup: 5 per hour, 200 a day overall); the agent's own daily search budget; agent words are cleaned of phone numbers and email addresses before they reach the screen |
 
 ### How a property gets its dot colour
 

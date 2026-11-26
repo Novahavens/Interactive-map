@@ -179,7 +179,7 @@ export const RAW = {
   phoneFound: { ok: true, lookup: { state: "found", phone: "+19185550142", source: "lookup", confidence: "high", looked_up_at: "2026-11-26T15:10:00+00:00" } },
   phoneNotFound: { ok: true, lookup: { state: "not_found", phone: null, source: "lookup", confidence: "high", looked_up_at: "2026-11-26T15:10:00+00:00" } },
   phoneNone: { ok: true, lookup: null },
-  context: { ok: true, known: true, board_id: "9030696652", search_id: OUTSIDE.searchId, version_no: 3, listing: { found: true, title: "4100 Sample Ave", property_item_id: null, subitem_id: null, on_claim: false, address_known: true } },
+  context: { ok: true, known: true, board_id: "9030696652", search_id: OUTSIDE.searchId, version_no: 3, listing: { found: true, in_run: true, title: "4100 Sample Ave", property_item_id: null, subitem_id: null, on_claim: false, address_known: true } },
   forbidden: { ok: false, error: "forbidden" },
   /** The Search Chat webhook's answers (snake_case, as the workflow sends them). */
   chatAnswer: {

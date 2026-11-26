@@ -165,7 +165,7 @@ test("phone lookup answer: only a 7–15 digit phone counts", () => {
 test("claim context is read defensively", () => {
   assert.deepEqual(toClaimContext(fx.RAW.context), {
     known: true, boardId: "9030696652", searchId: fx.OUTSIDE.searchId, versionNo: 3,
-    listing: { found: true, addressKnown: true, onClaim: false, propertyItemId: null, subitemId: null },
+    listing: { found: true, inRun: true, addressKnown: true, onClaim: false, propertyItemId: null, subitemId: null },
   });
   assert.deepEqual(toClaimContext({ ok: true, known: false, board_id: null, search_id: null, version_no: null, listing: null }), {
     known: false, boardId: null, searchId: null, versionNo: null, listing: null,
