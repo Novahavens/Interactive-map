@@ -554,6 +554,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     void loadClaim();
     loadOutside();
     loadSubmit();
+    setDrawerRefresh((n) => n + 1); // the option counts in the claims drawer change with an add too
   }, [loadClaim, loadOutside, loadSubmit]);
 
   // A hovered row or pin that filtering, the radius or an add took off the map never sends a mouseleave.
