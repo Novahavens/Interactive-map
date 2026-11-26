@@ -489,7 +489,7 @@ Browser and API checks run against a server on `BASE` (default `http://localhost
 | `QUO_TIMEZONE` | Server | Optional. Days and note times for the contact log; default `America/Chicago`. The contact log's switches (`QUO_LOG_MODE`, `QUO_LIVE_USERS`) and the webhook's signing key live in Supabase `sync_config`, not here. |
 | `MONDAY_ACTIVE_CLAIM_GROUPS` | Server | Optional. Groups that count as active. Default `topics,group_mkvngrgz`. |
 | `MONDAY_TEST_CLAIM_GROUP` | Server | Optional. The testing group for *Show test claims*. Default `group_mm1jnpwf`. |
-| `MAP_FEATURES` | Server | Housing agent switches. Comma list of `outside`, `bestMatch`, `chat`, `addOutside`, `submit`, `mine`, `nearsite`, `findPhone`, `templates`, or `all`. **Not set = everything off** (the live map today). |
+| `MAP_FEATURES` | Server | Housing agent switches. Comma list of `outside`, `bestMatch`, `chat`, `addOutside`, `submit`, `mine`, `nearsite`, `findPhone`, `templates`, `agentGraph`, or `all`. **Not set = everything off** (the live map today). |
 | `MAP_CHAT_URL` · `MAP_CHAT_TOKEN` | Server | For `chat` and `addOutside`: the Search Chat webhook address and its panel key. Never `NEXT_PUBLIC_`. |
 | `MAP_CHAT_USER_ID` | Server | Optional. Who the map is to the Search Chat workflow (default `map`); must be on its pilot list if it has one. |
 | `MAP_PHONE_URL` · `MAP_PHONE_TOKEN` | Server | For `findPhone`: the owner-phone lookup webhook, and an optional shared secret sent as `x-map-secret`. |
@@ -665,14 +665,17 @@ The map can show the housing agent's work for the open claim: homes from outside
 | `nearsite` | *Nearsite* tab in the claims drawer | `MAP_EDIT_SECRET` |
 | `findPhone` | *Find phone* when a property has no number | `MAP_PHONE_URL` (optional `MAP_PHONE_TOKEN`) |
 | `templates` | Text templates and the outreach line | `MAP_EDIT_SECRET` |
+| `agentGraph` | The claims agent's step for the claim (under the brief, with *Submit for approval* once a home is ready) and for each home (*Use this home* / *Not this one*, *Message landlord*, *Hand back to agent*) | `MAP_EDIT_SECRET`, the agent's tables (`nearsite-agent/migrations/002_harness_state.sql`) and `supabase/migrations/20261127_agent_graph.sql`; optional `NEXT_PUBLIC_NH_EXTENSION_ID` for *Message landlord* |
 
 `MAP_FEATURES=all` turns every switch on; a comma list turns on only those named. `/api/health` reports which switches are on (`features`), and the page reads that one response.
+
+**Claims agent (`agentGraph`).** The map is the agent's cockpit: it reads where the agent has the claim (`GET /api/claim/:id/agent`, via `map_agent_state`) and records what a person decides (`POST /api/claim/:id/agent/event`, via `map_agent_event`, which only inserts into `agent_inbox`). Nothing is sent from the map: the agent picks the decision up, and every outward step (texts, calls, Slack, Nearsite) has its own switch in the agent, all off. *Submit for approval* only asks; William and Lou still approve in Slack before anything goes to Nearsite. Until the agent's tables exist both functions answer `agent_not_installed` and the map draws nothing, so turning the switch on early is harmless.
 
 The feature routes are listed under [API routes](#api-routes). Each answers `{ "enabled": false, … }` (or `state: "off"`) while its switch is off.
 
 **Database.** One additive migration, `supabase/migrations/20261126_map_agent.sql` (rollback statements in the file header). **Applied on 26 Nov 2026.** `tests/sql/map-agent-rollback.sql` runs every function on real claims inside a transaction that rolls itself back; it passed on 26 Nov 2026 with every expected answer (wrong or missing secret refused, outside homes fitting first, scores, submit status, Nearsite claims, phone lookup limits) and left nothing behind.
 
-**Tests.** `npm run typecheck`, `npm run test:unit` (198 tests), `npm run build`, and the browser suites `tests/browser/{agent-chat,claims-drawer,contacts,list-score,map-layer,outside-panel}.mjs` against `next dev` with `MAP_FEATURES=all` (routes mocked from `tests/fixtures/map-agent.mjs`; 585 checks). All pass on `main`.
+**Tests.** `npm run typecheck`, `npm run test:unit` (206 tests), `npm run build`, and the browser suites `tests/browser/{agent-chat,agent-graph,claims-drawer,contacts,list-score,map-layer,outside-panel}.mjs` against `next dev` with `MAP_FEATURES=all` (routes mocked from `tests/fixtures/map-agent.mjs`; 585 checks). All pass on `main`.
 
 **Switching it on** (owner's step):
 1. Pick the switches. `mine`, `outside`, `bestMatch`, `submit` and `nearsite` only read; `chat` and `addOutside` call the Search Chat workflow and `addOutside` writes a sub-item to the Monday claim; `findPhone` calls the lookup webhook.

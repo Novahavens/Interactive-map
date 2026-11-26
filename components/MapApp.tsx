@@ -34,6 +34,8 @@ import { Section } from "./property/parts";
 import { useEditSession, type SavedOutcome } from "./property/edit-session";
 import { STATUS_ORDER, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
 import ClaimBrief, { claimGlance } from "./ClaimBrief";
+import ClaimAgentLine from "./ClaimAgentLine";
+import { agentClaimFor, agentPollDelay, homeStep, type AgentState } from "@/lib/agent-graph";
 import ResultsSheet, { type SheetSnap } from "./ResultsSheet";
 import MapKey from "./MapKey";
 import ResultRow, { type HoverSource } from "./ResultRow";
@@ -386,6 +388,69 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
     [submitStatus],
   );
 
+  // Claims agent graph (flag `agentGraph`): where the agent has this claim, read per claim and after each decision.
+  const [agentState, setAgentState] = useState<AgentState | null>(null);
+  // Follows the open work item, so a Nearsite claim from the drawer gets the cockpit too.
+  const agentClaimId = agentClaimFor(features.agentGraph, work);
+  const agentSentAt = useRef<number | null>(null);
+  const loadAgent = useCallback(() => {
+    const id = agentClaimId;
+    if (!id) return;
+    getJson<AgentState>(`/api/claim/${id}/agent`)
+      .then((r) => workIdRef.current === id && setAgentState(r.enabled ? r : null))
+      .catch(() => undefined);
+  }, [agentClaimId]);
+  useEffect(() => {
+    setAgentState(null);
+    agentSentAt.current = null;
+    loadAgent();
+  }, [loadAgent]);
+  // The agent moves the claim on its own (a reply, a call, a decision it picked up), so keep reading while the
+  // claim is open: every few seconds right after a decision, then every 20 s, and at once when the tab returns.
+  useEffect(() => {
+    if (!agentClaimId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      const delay = agentPollDelay(Date.now(), agentSentAt.current, document.hidden);
+      if (delay === null) return;
+      timer = setTimeout(() => {
+        loadAgent();
+        schedule();
+      }, delay);
+    };
+    const onVisible = () => {
+      clearTimeout(timer);
+      if (!document.hidden) loadAgent();
+      schedule();
+    };
+    schedule();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [agentClaimId, loadAgent]);
+  const sendAgent = useCallback(
+    async (ev: Record<string, unknown>) => {
+      if (!agentClaimId) return false;
+      try {
+        const res = await fetch(`/api/claim/${agentClaimId}/agent/event`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(ev),
+        });
+        if (res.ok) {
+          agentSentAt.current = Date.now();
+          loadAgent();
+        }
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+    [agentClaimId, loadAgent],
+  );
+
   // Agent chat (flag `chat`).
   const [chatOpen, setChatOpen] = useState(false);
   const chat = useAgentChat({ claimId: features.chat ? workId : null, open: chatOpen, enabled: features.chat, onChanged: loadOutside });
@@ -659,6 +724,14 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       </details>
     </div>
   );
+  // The claim's place on the agent's graph, for a Claim Process claim and a Nearsite claim alike.
+  const agentBlock = () =>
+    features.agentGraph &&
+    agentState?.claimKey && (
+      <div className="border-b border-line p-3">
+        <ClaimAgentLine state={agentState} send={sendAgent} />
+      </div>
+    );
   const needsBlock = (touch: boolean) =>
     claim && (
       <div className="flex flex-col gap-2 border-b border-line p-3">
@@ -779,6 +852,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       <div className="nh-scroll min-h-0 overflow-y-auto">
         {controlsBlock(false)}
         {needsBlock(false)}
+        {agentBlock()}
       </div>
 
       <div className="flex min-h-0 flex-col">
@@ -838,6 +912,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
       {...(features.submit && submitStatus && { submit: submitFor(selectedId) })}
       {...(features.findPhone && { findPhone: true })}
       {...(features.templates && { templates: true })}
+      {...(features.agentGraph && agentState?.claimKey && { agent: { home: homeStep(agentState, selectedId), send: sendAgent } })}
     />
   ) : null;
 
@@ -1113,6 +1188,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
               <>
                 {controlsBlock(true)}
                 {needsBlock(true)}
+                {agentBlock()}
               </>
             }
             rows={resultRows}
