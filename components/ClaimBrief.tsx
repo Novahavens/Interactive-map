@@ -3,6 +3,7 @@
 import { ChevronDown } from "lucide-react";
 import { dateShort, dayMonth, money, num } from "@/lib/utils";
 import type { ClaimBrief as Brief } from "@/lib/types";
+import { submitCountsLabel } from "@/lib/submit-status";
 
 const has = (v: unknown) => v !== null && v !== undefined && v !== "";
 
@@ -28,7 +29,16 @@ export function claimGlance(brief: Brief): string[] {
   return [...family, bedBath, brief.moveIn ? `move-in ${dayMonth(brief.moveIn)}` : null].filter(Boolean) as string[];
 }
 
-export default function ClaimBrief({ name, brief, hideGlance }: { name: string; brief: Brief; hideGlance?: boolean }) {
+interface Props {
+  name: string;
+  brief: Brief;
+  hideGlance?: boolean;
+  /** Options ready / submitted on this claim (flag `submit`): "3 ready · 2 submitted" in the summary row; `options: 0` reads "No options yet". Left out or null: nothing. */
+  submitCounts?: { ready: number; submitted: number; options?: number | null } | null;
+}
+
+export default function ClaimBrief({ name, brief, hideGlance, submitCounts }: Props) {
+  const counts = submitCountsLabel(submitCounts);
   const people = [
     ["Account manager", brief.accountManager],
     ["Searcher", brief.searcher],
@@ -66,6 +76,11 @@ export default function ClaimBrief({ name, brief, hideGlance }: { name: string; 
       <details className="group rounded-lg border border-line border-l-[3px] border-l-focus bg-surface">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 min-h-[44px] px-3 py-2 text-[13px] font-semibold">
           <span className="truncate">Claim information</span>
+          {counts && (
+            <span className="ml-auto shrink-0 whitespace-nowrap text-xs font-normal text-muted" data-submit-counts>
+              {counts}
+            </span>
+          )}
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink transition-transform group-open:rotate-180" aria-hidden="true" />
         </summary>
         <div className="flex flex-col gap-2 border-t border-line px-3 py-2.5 text-[13px]">
