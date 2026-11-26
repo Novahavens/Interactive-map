@@ -285,6 +285,25 @@ const idle = (ui) => ui.running.waitFor({ state: "detached", timeout: 8000 }).th
   await ctx.close();
 }
 
+// ---------- 1b. Stop on the greeting: not sent again on the spot; sent again when the window is reopened ----------
+{
+  const { ctx, p, net, ui } = await open("greeting-stop", { query: "?panel=1" });
+  net.answer = (body) => (body.action === "open" ? { json: ASK.open, delay: 2500 } : { json: ASK.message });
+  await ui.bubble.click();
+  await ui.running.waitFor({ state: "visible", timeout: 2000 }).catch(() => {});
+  check("greeting: open is sent once and is running", (await ui.asked(1)) && (await ui.running.count()) === 1);
+  await p.locator("[data-agent-stop]").click();
+  await p.waitForTimeout(3000);
+  check("Stop on the greeting: no second open is sent while the window stays open", net.asks.length === 1, `asks=${net.asks.length}`);
+  check("Stop on the greeting: the window is still open and idle", (await ui.chat.count()) === 1 && (await ui.running.count()) === 0);
+  await p.locator("[data-agent-close]").click();
+  net.answer = () => ({ json: ASK.open });
+  await ui.bubble.click();
+  check("reopening after a stopped greeting sends open again", (await ui.asked(2)) && same(net.asks[1], { action: "open", user: USER }), JSON.stringify(net.asks));
+  await idle(ui);
+  await ctx.close();
+}
+
 // ---------- 2. Desktop, dark: voice, More like this one ----------
 {
   const { ctx, p, net, ui } = await open("desktop-dark", { theme: "dark", query: `?home=outside`, speech: "fake", w: 1280, h: 800 });

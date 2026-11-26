@@ -129,11 +129,14 @@ export function useAgentChat({ claimId, open, enabled = true, onChanged }: UseAg
   }, [cancel]);
 
   // First time the window is open for this claim: say hello (`open`). Opening also clears the badge.
+  // Runs when the window opens, the claim changes or the feature is switched on, and not on every state change:
+  // a Stop during the greeting leaves it unsent, and it must not be sent again on the spot.
   useEffect(() => {
     if (!open) return;
     dispatch({ type: "seen" });
-    if (enabled && claimId && state.claimId === claimId && !state.opened && state.status.kind === "idle") void run({ action: "open" });
-  }, [open, enabled, claimId, state.claimId, state.opened, state.status.kind, run]);
+    const s = stateRef.current;
+    if (enabled && claimId && s.claimId === claimId && !s.opened && s.status.kind === "idle") void run({ action: "open" });
+  }, [open, enabled, claimId, run]);
 
   const send = useCallback(
     (text: string) => {

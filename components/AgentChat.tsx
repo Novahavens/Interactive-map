@@ -108,9 +108,13 @@ export function AgentChat({
   const text = cleanInput(value);
   const canSend = !!claim && !running && text.length > 0;
 
-  // Another claim: what was being typed belonged to the last one.
+  // Another claim: what was being typed belonged to the last one, and dictation stops so the last one's words
+  // cannot land in this claim's box. (A ref, so a new stop() identity from a parent never clears the box.)
   const claimId = claim?.id ?? null;
+  const stopRef = useRef(stopSpeech);
+  stopRef.current = stopSpeech;
   useEffect(() => {
+    stopRef.current();
     setValue("");
     spoken.current = false;
   }, [claimId]);
