@@ -47,10 +47,11 @@ const chipsOf = (loc) => loc.locator(".nh-chip").evaluateAll((els) => els.map((e
 const out = (id) => `row-out-${id}`;
 const ours = (n) => `row-99000001${n}`;
 
+// A home that did not fit the search (HOME.stretch) is listed too: after the fitting ones, with its reason.
 const BEST = [ours("01"), out(HOME.zillowExact), ours("02"), out(HOME.zillowNew), ours("03"), ours("04"), out(HOME.zillowApprox), ours("05"), ours("06"),
-  out(HOME.ffArea), out(HOME.ffNoCoords), out(HOME.ffAsked), ours("11"), ours("12"), ours("13")];
+  out(HOME.ffArea), out(HOME.ffNoCoords), out(HOME.ffAsked), ours("11"), ours("12"), out(HOME.stretch), ours("13")];
 const NEAREST = [ours("11"), ours("01"), ours("03"), out(HOME.zillowExact), out(HOME.zillowNew), ours("12"), out(HOME.ffArea), ours("02"), ours("05"),
-  out(HOME.zillowApprox), ours("04"), ours("06"), ours("13"), out(HOME.ffNoCoords), out(HOME.ffAsked)];
+  out(HOME.zillowApprox), ours("04"), ours("06"), ours("13"), out(HOME.stretch), out(HOME.ffNoCoords), out(HOME.ffAsked)];
 const TODAY = [ours("11"), ours("01"), ours("03"), ours("12"), ours("02"), ours("05"), ours("04"), ours("06"), ours("13")];
 
 // ---------- desktop, light ----------
@@ -64,11 +65,11 @@ const TODAY = [ours("11"), ours("01"), ours("03"), ours("12"), ours("02"), ours(
   // --- sort toggle + order ---
   check("toggle is a radiogroup named Sort homes with two radios", (await group.count()) === 1 && (await group.getByRole("radio").count()) === 2);
   check("Best match is the default when scores exist", (await best.getAttribute("aria-checked")) === "true" && (await nearest.getAttribute("aria-checked")) === "false");
-  check("count label names the outside homes", (await live.innerText()).includes("9 within 10 mi · 6 outside"));
+  check("count label names the outside homes", (await live.innerText()).includes("9 within 10 mi · 7 outside"));
   let ids = await rowIds(p);
-  check("Best match: score first (ours and outside together), unscored outside by rank, the rest, red last", same(ids, BEST), ids.join(" "));
+  check("Best match: score first (ours and outside together), unscored outside by rank, the rest, the ones that did not fit, red last", same(ids, BEST), ids.join(" "));
   check("a home that is already one of our pins is not listed twice", !ids.includes(out(HOME.zillowOnClaim)));
-  check("a home that does not fit the search is not listed", !ids.includes(out(HOME.stretch)));
+  check("a home that does not fit the search is listed, with its reason", ids.includes(out(HOME.stretch)) && (await p.locator(`[id="${out(HOME.stretch)}"]`).innerText()).includes("Not a fit: rent over the limit"));
   check("no divider in Best match", (await live.getByText(/No map location/).count()) === 0);
   check("Nearest carries today's rule as its title", (await nearest.getAttribute("title")) === "Green first, then nearest");
   await live.screenshot({ path: `${OUT}/desktop-light-best.png` });
