@@ -514,6 +514,15 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
   );
   const noLocation = useMemo(() => noLocationStart(items, sortMode), [items, sortMode]);
   const outsideListed = useMemo(() => items.filter((i) => i.kind === "outside").length, [items]);
+  // The map key counts the same homes as the list ("71 outside"), even while outside homes are hidden: the raw
+  // answer also holds homes that broke a rule or are already drawn as one of ours, which the list leaves out.
+  const outsideKeyCount = useMemo(
+    () =>
+      features.outside && workId
+        ? sortResults({ pins: visiblePins, outside: outsideHomes, scores: null, mode: "nearest", knownPropertyIds }).filter((i) => i.kind === "outside").length
+        : 0,
+    [features.outside, workId, visiblePins, outsideHomes, knownPropertyIds],
+  );
   const changeSort = useCallback((m: SortMode) => {
     setHoldNearest(false);
     setSortChoice(m);
@@ -653,7 +662,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
         counts={statusCounts}
         hidden={filters.hidden}
         onToggle={(st) => setFilters((f) => ({ ...f, hidden: { ...f.hidden, [st]: !f.hidden[st] } }))}
-        {...(outsidePins && { outsideCount: outsideHomes.length, outsideHidden, onToggleOutside: () => setOutsideHidden((h) => !h) })}
+        {...(outsidePins && { outsideCount: outsideKeyCount, outsideHidden, onToggleOutside: () => setOutsideHidden((h) => !h) })}
       />
         </div>
       </details>
@@ -1033,7 +1042,7 @@ export default function MapApp({ claimId: initialClaimId, apiKey, mapId }: Props
                 variant="floating"
                 attachedCount={attachedPins.length}
                 loading={pinsLoading}
-                {...(outsidePins && { outsideCount: outsideHomes.length, outsideHidden })}
+                {...(outsidePins && { outsideCount: outsideKeyCount, outsideHidden })}
                 {...((outsidePins || features.chat) && { short: !wide })}
                 {...(features.chat && { chatOpen: chatOpen && wide })}
               />

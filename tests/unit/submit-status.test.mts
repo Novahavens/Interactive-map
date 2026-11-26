@@ -87,7 +87,8 @@ test("blocked: a sentence from the back end reads on after the colon; no reason 
 test("claim counts", () => {
   assert.equal(submitCountsLabel({ ready: 3, submitted: 2 }), "3 ready · 2 submitted");
   assert.equal(submitCountsLabel({ ready: 0, submitted: 0 }), "0 ready · 0 submitted");
-  assert.equal(submitCountsLabel({ ready: 0, submitted: 0, options: 4 }), "0 ready · 0 submitted");
+  assert.equal(submitCountsLabel({ ready: 0, submitted: 0, options: 4 }), "4 to do");
+  assert.equal(submitCountsLabel({ ready: 1, submitted: 0, options: 4 }), "1 ready · 0 submitted");
   assert.equal(submitCountsLabel({ ready: 0, submitted: 0, options: 0 }), "No options yet");
   assert.equal(submitCountsLabel({ ready: -1, submitted: Number.NaN }), "0 ready · 0 submitted");
   assert.equal(submitCountsLabel(null), null);
