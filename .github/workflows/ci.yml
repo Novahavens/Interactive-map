@@ -31,7 +31,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run test:unit
-      - run: npm run build
+      # next/font fetches Google Fonts at build time; one retry covers a bad answer from that fetch.
+      - name: Build
+        run: npm run build || (sleep 15 && npm run build)
       - name: Install Playwright and Chromium
         run: |
           npm install --no-save playwright@1.63.0
