@@ -521,3 +521,65 @@ a:focus-visible,
   border-radius: 999px;
   background: var(--focus);
 }
+
+/* ---------- Outside homes: listings found on Zillow / Furnished Finder, not in our database ---------- */
+/* Ink outline and the source letter where our pins carry a status dot. No colour of its own: green circle,
+   yellow diamond and red square stay the only status colours. Hover, selected and dimmed are the shared
+   .nh-pin--hover / --selected / --dimmed rules above. */
+.nh-pin--outside .nh-pin__chip {
+  border: 1.5px solid var(--ink);
+  padding: 0 9px 0 6px;
+  gap: 6px;
+}
+.nh-pin--outside .nh-pin__caret {
+  border-top-color: var(--ink);
+}
+/* Area-level only: dashed outline (plus the ≈ glyph in the markup). */
+.nh-pin--outside.nh-pin--approx .nh-pin__chip {
+  border-style: dashed;
+}
+.nh-pin--outside.nh-pin--selected .nh-pin__chip {
+  border-color: var(--focus);
+}
+.nh-pin--outside.nh-pin--selected .nh-pin__caret {
+  border-top-color: var(--focus);
+}
+/* The Z / F letter square: pins, rows, panel header, key. */
+.nh-src {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+}
+.nh-src--sm {
+  width: 14px;
+  height: 14px;
+  font-size: 9px;
+  border-radius: 3px;
+}
+/* List only (no map location). */
+.nh-src--none {
+  background: transparent;
+  color: var(--muted);
+  border: 1px dashed var(--line2);
+}
+/* Second square of the Z F pair in the key: tucked 3 px under the first, with a hairline so the two read apart. */
+.nh-src--overlap {
+  margin-left: -3px;
+  box-shadow: -1px 0 0 var(--surface);
+}
+/* Source chip in a result row. */
+.nh-chip--line {
+  color: var(--ink);
+  border-color: var(--line2);
+}

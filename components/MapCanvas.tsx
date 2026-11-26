@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MarkerClusterer, SuperClusterAlgorithm } from "@googlemaps/markerclusterer";
-import type { Pin, AttachedPin } from "@/lib/types";
+import type { Pin, AttachedPin, OutsideHome } from "@/lib/types";
 import { STATUS, asMapStatus, passesFilters, type MapStatus, type PinFilters } from "@/lib/status";
 import { loadGoogleMaps } from "@/lib/google";
+import { hasCoords, outsidePassesFilters, outsideStyleKey, outsideZIndex, OUTSIDE_PIN_CAP } from "@/lib/outside-pins";
+import { buildOutsidePin } from "./map/outside-pin";
 
 // Semantic colours — must match the --loss/--database/--preferred/--dnu/--focus
 // tokens in globals.css. Identical in light and dark, so plain hex is fine here;
@@ -38,6 +40,26 @@ interface Props {
   onHover: (id: string | null) => void;
   onReady?: () => void;
   onError?: (message: string) => void;
+  /**
+   * Homes found outside our database, each drawn as an ink-outline pin with its source letter. Pass only homes
+   * that should have a pin (see pinnableOutside in lib/outside-pins.ts); homes without coordinates are skipped
+   * and at most 50 are drawn. Absent or empty = no outside layer, the map is exactly as before.
+   */
+  outside?: OutsideHome[];
+  selectedOutsideId?: string | null;
+  hoveredOutsideId?: string | null;
+  /** The key's "Outside" toggle is off: the pins are removed, not dimmed. */
+  outsideHidden?: boolean;
+  onSelectOutside?: (listingId: string) => void;
+  onHoverOutside?: (listingId: string | null) => void;
+  /** Move Google's zoom control to the top right, so the chat bubble can sit bottom right. */
+  zoomTopRight?: boolean;
+  /**
+   * Pixels on the map's right / bottom edge covered by something floating over it (the open chat window on lg+).
+   * Fitting the radius pads by it, and a newly selected pin that lands under it is panned clear once (pan, no zoom).
+   * Absent or null = today's behaviour.
+   */
+  avoid?: { right: number; bottom: number } | null;
 }
 
 type AdvMarker = google.maps.marker.AdvancedMarkerElement;
@@ -67,6 +89,14 @@ export default function MapCanvas({
   onHover,
   onReady,
   onError,
+  outside,
+  selectedOutsideId = null,
+  hoveredOutsideId = null,
+  outsideHidden = false,
+  onSelectOutside,
+  onHoverOutside,
+  zoomTopRight = false,
+  avoid = null,
 }: Props) {
   const divRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -76,6 +106,13 @@ export default function MapCanvas({
   const clustererRef = useRef<MarkerClusterer | null>(null);
   const propertyMarkersRef = useRef<Map<string, AdvMarker>>(new Map());
   const attachedMarkersRef = useRef<Map<string, AdvMarker>>(new Map());
+  const outsideMarkersRef = useRef<Map<string, AdvMarker>>(new Map());
+  // Outside markers and the map's own listeners keep the callbacks they were built with, so they read the latest here.
+  const outsideCbRef = useRef({ onSelectOutside, onHoverOutside });
+  outsideCbRef.current = { onSelectOutside, onHoverOutside };
+  const zoomMovedRef = useRef(false);
+  const avoidRef = useRef(avoid);
+  avoidRef.current = avoid;
   const [ready, setReady] = useState(false);
   const lastFitKeyRef = useRef<string>("");
 
@@ -103,7 +140,10 @@ export default function MapCanvas({
         });
         mapRef.current = map;
         // A pin the clusterer swallows (zoom, radius change) is removed from under the pointer without a mouseleave.
-        map.addListener("zoom_changed", () => onHover(null));
+        map.addListener("zoom_changed", () => {
+          onHover(null);
+          outsideCbRef.current.onHoverOutside?.(null);
+        });
 
         clustererRef.current = new MarkerClusterer({
           map,
@@ -183,7 +223,8 @@ export default function MapCanvas({
     if (key !== lastFitKeyRef.current) {
       lastFitKeyRef.current = key;
       const bounds = circleRef.current.getBounds();
-      if (bounds) map.fitBounds(bounds, 24);
+      const a = avoidRef.current;
+      if (bounds) map.fitBounds(bounds, a ? { top: 24, left: 24, right: 24 + a.right, bottom: 24 + a.bottom } : 24);
     }
   }, [ready, center, radiusMiles]);
 
@@ -278,6 +319,65 @@ export default function MapCanvas({
     attachedMarkersRef.current = next;
   }, [ready, attachedPins, selectedId, hoveredId, onSelect, onHover]);
 
+  // ---- outside homes (ink outline + source letter; their own layer, never clustered with ours) ----
+  useEffect(() => {
+    const map = mapRef.current;
+    const libs = libsRef.current;
+    if (!map || !libs) return;
+
+    const existing = outsideMarkersRef.current;
+    const next = new Map<string, AdvMarker>();
+    if (!outsideHidden) {
+      for (const h of outside ?? []) {
+        if (next.size >= OUTSIDE_PIN_CAP) break;
+        if (!hasCoords(h) || next.has(h.listingId)) continue;
+        const id = h.listingId;
+        let m = existing.get(id);
+        if (!m) {
+          m = new libs.marker.AdvancedMarkerElement({
+            map,
+            position: { lat: h.lat, lng: h.lng },
+            title: h.title,
+            gmpClickable: true,
+          });
+          m.addListener("click", () => outsideCbRef.current.onSelectOutside?.(id));
+        } else if (!atPosition(m, h.lat, h.lng)) {
+          m.position = { lat: h.lat, lng: h.lng }; // not clustered, so a move is enough
+        }
+        const selected = selectedOutsideId === id;
+        const hovered = hoveredOutsideId === id;
+        const shown = outsidePassesFilters(h, filters);
+        const key = outsideStyleKey(h, { selected, hovered, shown });
+        if ((m.content as HTMLElement | null)?.dataset.key !== key) {
+          const el = buildOutsidePin(h, { selected, hovered, shown });
+          el.dataset.key = key;
+          el.addEventListener("mouseenter", () => outsideCbRef.current.onHoverOutside?.(id));
+          el.addEventListener("mouseleave", () => outsideCbRef.current.onHoverOutside?.(null));
+          m.content = el;
+          m.zIndex = selected ? 4000 : hovered ? HOVER_Z : outsideZIndex(h);
+        }
+        if (m.map !== map) m.map = map;
+        next.set(id, m);
+      }
+    }
+    // Hidden by the key, added to the claim, or gone from the search: off the map, not dimmed.
+    for (const [id, m] of existing) {
+      if (!next.has(id)) m.map = null;
+    }
+    outsideMarkersRef.current = next;
+  }, [ready, outside, outsideHidden, selectedOutsideId, hoveredOutsideId, filters]);
+
+  // ---- zoom control: top right while the chat bubble owns the bottom right ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!zoomTopRight && !zoomMovedRef.current) return; // never asked for: leave Google's default alone
+    zoomMovedRef.current = zoomTopRight;
+    map.setOptions({
+      zoomControlOptions: { position: zoomTopRight ? google.maps.ControlPosition.RIGHT_TOP : google.maps.ControlPosition.RIGHT_BOTTOM },
+    });
+  }, [ready, zoomTopRight]);
+
   // A pin inside a numbered group is not on the map (the clusterer owns it), so there is nothing to highlight
   // until the group is zoomed open; the row still highlights. The map is panned, never zoomed.
   useEffect(() => {
@@ -291,6 +391,39 @@ export default function MapCanvas({
     }, 150);
     return () => window.clearTimeout(t);
   }, [hoveredId, panToHovered]);
+
+  // The same for an outside home hovered in the list.
+  useEffect(() => {
+    if (!hoveredOutsideId || !panToHovered) return;
+    const map = mapRef.current;
+    const pos = outsideMarkersRef.current.get(hoveredOutsideId)?.position;
+    if (!map || !pos) return;
+    const t = window.setTimeout(() => {
+      const bounds = map.getBounds();
+      if (bounds && !bounds.contains(pos)) map.panTo(pos);
+    }, 150);
+    return () => window.clearTimeout(t);
+  }, [hoveredOutsideId, panToHovered]);
+
+  // A pin selected while the chat window covers part of the map: if it sits under the window, pan it clear once.
+  const avoidRight = avoid?.right ?? 0;
+  const avoidBottom = avoid?.bottom ?? 0;
+  useEffect(() => {
+    if (!avoidRight && !avoidBottom) return;
+    const map = mapRef.current;
+    const marker = selectedOutsideId
+      ? outsideMarkersRef.current.get(selectedOutsideId)
+      : selectedId
+        ? (propertyMarkersRef.current.get(selectedId) ?? attachedMarkersRef.current.get(selectedId))
+        : undefined;
+    const pos = marker?.position;
+    if (!map || !pos) return;
+    const t = window.setTimeout(() => {
+      const shift = panClear(map, pos, avoidRight, avoidBottom);
+      if (shift) map.panBy(shift.x, shift.y);
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, [ready, selectedId, selectedOutsideId, avoidRight, avoidBottom]);
 
   return <div ref={divRef} className="h-full w-full" aria-label="Property map" />;
 }
@@ -306,9 +439,40 @@ function setPinContent(m: AdvMarker, key: string, id: string, onHover: Props["on
   return true;
 }
 
+/**
+ * How far to pan so a point covered by the avoided strip on the right / bottom lands in the middle of the free area.
+ * Null when the point is already clear (or the map has no projection yet).
+ */
+function panClear(
+  map: google.maps.Map,
+  pos: google.maps.LatLng | google.maps.LatLngLiteral | google.maps.LatLngAltitudeLiteral,
+  right: number,
+  bottom: number,
+): { x: number; y: number } | null {
+  const proj = map.getProjection();
+  const bounds = map.getBounds();
+  const zoom = map.getZoom();
+  const div = map.getDiv();
+  if (!proj || !bounds || zoom == null) return null;
+  const scale = 2 ** zoom;
+  const ne = bounds.getNorthEast();
+  const sw = bounds.getSouthWest();
+  const origin = proj.fromLatLngToPoint(new google.maps.LatLng(ne.lat(), sw.lng()));
+  const pt = proj.fromLatLngToPoint(pos instanceof google.maps.LatLng ? pos : new google.maps.LatLng(pos.lat, pos.lng));
+  if (!origin || !pt) return null;
+  const x = (pt.x - origin.x) * scale;
+  const y = (pt.y - origin.y) * scale;
+  const freeW = div.clientWidth - right;
+  const freeH = div.clientHeight - bottom;
+  const PAD = 24;
+  const dx = right && x > freeW - PAD ? x - freeW / 2 : 0;
+  const dy = bottom && y > freeH - PAD ? y - freeH / 2 : 0;
+  return dx || dy ? { x: Math.round(dx), y: Math.round(dy) } : null;
+}
+
 // ---------- pin content builders — plain DOM, styled entirely by globals.css ----------
 
-function buildLossPin(): HTMLElement {
+export function buildLossPin(): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "nh-loss";
   wrap.innerHTML = `
@@ -321,7 +485,7 @@ function buildLossPin(): HTMLElement {
   return wrap;
 }
 
-function buildPropertyPin(
+export function buildPropertyPin(
   status: MapStatus,
   selected: boolean,
   hovered: boolean,
@@ -352,7 +516,7 @@ function buildPropertyPin(
   return wrap;
 }
 
-function buildAttachedPin(selected: boolean, hovered: boolean, chip: string, name: string): HTMLElement {
+export function buildAttachedPin(selected: boolean, hovered: boolean, chip: string, name: string): HTMLElement {
   const wrap = document.createElement("div");
   const classes = ["nh-pin", "nh-pin--attached"];
   if (selected) classes.push("nh-pin--selected");
