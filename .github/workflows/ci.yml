@@ -1,0 +1,118 @@
+# Checks for the map and the Nearsite claims agent. Needs no secrets: every live action is off and every
+# browser suite here runs against the dev preview pages with its routes mocked.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  map:
+    name: Map (typecheck, unit, build, browser)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      MONDAY_DRY_RUN: "1"
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run build
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Browser suites (dev preview pages, routes mocked)
+        env:
+          MAP_FEATURES: all
+          BASE: http://localhost:3100
+        run: |
+          npx next dev -p 3100 > next-dev.log 2>&1 &
+          npx --yes wait-on@8.0.3 -t 120000 http://localhost:3100/api/health
+          status=0
+          for suite in tests/browser/*.mjs; do
+            name=$(basename "$suite" .mjs)
+            # Not here: these open the real map and need the real database, Google Maps key or a fixed Chrome.
+            case "$name" in real-data|live-status|contact-actions|contact-digest|edit-listing|owner-said) continue ;; esac
+            # Warm the page first so the first check doesn't race the dev compiler.
+            curl -fsS -o /dev/null "$BASE/dev/$name" || true
+            echo "::group::$name"
+            node "$suite" "test-results/$name" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+      - if: failure()
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: browser-results
+          path: |
+            test-results
+            next-dev.log
+          retention-days: 7
+
+  agent:
+    name: Nearsite agent (engine, harness, gate, handler, extension, migrations)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: nearsite-agent
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nstest
+          POSTGRES_INITDB_ARGS: --encoding=UTF8
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      NEARSITE_TEST_PG: postgresql://postgres:postgres@localhost:5432/nstest
+      NEARSITE_TEST_PG_ASCII: postgresql://postgres:postgres@localhost:5432/asciitest
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: 20
+      - name: SQL_ASCII database for the encoding check
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -c "create database asciitest encoding 'SQL_ASCII' lc_collate 'C' lc_ctype 'C' template template0"
+      - run: pip install -r requirements-dev.txt
+      - name: Every live switch is off in the committed config
+        run: python -c "import json,sys;c=json.load(open('config/agent-config.json'));on=[k for k,v in c['live'].items() if v];print('on:',on);sys.exit(1 if on or not c['pricing'].get('_example') else 0)"
+      - name: Python (engine, checker, live gate, harness, LangGraph runtime, Postgres)
+        run: python -m pytest -q -p no:cacheprovider tests
+      - name: Node test dependencies
+        run: |
+          mkdir -p "$RUNNER_TEMP/deps" && cd "$RUNNER_TEMP/deps"
+          npm init -y > /dev/null
+          npm install --silent @electric-sql/pglite@0.2.17 jsdom@24.1.3
+      - run: node --test handlers/slack-approvals/logic.test.mjs
+      - run: node --test extension/content.test.cjs
+        env:
+          JSDOM_DIR: ${{ runner.temp }}/deps
+      - run: node --test tests/db/migration.test.mjs
+        env:
+          PGLITE_DIR: ${{ runner.temp }}/deps
+      - name: Dry run on the fictional fixtures (nothing sent)
+        run: python scripts/dry_run.py --out "$RUNNER_TEMP/dry-run"
