@@ -1,0 +1,7 @@
+# Test and runtime dependencies for the Nearsite agent (pinned; CI installs these).
+langgraph==1.2.24
+langgraph-checkpoint-sqlite==3.1.3
+langgraph-checkpoint-postgres==3.2.1
+psycopg[binary]==3.3.9
+psycopg-pool==3.3.3
+pytest==9.1.1

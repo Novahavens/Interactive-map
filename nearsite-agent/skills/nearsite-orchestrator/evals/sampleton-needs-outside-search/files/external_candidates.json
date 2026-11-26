@@ -1,0 +1,35 @@
+[
+ {
+  "home_id": "ext-ff-demo-1",
+  "source": "furnished_finder",
+  "distance_mi": 4.2,
+  "owner_monthly": 1650,
+  "bedrooms": 3,
+  "bathrooms": 1,
+  "availability": "Available Now",
+  "pets_ok": true,
+  "title": "SYNTHETIC 3BR house near Sampleton"
+ },
+ {
+  "home_id": "ext-zl-demo-2",
+  "source": "zillow",
+  "distance_mi": 6.8,
+  "owner_monthly": 1500,
+  "bedrooms": 3,
+  "bathrooms": 2,
+  "availability": "",
+  "pets_ok": null,
+  "title": "SYNTHETIC 3BR ranch"
+ },
+ {
+  "home_id": "ext-ff-demo-3",
+  "source": "furnished_finder",
+  "distance_mi": 5.1,
+  "owner_monthly": 1700,
+  "bedrooms": 3,
+  "bathrooms": 1.5,
+  "availability": "Available Now",
+  "pets_ok": true,
+  "title": "Property Management LLC SYNTHETIC listing"
+ }
+]

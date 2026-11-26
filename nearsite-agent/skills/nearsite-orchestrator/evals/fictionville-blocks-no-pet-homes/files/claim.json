@@ -1,0 +1,23 @@
+{
+ "nearsite_claim_id": "90002",
+ "company": "Example Insurance Services",
+ "title": "Request #90002 \u00b7 Single Family House",
+ "beds": 3,
+ "baths": 2,
+ "budget_monthly": 5700,
+ "max_rate": 4788,
+ "city": "Fictionville",
+ "state": "TX",
+ "zip": "77990",
+ "move_in": "2026-12-08",
+ "move_out": "2027-02-07",
+ "pets": "Pet friendly needed (4 dogs)",
+ "pet_details": "4 dogs: TBD 1 lbs, TBD 1 lbs, TBD 1 lbs, TBD 1 lbs",
+ "notes": "there is 4 pets but not sure of the breed or weight 3 bedrooms elderly couple - no stairs 2 cars\nBudget as posted: $190/day \u00b7 Guests: 2 \u00b7 Wants: Single Family House \u00b7 Furnished \u00b7 Pets: 4 dogs \u00b7 Parking: 2 \u00b7 Flags: no stairs, elderly guest",
+ "platform_fee_pct": 6,
+ "referral_fee_rate": 10,
+ "referral_fee_type": "percentage",
+ "expires_at": "2026-12-02T00:00:00+00:00",
+ "proposals": 3,
+ "source": "nearsite"
+}

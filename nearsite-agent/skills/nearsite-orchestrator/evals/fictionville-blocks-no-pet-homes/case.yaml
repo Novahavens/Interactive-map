@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: fictionville-blocks-no-pet-homes
+expected_outcome: |
+  Homes that take no pets (9900000134, 9900000125, 9900000135) are marked X, the no-stairs and two-car parking needs from the notes reach the landlord message, unknown dog breeds and weights are flagged, and nothing is sent.
+context:
+  scaffold_script: place-files.sh

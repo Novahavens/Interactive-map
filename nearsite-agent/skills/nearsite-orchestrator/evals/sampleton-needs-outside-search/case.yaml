@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: sampleton-needs-outside-search
+expected_outcome: |
+  Our only internal home is rejected (2 BR for a 3 BR request, rent leaves no margin), the outside search is used, the management-company listing is excluded, and the other two outside homes are recommended with what to confirm.
+context:
+  scaffold_script: place-files.sh

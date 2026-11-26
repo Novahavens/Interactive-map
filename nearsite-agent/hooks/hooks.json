@@ -1,0 +1,13 @@
+{
+  "description": "Nearsite agent live gate: blocks every outward action until a person switches it on.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*|Bash|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/live_gate.py\"", "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}
