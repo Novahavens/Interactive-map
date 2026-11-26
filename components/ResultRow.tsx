@@ -1,9 +1,9 @@
 "use client";
 
 import { memo } from "react";
-import { chipsFor } from "@/lib/chips";
+import { chipsFor, scoreChip, stretchChip } from "@/lib/chips";
 import { asMapStatus } from "@/lib/status";
-import type { Pin } from "@/lib/types";
+import type { MatchScore, Pin } from "@/lib/types";
 import { cn, money, num, petsAllowed } from "@/lib/utils";
 import StatusChips from "./StatusChips";
 import { StatusDot } from "./StatusDot";
@@ -16,14 +16,17 @@ interface Props {
   selected: boolean;
   hovered: boolean;
   claimId: string | null;
+  /** This home scored against the open claim: adds a leading "Match 82 · Strong" chip and "Stretch +$N" at the end. */
+  score?: MatchScore | null;
   onSelect: (id: string) => void;
   onHover: (id: string | null, from?: HoverSource) => void;
 }
 
 // Memoised with stable callbacks so a hover change re-renders only the row that lost it and the row that got it.
-export default memo(function ResultRow({ pin, selected, hovered, claimId, onSelect, onHover }: Props) {
+export default memo(function ResultRow({ pin, selected, hovered, claimId, score, onSelect, onHover }: Props) {
   const id = pin.monday_item_id;
-  const { chips } = chipsFor(pin, claimId);
+  const { chips: stateChips } = chipsFor(pin, claimId);
+  const chips = score ? [scoreChip(score.score), ...stateChips, ...(score.stretch ? [stretchChip(score.stretchBy)] : [])] : stateChips;
   return (
     <li>
       <button
